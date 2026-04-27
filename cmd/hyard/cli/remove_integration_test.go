@@ -51,6 +51,7 @@ func TestHyardRemoveOrbitRecompilesLedgerOwnedPackageHookOutputs(t *testing.T) {
 
 	lockHyardProcessEnv(t)
 	t.Setenv("HOME", t.TempDir())
+	stubCodexExecutableOnPath(t)
 
 	stdout, stderr, err := executeHyardCLIUnlocked(t, repo.Root, "agent", "apply", "--hooks", "--yes", "--json")
 	require.NoError(t, err)

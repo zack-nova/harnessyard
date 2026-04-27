@@ -238,9 +238,12 @@ func TestHyardAgentApplyHooksCodexAppliesPackageHookAndLedger(t *testing.T) {
 	repo := seedHyardRuntimeWithAgentAddonHook(t)
 	selectHyardAgentAddonFramework(t, repo)
 	makeHyardAgentAddonHandlerExecutable(t, repo)
-	t.Setenv("HOME", t.TempDir())
 
-	stdout, stderr, err := executeHyardCLI(t, repo.Root, "agent", "apply", "--hooks", "--yes", "--json")
+	lockHyardProcessEnv(t)
+	t.Setenv("HOME", t.TempDir())
+	stubCodexExecutableOnPath(t)
+
+	stdout, stderr, err := executeHyardCLIUnlocked(t, repo.Root, "agent", "apply", "--hooks", "--yes", "--json")
 	require.NoError(t, err)
 	require.Contains(t, stderr, "hooks/docs/block-dangerous-shell/run.sh")
 	require.Contains(t, stderr, "Apply hook activation? accepted by --yes")
@@ -302,7 +305,7 @@ func TestHyardAgentApplyHooksCodexAppliesPackageHookAndLedger(t *testing.T) {
 	require.Equal(t, "project_hooks", activation.PackageHooks[0].HookApplyMode)
 	require.NotEmpty(t, activation.PackageHooks[0].HandlerDigest)
 
-	stdout, stderr, err = executeHyardCLI(t, repo.Root, "agent", "check", "--json")
+	stdout, stderr, err = executeHyardCLIUnlocked(t, repo.Root, "agent", "check", "--json")
 	require.NoError(t, err)
 	require.Empty(t, stderr)
 
