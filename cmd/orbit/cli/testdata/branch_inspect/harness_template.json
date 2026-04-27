@@ -1,0 +1,51 @@
+{
+  "revision": "harness-template",
+  "inspection": {
+    "classification": {
+      "kind": "template",
+      "template_kind": "harness",
+      "reason": "valid .harness/manifest.yaml present with kind=harness_template"
+    },
+    "harness_id": "workspace",
+    "manifest_member_count": 2,
+    "manifest_member_ids": [
+      "cmd",
+      "docs"
+    ],
+    "member_count_scope": "manifest",
+    "member_count": 2,
+    "member_ids": [
+      "cmd",
+      "docs"
+    ],
+    "definition_count": 2,
+    "definition_ids": [
+      "cmd",
+      "docs"
+    ],
+    "definition_member_count": 2,
+    "definition_members": [
+      {
+        "id": "cmd",
+        "member_count": 1,
+        "member_ids": [
+          "cmd-content"
+        ]
+      },
+      {
+        "id": "docs",
+        "member_count": 1,
+        "member_ids": [
+          "docs-content"
+        ]
+      }
+    ],
+    "install_count": 0,
+    "install_ids": [],
+    "detached_install_count": 0,
+    "detached_install_ids": [],
+    "invalid_install_count": 0,
+    "invalid_install_ids": [],
+    "includes_root_agents": true
+  }
+}

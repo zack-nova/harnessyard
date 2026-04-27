@@ -1,0 +1,26 @@
+# Build artifacts
+.dist/
+dist/
+bin/
+tmp/
+
+# Cache
+.cache/
+
+# OS files
+.DS_Store
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# Go test/build output
+*.test
+*.out
+coverage.out
+coverage.html
+coverage/
+
+# Local editor/runtime files
+*.swp

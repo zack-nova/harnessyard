@@ -1,0 +1,92 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+project_name: hyard
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: hyard
+    main: ./cmd/hyard
+    binary: hyard
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    ldflags:
+      - >-
+        -s -w
+        -X github.com/zack-nova/harnessyard/cmd/hyard/cli.version={{ .Version }}
+        -X github.com/zack-nova/harnessyard/cmd/hyard/cli.commit={{ .Commit }}
+        -X github.com/zack-nova/harnessyard/cmd/hyard/cli.date={{ .CommitDate }}
+        -X github.com/zack-nova/harnessyard/cmd/hyard/cli.builtBy=goreleaser
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: cli-bundle
+    ids:
+      - hyard
+    formats:
+      - tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    wrap_in_directory: true
+    files:
+      - README.md
+      - LICENSE
+      - src: install.sh
+        dst: install.sh
+        info:
+          mode: 0755
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+brews:
+  - name: hyard
+    ids:
+      - cli-bundle
+    repository:
+      owner: zack-nova
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/zack-nova/harnessyard"
+    description: "Git-native workspace control plane for AI agents"
+    license: "MIT"
+    dependencies:
+      - name: git
+    install: |
+      bin.install "hyard"
+    test: |
+      system "#{bin}/hyard", "--version"
+    commit_author:
+      name: goreleaserbot
+      email: goreleaserbot@users.noreply.github.com
+    commit_msg_template: "chore: update hyard formula to {{ .Tag }}"
+    skip_upload: auto
+
+changelog:
+  use: git
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+release:
+  github:
+    owner: zack-nova
+    name: harnessyard
+  draft: false
+  prerelease: auto

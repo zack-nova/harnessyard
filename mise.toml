@@ -1,0 +1,160 @@
+[tools]
+go = "1.26.2"
+golangci-lint = "2.10.1"
+"go:golang.org/x/vuln/cmd/govulncheck" = "v1.3.0"
+
+[tasks.fmt]
+description = "Run gofmt"
+run = """
+set -eu
+
+if ! git ls-files --cached --others --exclude-standard -- '*.go' | grep -q .; then
+  echo "No Go files yet; skipping gofmt"
+  exit 0
+fi
+
+git ls-files -z --cached --others --exclude-standard -- '*.go' | xargs -0 gofmt -s -w
+"""
+
+[tasks."mod:tidy"]
+description = "Update go.mod/go.sum"
+run = """
+set -eu
+
+if [ -f go.mod ]; then
+  go mod tidy
+else
+  echo "No go.mod yet; skipping go mod tidy"
+fi
+"""
+
+[tasks.fix]
+description = "Format code and tidy module files"
+run = [
+  { task = "fmt" },
+  { task = "mod:tidy" },
+]
+
+[tasks.build]
+description = "Build the hyard binary into .dist/bin"
+sources = [
+  "go.mod",
+  "go.sum",
+  "cmd/**/*.go",
+  "scripts/build_binaries.sh",
+]
+outputs = [".dist/bin/hyard"]
+run = "sh ./scripts/build_binaries.sh ./.dist/bin"
+
+[tasks.lint]
+description = "Run lint checks"
+depends = ["lint:go", "lint:gofmt", "lint:gomod"]
+
+[tasks."lint:go"]
+description = "Run golangci-lint"
+run = "./scripts/run_golangci_lint.sh"
+
+[tasks."lint:gofmt"]
+description = "Check gofmt"
+run = """
+set -eu
+
+if ! git ls-files --cached --others --exclude-standard -- '*.go' | grep -q .; then
+  echo "No Go files yet; skipping gofmt check"
+  exit 0
+fi
+
+unformatted="$(git ls-files -z --cached --others --exclude-standard -- '*.go' | xargs -0 gofmt -l -s)"
+if [ -n "$unformatted" ]; then
+  echo "These .go files need formatting:"
+  echo ""
+  echo "$unformatted"
+  echo ""
+  echo "To fix: mise run fix"
+  exit 1
+fi
+"""
+
+[tasks."lint:gomod"]
+description = "Check go.mod/go.sum are tidy and verified"
+run = """
+set -eu
+
+if [ -f go.mod ]; then
+  go mod tidy -diff
+  go mod verify
+else
+  echo "No go.mod yet; skipping go.mod validation"
+fi
+"""
+
+[tasks.test]
+description = "Run Go tests"
+run = [{ task = "test:go" }]
+
+[tasks."test:go"]
+description = "Run Go tests"
+run = """
+set -eu
+
+if [ -f go.mod ]; then
+  go test ./...
+else
+  echo "No go.mod yet; skipping tests"
+fi
+"""
+
+[tasks."test:go:ci"]
+description = "Run Go tests without cache"
+run = """
+set -eu
+
+if [ -f go.mod ]; then
+  go test -count=1 ./...
+else
+  echo "No go.mod yet; skipping tests"
+fi
+"""
+
+[tasks."test:scripts"]
+description = "Run shell-based validation tests"
+run = """
+set -eu
+
+sh ./scripts/test_run_golangci_lint.sh
+sh ./scripts/test_build_binaries.sh
+sh ./scripts/test_install_script.sh
+sh ./scripts/test_release_surface_hyard.sh
+"""
+
+[tasks.vuln]
+description = "Check Go vulnerabilities"
+run = """
+set -eu
+
+if [ -f go.mod ]; then
+  govulncheck ./...
+else
+  echo "No go.mod yet; skipping vulnerability check"
+fi
+"""
+
+[tasks.check]
+description = "Run fast local checks"
+run = [
+  { task = "lint" },
+  { task = "test:go" },
+]
+
+[tasks.ci]
+description = "Run full CI-local validation"
+run = [
+  { task = "lint" },
+  { task = "test:go:ci" },
+  { task = "vuln" },
+  { task = "test:scripts" },
+]
+
+[tasks."test:ci"]
+description = "Compatibility alias for full CI-local validation"
+run = [{ task = "ci" }]

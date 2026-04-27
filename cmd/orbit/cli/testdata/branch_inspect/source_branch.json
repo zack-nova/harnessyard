@@ -1,0 +1,36 @@
+{
+  "revision": "HEAD",
+  "inspection": {
+    "classification": {
+      "kind": "source",
+      "reason": "valid .harness/manifest.yaml present with kind=source"
+    },
+    "source_branch": "main",
+    "publish_orbit_id": "docs",
+    "manifest_member_count": 0,
+    "manifest_member_ids": [],
+    "member_count_scope": "manifest",
+    "member_count": 0,
+    "member_ids": [],
+    "definition_count": 1,
+    "definition_ids": [
+      "docs"
+    ],
+    "definition_member_count": 1,
+    "definition_members": [
+      {
+        "id": "docs",
+        "member_count": 1,
+        "member_ids": [
+          "docs-content"
+        ]
+      }
+    ],
+    "install_count": 0,
+    "install_ids": [],
+    "detached_install_count": 0,
+    "detached_install_ids": [],
+    "invalid_install_count": 0,
+    "invalid_install_ids": []
+  }
+}
