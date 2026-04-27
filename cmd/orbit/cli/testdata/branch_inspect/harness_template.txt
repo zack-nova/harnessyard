@@ -1,0 +1,20 @@
+kind: template
+template_kind: harness
+reason: valid .harness/manifest.yaml present with kind=harness_template
+harness_id: workspace
+includes_root_agents: true
+manifest_member_count: 2
+manifest_member_ids: [cmd docs]
+member_count_scope: manifest
+member_count: 2
+member_ids: [cmd docs]
+definition_count: 2
+definition_ids: [cmd docs]
+definition_member_count: 2
+definition_members: [cmd:[cmd-content] docs:[docs-content]]
+install_count: 0
+install_ids: []
+detached_install_count: 0
+detached_install_ids: []
+invalid_install_count: 0
+invalid_install_ids: []

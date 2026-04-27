@@ -1,0 +1,47 @@
+{
+  "revision": "HEAD",
+  "inspection": {
+    "classification": {
+      "kind": "runtime",
+      "reason": "valid .harness/manifest.yaml present with kind=runtime"
+    },
+    "harness_id": "workspace",
+    "manifest_member_count": 2,
+    "manifest_member_ids": [
+      "cmd",
+      "docs"
+    ],
+    "member_count_scope": "manifest",
+    "member_count": 2,
+    "member_ids": [
+      "cmd",
+      "docs"
+    ],
+    "definition_count": 2,
+    "definition_ids": [
+      "cmd",
+      "docs"
+    ],
+    "definition_member_count": 0,
+    "definition_members": [
+      {
+        "id": "cmd",
+        "member_count": 0,
+        "member_ids": []
+      },
+      {
+        "id": "docs",
+        "member_count": 0,
+        "member_ids": []
+      }
+    ],
+    "install_count": 1,
+    "install_ids": [
+      "docs"
+    ],
+    "detached_install_count": 0,
+    "detached_install_ids": [],
+    "invalid_install_count": 0,
+    "invalid_install_ids": []
+  }
+}

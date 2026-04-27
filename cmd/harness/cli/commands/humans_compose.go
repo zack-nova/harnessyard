@@ -1,0 +1,125 @@
+package commands
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/spf13/cobra"
+
+	harnesspkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/harness"
+)
+
+type humansComposeJSON struct {
+	HarnessRoot    string                     `json:"harness_root"`
+	HumansPath     string                     `json:"humans_path"`
+	MemberCount    int                        `json:"member_count"`
+	ComposedCount  int                        `json:"composed_count"`
+	SkippedCount   int                        `json:"skipped_count"`
+	ChangedCount   int                        `json:"changed_count"`
+	ComposedOrbits []string                   `json:"composed_orbits"`
+	SkippedOrbits  []string                   `json:"skipped_orbits"`
+	Forced         bool                       `json:"forced"`
+	Readiness      harnesspkg.ReadinessReport `json:"readiness"`
+}
+
+// NewHumansComposeCommand creates the harness humans compose command.
+func NewHumansComposeCommand() *cobra.Command {
+	var force bool
+
+	cmd := &cobra.Command{
+		Use:   "compose",
+		Short: "Compose current runtime human guidance into the root HUMANS container",
+		Long: "Compose current runtime orbit human guidance into the root HUMANS.md container,\n" +
+			"preserving unrelated prose and non-target blocks.\n" +
+			"This command is the humans-target alias for `harness guidance compose --target humans`.\n" +
+			"Only runtime members with authored human guidance truth are materialized.",
+		Example: "" +
+			"  harness humans compose\n" +
+			"  harness humans compose --force\n" +
+			"  harness humans compose --json\n",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			targetPath, err := pathFromCommand(cmd)
+			if err != nil {
+				return err
+			}
+
+			resolved, err := harnesspkg.ResolveRoot(cmd.Context(), targetPath)
+			if err != nil {
+				return fmt.Errorf("resolve harness root: %w", err)
+			}
+
+			result, readiness, jsonOutput, err := runGuidanceCompose(cmd, resolved.Repo.Root, harnesspkg.GuidanceTargetHumans, force, nil)
+			if err != nil {
+				return err
+			}
+			if len(result.Artifacts) != 1 {
+				return fmt.Errorf("compose runtime HUMANS: expected exactly one human artifact, got %d", len(result.Artifacts))
+			}
+			artifact := result.Artifacts[0]
+			payload := humansComposeJSON{
+				HarnessRoot:    resolved.Repo.Root,
+				HumansPath:     artifact.Path,
+				MemberCount:    result.MemberCount,
+				ComposedCount:  len(artifact.ComposedOrbitIDs),
+				SkippedCount:   len(artifact.SkippedOrbitIDs),
+				ChangedCount:   artifact.ChangedCount,
+				ComposedOrbits: append([]string(nil), artifact.ComposedOrbitIDs...),
+				SkippedOrbits:  append([]string(nil), artifact.SkippedOrbitIDs...),
+				Forced:         result.Forced,
+				Readiness:      readiness,
+			}
+			if jsonOutput {
+				return emitJSON(cmd.OutOrStdout(), payload)
+			}
+
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "composed root HUMANS.md for harness %s\n", resolved.Repo.Root); err != nil {
+				return fmt.Errorf("write command output: %w", err)
+			}
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "humans_path: %s\n", artifact.Path); err != nil {
+				return fmt.Errorf("write command output: %w", err)
+			}
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "member_count: %d\n", result.MemberCount); err != nil {
+				return fmt.Errorf("write command output: %w", err)
+			}
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "composed_count: %d\n", len(artifact.ComposedOrbitIDs)); err != nil {
+				return fmt.Errorf("write command output: %w", err)
+			}
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "skipped_count: %d\n", len(artifact.SkippedOrbitIDs)); err != nil {
+				return fmt.Errorf("write command output: %w", err)
+			}
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "changed_count: %d\n", artifact.ChangedCount); err != nil {
+				return fmt.Errorf("write command output: %w", err)
+			}
+			if len(artifact.ComposedOrbitIDs) == 0 {
+				if _, err := fmt.Fprintln(cmd.OutOrStdout(), "composed_orbits: none"); err != nil {
+					return fmt.Errorf("write command output: %w", err)
+				}
+			} else {
+				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "composed_orbits: %s\n", strings.Join(artifact.ComposedOrbitIDs, ", ")); err != nil {
+					return fmt.Errorf("write command output: %w", err)
+				}
+			}
+			if len(artifact.SkippedOrbitIDs) == 0 {
+				if _, err := fmt.Fprintln(cmd.OutOrStdout(), "skipped_orbits: none"); err != nil {
+					return fmt.Errorf("write command output: %w", err)
+				}
+			} else {
+				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "skipped_orbits: %s\n", strings.Join(artifact.SkippedOrbitIDs, ", ")); err != nil {
+					return fmt.Errorf("write command output: %w", err)
+				}
+			}
+			if err := emitPostActionReadinessText(cmd.OutOrStdout(), readiness); err != nil {
+				return err
+			}
+
+			return nil
+		},
+	}
+
+	cmd.Flags().BoolVar(&force, "force", false, "Overwrite drifted orbit blocks instead of failing closed")
+	addPathFlag(cmd)
+	addJSONFlag(cmd)
+
+	return cmd
+}

@@ -1,0 +1,18 @@
+kind: runtime
+reason: valid .harness/manifest.yaml present with kind=runtime
+harness_id: workspace
+manifest_member_count: 0
+manifest_member_ids: []
+member_count_scope: manifest
+member_count: 0
+member_ids: []
+definition_count: 0
+definition_ids: []
+definition_member_count: 0
+definition_members: []
+install_count: 0
+install_ids: []
+detached_install_count: 0
+detached_install_ids: []
+invalid_install_count: 0
+invalid_install_ids: []

@@ -1,0 +1,93 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 8 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOVULNCHECK_VERSION: "v1.3.0"
+  GOLANGCI_LINT_VERSION: "v2.10.1"
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: |
+            go.mod
+            go.sum
+
+      - name: Download modules
+        run: go mod download
+
+      - name: Check gofmt
+        run: |
+          set -euo pipefail
+
+          unformatted="$(git ls-files -z -- '*.go' | xargs -0 -r gofmt -l -s)"
+          if [ -n "$unformatted" ]; then
+            echo "These .go files need formatting:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Check go.mod and go.sum
+        run: |
+          set -euo pipefail
+
+          go mod tidy -diff
+          go mod verify
+
+      - name: Run Go tests
+        run: go test -count=1 ./...
+
+      - name: Install govulncheck
+        run: |
+          set -euo pipefail
+
+          go install golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Run govulncheck
+        run: govulncheck ./...
+
+      - name: Install golangci-lint
+        uses: golangci/golangci-lint-action@v9.2.0
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+          install-only: true
+
+      - name: Run golangci-lint
+        run: ./scripts/run_golangci_lint.sh
+
+      - name: Run shell validation tests
+        run: |
+          set -euo pipefail
+
+          sh ./scripts/test_run_golangci_lint.sh
+          sh ./scripts/test_build_binaries.sh
+          sh ./scripts/test_install_script.sh
+          sh ./scripts/test_release_surface_hyard.sh
