@@ -11,6 +11,7 @@ import (
 	orbitcommands "github.com/zack-nova/harnessyard/cmd/orbit/cli/commands"
 	gitpkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/git"
 	harnesspkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/harness"
+	"github.com/zack-nova/harnessyard/cmd/orbit/cli/packageops"
 )
 
 func newOrbitCommand() *cobra.Command {
@@ -25,6 +26,7 @@ func newOrbitCommand() *cobra.Command {
 
 	cmd.AddCommand(
 		newOrbitCreateCommand(),
+		newOrbitRenameCommand(),
 		orbitcommands.NewListCommand(),
 		orbitcommands.NewShowCommand(),
 		orbitcommands.NewFilesCommand(),
@@ -37,6 +39,57 @@ func newOrbitCommand() *cobra.Command {
 		newOrbitSkillCommand(),
 		newOrbitAgentCommand(),
 	)
+
+	return cmd
+}
+
+func newOrbitRenameCommand() *cobra.Command {
+	var jsonOutput bool
+
+	cmd := &cobra.Command{
+		Use:   "rename <old-package> <new-package>",
+		Short: "Rename a hosted orbit package",
+		Long: "Rename a hosted orbit package in the current workspace.\n" +
+			"The command updates the hosted OrbitSpec filename, package identity, meta.file,\n" +
+			"and the current source/orbit-template manifest when it points at the renamed package.",
+		Example: "" +
+			"  hyard orbit rename docs api\n" +
+			"  hyard orbit rename docs api --json\n",
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			workingDir, err := hyardWorkingDirFromCommand(cmd)
+			if err != nil {
+				return err
+			}
+			repo, err := gitpkg.DiscoverRepo(cmd.Context(), workingDir)
+			if err != nil {
+				return fmt.Errorf("discover git repository: %w", err)
+			}
+
+			result, err := packageops.RenameHostedOrbitPackage(cmd.Context(), repo.Root, args[0], args[1])
+			if err != nil {
+				return fmt.Errorf("rename orbit package: %w", err)
+			}
+
+			if jsonOutput {
+				return emitHyardJSON(cmd, result)
+			}
+			if _, err := fmt.Fprintf(
+				cmd.OutOrStdout(),
+				"renamed orbit package %s to %s\nold_definition: %s\nnew_definition: %s\nmanifest_changed: %t\n",
+				result.OldPackage,
+				result.NewPackage,
+				result.OldDefinitionPath,
+				result.NewDefinitionPath,
+				result.ManifestChanged,
+			); err != nil {
+				return fmt.Errorf("write command output: %w", err)
+			}
+
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output machine-readable JSON")
 
 	return cmd
 }

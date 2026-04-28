@@ -1554,6 +1554,63 @@ func TestHyardInitSourceDefaultsToOnlyHostedOrbitDefinition(t *testing.T) {
 	require.Equal(t, "docs", payload.Package.Name)
 }
 
+func TestHyardOrbitRenameUpdatesHostedPackageTruth(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.Run(t, "branch", "-m", "main")
+	_, _, err := executeHyardCLI(t, repo.Root, "init", "source", "--orbit", "docs", "--json")
+	require.NoError(t, err)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "orbit", "rename", "docs", "api", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		RepoRoot          string `json:"repo_root"`
+		OldPackage        string `json:"old_package"`
+		NewPackage        string `json:"new_package"`
+		OldDefinitionPath string `json:"old_definition_path"`
+		NewDefinitionPath string `json:"new_definition_path"`
+		ManifestPath      string `json:"manifest_path"`
+		ManifestChanged   bool   `json:"manifest_changed"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, gitpkg.ComparablePath(repo.Root), gitpkg.ComparablePath(payload.RepoRoot))
+	require.Equal(t, "docs", payload.OldPackage)
+	require.Equal(t, "api", payload.NewPackage)
+	require.Equal(t, ".harness/orbits/docs.yaml", payload.OldDefinitionPath)
+	require.Equal(t, ".harness/orbits/api.yaml", payload.NewDefinitionPath)
+	require.Equal(t, ".harness/manifest.yaml", payload.ManifestPath)
+	require.True(t, payload.ManifestChanged)
+
+	_, err = os.Stat(filepath.Join(repo.Root, ".harness", "orbits", "docs.yaml"))
+	require.ErrorIs(t, err, os.ErrNotExist)
+	spec, err := orbitpkg.LoadHostedOrbitSpec(context.Background(), repo.Root, "api")
+	require.NoError(t, err)
+	require.NotNil(t, spec.Package)
+	require.Equal(t, "api", spec.Package.Name)
+	require.Equal(t, ".harness/orbits/api.yaml", spec.Meta.File)
+
+	manifestData, err := os.ReadFile(filepath.Join(repo.Root, ".harness", "manifest.yaml"))
+	require.NoError(t, err)
+	require.Contains(t, string(manifestData), "name: api\n")
+	require.NotContains(t, string(manifestData), "name: docs\n")
+
+	listStdout, listStderr, err := executeHyardCLI(t, repo.Root, "orbit", "list", "--json")
+	require.NoError(t, err)
+	require.Empty(t, listStderr)
+	var listPayload struct {
+		Orbits []struct {
+			ID string `json:"id"`
+		} `json:"orbits"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(listStdout), &listPayload))
+	require.Equal(t, []struct {
+		ID string `json:"id"`
+	}{{ID: "api"}}, listPayload.Orbits)
+}
+
 func TestHyardInitOrbitTemplateDelegatesToOrbitTemplateInit(t *testing.T) {
 	t.Parallel()
 

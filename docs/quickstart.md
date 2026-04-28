@@ -97,6 +97,12 @@ hyard guide save --orbit docs --target all
 hyard publish orbit docs --json
 ```
 
+Rename an authored orbit package when the package identity needs to change:
+
+```bash
+hyard orbit rename docs api
+```
+
 When you need the lower-level compatibility surface:
 
 ```bash
