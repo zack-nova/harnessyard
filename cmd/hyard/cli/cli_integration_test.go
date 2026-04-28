@@ -3177,6 +3177,7 @@ func TestHyardPublishOrbitUsesZeroCommitProvenanceWithoutCommittedHeadOnSourceBr
 	t.Parallel()
 
 	repo := seedHyardSourceRepo(t)
+	repo.Run(t, "add", ".")
 
 	stdout, stderr, err := executeHyardCLI(t, repo.Root, "publish", "orbit", "--json")
 	require.NoError(t, err)
@@ -3222,10 +3223,24 @@ func TestHyardPublishOrbitSuggestsMemberApplyWhenHintsAreDrifted(t *testing.T) {
 
 	stdout, stderr, err := executeHyardCLI(t, repo.Root, "publish", "orbit", "--json")
 	require.Error(t, err)
-	require.Empty(t, stdout)
 	require.Empty(t, stderr)
+	require.ErrorContains(t, err, "publish orbit \"docs\" is not ready")
 	require.ErrorContains(t, err, "hyard orbit content apply docs")
 	require.NotContains(t, err.Error(), "orbit member backfill --orbit docs")
+
+	var payload struct {
+		PackageName  string   `json:"package_name"`
+		NextActions  []string `json:"next_actions"`
+		ContentHints struct {
+			DriftDetected bool     `json:"drift_detected"`
+			HintPaths     []string `json:"hint_paths"`
+		} `json:"content_hints"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "docs", payload.PackageName)
+	require.Contains(t, payload.NextActions, "hyard orbit content apply docs")
+	require.True(t, payload.ContentHints.DriftDetected)
+	require.Equal(t, []string{"docs/rules/style.md"}, payload.ContentHints.HintPaths)
 }
 
 func TestHyardPublishOrbitSuggestsContentApplyCheckForHintDiagnostics(t *testing.T) {
@@ -3250,11 +3265,26 @@ func TestHyardPublishOrbitSuggestsContentApplyCheckForHintDiagnostics(t *testing
 
 	stdout, stderr, err := executeHyardCLI(t, repo.Root, "publish", "orbit", "--json")
 	require.Error(t, err)
-	require.Empty(t, stdout)
 	require.Empty(t, stderr)
+	require.ErrorContains(t, err, "publish orbit \"docs\" is not ready")
 	require.ErrorContains(t, err, "hyard orbit content apply docs --check --json")
-	require.ErrorContains(t, err, "resolve the reported hint diagnostics")
 	require.NotContains(t, err.Error(), "orbit member detect --orbit docs --json")
+
+	var payload struct {
+		PackageName  string   `json:"package_name"`
+		NextActions  []string `json:"next_actions"`
+		ContentHints struct {
+			DriftDetected   bool     `json:"drift_detected"`
+			BackfillAllowed bool     `json:"backfill_allowed"`
+			HintPaths       []string `json:"hint_paths"`
+		} `json:"content_hints"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "docs", payload.PackageName)
+	require.Contains(t, payload.NextActions, "hyard orbit content apply docs --check --json")
+	require.True(t, payload.ContentHints.DriftDetected)
+	require.False(t, payload.ContentHints.BackfillAllowed)
+	require.Equal(t, []string{"docs/process/review.md", "docs/rules/style.md"}, payload.ContentHints.HintPaths)
 }
 
 func TestHyardPublishOrbitDirtyTrackedSuggestsCheckpoint(t *testing.T) {
@@ -3283,6 +3313,75 @@ func TestHyardPublishOrbitDirtyTrackedSuggestsCheckpoint(t *testing.T) {
 	require.True(t, payload.Blocked)
 	require.Contains(t, payload.NextActions, `hyard orbit checkpoint docs -m "Update docs"`)
 	require.Equal(t, []string{"docs/guide.md"}, payload.Checkpoint.CandidatePaths)
+}
+
+func TestHyardPublishOrbitBareSingleSourceDirtyTrackedSuggestsCheckpoint(t *testing.T) {
+	t.Parallel()
+
+	repo := seedCommittedHyardSourceRepo(t)
+	repo.WriteFile(t, "docs/guide.md", "Edited guide\n")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "publish", "orbit", "--json")
+	require.Error(t, err)
+	require.Empty(t, stderr)
+	require.ErrorContains(t, err, "publish orbit \"docs\" is not ready")
+	require.ErrorContains(t, err, `hyard orbit checkpoint docs -m "Update docs"`)
+	require.NotContains(t, err.Error(), "publish requires a clean tracked worktree")
+
+	var payload struct {
+		PackageName string   `json:"package_name"`
+		Ready       bool     `json:"ready"`
+		Blocked     bool     `json:"blocked"`
+		NextActions []string `json:"next_actions"`
+		Checkpoint  struct {
+			CandidatePaths []string `json:"candidate_paths"`
+		} `json:"checkpoint"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "docs", payload.PackageName)
+	require.False(t, payload.Ready)
+	require.True(t, payload.Blocked)
+	require.Contains(t, payload.NextActions, `hyard orbit checkpoint docs -m "Update docs"`)
+	require.Equal(t, []string{"docs/guide.md"}, payload.Checkpoint.CandidatePaths)
+}
+
+func TestHyardPublishOrbitBareSingleSourceUntrackedExportSuggestsTrackNew(t *testing.T) {
+	t.Parallel()
+
+	repo := seedCommittedHyardMemberHintSourceRepo(t, []orbitpkg.OrbitMember{
+		{
+			Name: "docs-content",
+			Role: orbitpkg.OrbitMemberRule,
+			Paths: orbitpkg.OrbitMemberPaths{
+				Include: []string{"docs/**"},
+			},
+		},
+	}, nil)
+	repo.WriteFile(t, "docs/new.md", "# New export file\n")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "publish", "orbit", "--json")
+	require.Error(t, err)
+	require.Empty(t, stderr)
+	require.ErrorContains(t, err, "publish orbit \"docs\" is not ready")
+	require.ErrorContains(t, err, "git add docs/new.md")
+	require.NotContains(t, err.Error(), "member export path")
+	require.NotContains(t, err.Error(), "template payload")
+
+	var payload struct {
+		PackageName string   `json:"package_name"`
+		Ready       bool     `json:"ready"`
+		Blocked     bool     `json:"blocked"`
+		NextActions []string `json:"next_actions"`
+		Checkpoint  struct {
+			UntrackedExportPaths []string `json:"untracked_export_paths"`
+		} `json:"checkpoint"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "docs", payload.PackageName)
+	require.False(t, payload.Ready)
+	require.True(t, payload.Blocked)
+	require.Contains(t, payload.NextActions, "git add docs/new.md")
+	require.Equal(t, []string{"docs/new.md"}, payload.Checkpoint.UntrackedExportPaths)
 }
 
 func TestHyardPublishOrbitCheckpointCommitsUntrackedSourceManifestBeforePublishing(t *testing.T) {
@@ -3572,6 +3671,41 @@ func TestHyardPublishOrbitPrepareTrackNewCheckpointPublishesUntrackedExportFiles
 	worktreeData, err := os.ReadFile(filepath.Join(repo.Root, "docs", "new.md"))
 	require.NoError(t, err)
 	require.Equal(t, "# New export file\n", string(worktreeData))
+
+	publishedData, err := gitpkg.ReadFileAtRev(context.Background(), repo.Root, "orbit-template/docs", "docs/new.md")
+	require.NoError(t, err)
+	require.Contains(t, string(publishedData), "# New export file")
+}
+
+func TestHyardPublishOrbitBareSingleSourcePrepareTrackNewCheckpointPublishesUntrackedExportFiles(t *testing.T) {
+	t.Parallel()
+
+	repo := seedCommittedHyardMemberHintSourceRepo(t, []orbitpkg.OrbitMember{
+		{
+			Name: "docs-content",
+			Role: orbitpkg.OrbitMemberRule,
+			Paths: orbitpkg.OrbitMemberPaths{
+				Include: []string{"docs/**"},
+			},
+		},
+	}, nil)
+	repo.WriteFile(t, "docs/new.md", "# New export file\n")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "publish", "orbit", "--prepare", "--track-new", "--checkpoint", "-m", "Prepare docs", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		PackageName  string `json:"package_name"`
+		LocalPublish struct {
+			Success bool `json:"success"`
+		} `json:"local_publish"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "docs", payload.PackageName)
+	require.True(t, payload.LocalPublish.Success)
+	require.Empty(t, strings.TrimSpace(repo.Run(t, "status", "--short")))
+	require.Equal(t, "Prepare docs", strings.TrimSpace(repo.Run(t, "log", "-1", "--pretty=%B")))
 
 	publishedData, err := gitpkg.ReadFileAtRev(context.Background(), repo.Root, "orbit-template/docs", "docs/new.md")
 	require.NoError(t, err)

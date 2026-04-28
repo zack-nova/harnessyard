@@ -8,7 +8,10 @@ import (
 
 	harnesscommands "github.com/zack-nova/harnessyard/cmd/harness/cli/commands"
 	orbitcommands "github.com/zack-nova/harnessyard/cmd/orbit/cli/commands"
+	gitpkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/git"
 	"github.com/zack-nova/harnessyard/cmd/orbit/cli/ids"
+	orbitpkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/orbit"
+	orbittemplate "github.com/zack-nova/harnessyard/cmd/orbit/cli/template"
 )
 
 // These legacy automation/migration flags remain part of the supported
@@ -75,6 +78,12 @@ func newPublishOrbitCommand() *cobra.Command {
 			if err := bindPublishOrbitPackage(cmd, coordinate); err != nil {
 				return err
 			}
+		} else {
+			inferredPackageName, err := inferBarePublishOrbitPackageName(cmd)
+			if err != nil {
+				return err
+			}
+			packageName = inferredPackageName
 		}
 		if strings.TrimSpace(checkpointMessage) != "" && !checkpoint {
 			return fmt.Errorf("-m/--message can only be used with --checkpoint")
@@ -95,7 +104,7 @@ func newPublishOrbitCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		if !prepare && !checkpoint && packageName != "" {
+		if !prepare && !checkpoint && packageName != "" && !publishOrbitHiddenCompatibilityFlagChanged(cmd) {
 			if jsonOutput {
 				readiness, err := buildHyardOrbitPrepareOutput(cmd.Context(), cmd, packageName)
 				if err != nil {
@@ -134,6 +143,62 @@ func newPublishOrbitCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&yes, "yes", false, "Confirm explicit prepare/checkpoint mutations in scripted publish flows")
 	cmd.Flags().StringVarP(&checkpointMessage, "message", "m", "", "Checkpoint commit message")
 	return cmd
+}
+
+func inferBarePublishOrbitPackageName(cmd *cobra.Command) (string, error) {
+	if cmd.Flags().Changed("orbit") {
+		return "", nil
+	}
+	workingDir, err := hyardWorkingDirFromCommand(cmd)
+	if err != nil {
+		return "", err
+	}
+	repo, err := gitpkg.DiscoverRepo(cmd.Context(), workingDir)
+	if err != nil {
+		return "", fmt.Errorf("discover git repository: %w", err)
+	}
+	state, err := orbittemplate.LoadCurrentRepoState(cmd.Context(), repo.Root)
+	if err != nil {
+		return "", fmt.Errorf("load current repo state: %w", err)
+	}
+	if state.Kind != "source" {
+		return "", nil
+	}
+	if state.Detached {
+		return "", nil
+	}
+
+	config, err := orbitpkg.LoadHostedRepositoryConfig(cmd.Context(), repo.Root)
+	if err != nil {
+		return "", fmt.Errorf("load hosted orbit config: %w", err)
+	}
+	if err := orbitpkg.ValidateRepositoryConfig(config.Global, config.Orbits); err != nil {
+		return "", fmt.Errorf("validate hosted orbit config: %w", err)
+	}
+	orbitpkg.SortDefinitions(config.Orbits)
+	if len(config.Orbits) != 1 {
+		return "", nil
+	}
+
+	packageName := config.Orbits[0].ID
+	if state.OrbitID != "" && state.OrbitID != packageName {
+		return "", fmt.Errorf("source package %q must match single source orbit %q", state.OrbitID, packageName)
+	}
+
+	return packageName, nil
+}
+
+func publishOrbitHiddenCompatibilityFlagChanged(cmd *cobra.Command) bool {
+	for _, flagName := range publishOrbitHiddenCompatibilityFlags {
+		if flagName == "orbit" {
+			continue
+		}
+		if cmd.Flags().Changed(flagName) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func newPublishHarnessCommand() *cobra.Command {

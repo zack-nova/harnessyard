@@ -937,6 +937,18 @@ func buildHyardOrbitCheckpointPlan(ctx context.Context, packageCtx hyardOrbitPac
 	if err != nil {
 		return orbitCheckpointPlanOutput{}, fmt.Errorf("load worktree status: %w", err)
 	}
+	headExists, err := gitpkg.RevisionExists(ctx, packageCtx.RepoRoot, "HEAD")
+	if err != nil {
+		return orbitCheckpointPlanOutput{}, fmt.Errorf("check HEAD revision: %w", err)
+	}
+	unbornTrackedBaseline := false
+	if !headExists {
+		matchesIndex, err := gitpkg.WorktreeMatchesIndex(ctx, packageCtx.RepoRoot)
+		if err != nil {
+			return orbitCheckpointPlanOutput{}, fmt.Errorf("compare unborn worktree to index: %w", err)
+		}
+		unbornTrackedBaseline = matchesIndex
+	}
 	trackedExportPaths := stringSet(packageCtx.TrackedPlan.ExportPaths)
 	worktreeExportPaths := stringSet(packageCtx.WorktreePlan.ExportPaths)
 	controlPaths := hyardPackageCheckpointControlPaths(packageCtx)
@@ -946,6 +958,9 @@ func buildHyardOrbitCheckpointPlan(ctx context.Context, packageCtx hyardOrbitPac
 	var untrackedExport []string
 	for _, entry := range statusEntries {
 		if entry.Tracked {
+			if unbornTrackedBaseline {
+				continue
+			}
 			if _, ok := controlPaths[entry.Path]; ok {
 				candidates = append(candidates, entry.Path)
 				continue
