@@ -40,19 +40,20 @@ type orbitTemplateBranchManifestSource struct {
 
 // TemplatePublishInput is the high-level author workflow input for local orbit template publish.
 type TemplatePublishInput struct {
-	RepoRoot                string
-	OrbitID                 string
-	DefaultTemplate         bool
-	DefaultTemplateSet      bool
-	BackfillBrief           bool
-	AggregateDetectedSkills bool
-	AllowOutOfRangeSkills   bool
-	ConfirmPrompter         ConfirmPrompter
-	SkillDetectionPrompter  ConfirmPrompter
-	Push                    bool
-	Remote                  string
-	TargetBranch            string
-	Progress                func(string) error
+	RepoRoot                 string
+	OrbitID                  string
+	DefaultTemplate          bool
+	DefaultTemplateSet       bool
+	BackfillBrief            bool
+	AggregateDetectedSkills  bool
+	AllowOutOfRangeSkills    bool
+	ConfirmPrompter          ConfirmPrompter
+	SkillDetectionPrompter   ConfirmPrompter
+	SourceBranchPushPrompter SourceBranchPushPrompter
+	Push                     bool
+	Remote                   string
+	TargetBranch             string
+	Progress                 func(string) error
 }
 
 // TemplatePublishPreview contains the resolved local publish plan.
@@ -78,10 +79,12 @@ type TemplatePublishResult struct {
 
 // TemplatePublishRemoteResult reports the remote side of one publish execution.
 type TemplatePublishRemoteResult struct {
-	Attempted bool
-	Success   bool
-	Remote    string
-	Reason    string
+	Attempted          bool
+	Success            bool
+	Remote             string
+	Reason             string
+	SourceBranchStatus SourceBranchStatus
+	NextActions        []string
 }
 
 // PublishError reports a publish flow that produced a local result but failed later.
@@ -223,7 +226,7 @@ func PublishTemplate(ctx context.Context, input TemplatePublishInput) (TemplateP
 	}
 
 	if preview.Mode == TemplatePublishModeSource {
-		relation, err := gitpkg.CompareBranchToRemoteBranch(ctx, preview.RepoRoot, remote, preview.SourceBranch)
+		relation, err := gitpkg.CompareBranchToRemoteBranchFullHistory(ctx, preview.RepoRoot, remote, preview.SourceBranch)
 		if err != nil {
 			result.RemotePush.Reason = "remote_source_branch_unavailable"
 			return result, &PublishError{
@@ -231,11 +234,20 @@ func PublishTemplate(ctx context.Context, input TemplatePublishInput) (TemplateP
 				Err:    fmt.Errorf("check remote source branch %q on %q: %w", preview.SourceBranch, remote, err),
 			}
 		}
-		if relation == gitpkg.BranchRelationBehind || relation == gitpkg.BranchRelationDiverged {
-			result.RemotePush.Reason = "source_branch_not_up_to_date"
+		sourceBranchResult, err := PrepareSourceBranchForPush(ctx, SourceBranchPushInput{
+			RepoRoot:     preview.RepoRoot,
+			Remote:       remote,
+			SourceBranch: preview.SourceBranch,
+			Relation:     relation,
+			Prompter:     input.SourceBranchPushPrompter,
+		})
+		result.RemotePush.SourceBranchStatus = sourceBranchResult.Status
+		result.RemotePush.Reason = sourceBranchResult.Reason
+		result.RemotePush.NextActions = sourceBranchResult.NextActions
+		if err != nil {
 			return result, &PublishError{
 				Result: result,
-				Err:    fmt.Errorf("local source branch %q is not up to date with %s/%s", preview.SourceBranch, remote, preview.SourceBranch),
+				Err:    err,
 			}
 		}
 		head, remoteExists, err := gitpkg.ResolveRemoteBranchHead(ctx, preview.RepoRoot, remote, preview.PublishBranch)

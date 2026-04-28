@@ -232,6 +232,54 @@ func TestHarnessTemplatePublishFailsBeforeLocalPublishWhenRuntimeBranchIsBehindR
 	require.False(t, exists)
 }
 
+func TestHarnessTemplatePublishBlocksNonInteractivePushWhenRuntimeBranchIsAheadOfRemote(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHarnessTemplateSaveRepo(t)
+	remoteURL := testutil.NewBareRemoteFromRepo(t, repo)
+	repo.Run(t, "remote", "add", "origin", remoteURL)
+	currentBranch := strings.TrimSpace(repo.Run(t, "rev-parse", "--abbrev-ref", "HEAD"))
+	repo.WriteFile(t, "README.md", "local runtime change\n")
+	repo.AddAndCommit(t, "advance local runtime branch")
+
+	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "template", "publish", "--to", "harness-template/workspace", "--push", "--json")
+	require.Error(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		LocalPublish struct {
+			Success bool   `json:"success"`
+			Changed bool   `json:"changed"`
+			Commit  string `json:"commit"`
+		} `json:"local_publish"`
+		RemotePush struct {
+			Attempted          bool     `json:"attempted"`
+			Success            bool     `json:"success"`
+			Remote             string   `json:"remote"`
+			Reason             string   `json:"reason"`
+			SourceBranchStatus string   `json:"source_branch_status"`
+			NextActions        []string `json:"next_actions"`
+		} `json:"remote_push"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.False(t, payload.LocalPublish.Success)
+	require.False(t, payload.LocalPublish.Changed)
+	require.Empty(t, payload.LocalPublish.Commit)
+	require.False(t, payload.RemotePush.Attempted)
+	require.False(t, payload.RemotePush.Success)
+	require.Equal(t, "origin", payload.RemotePush.Remote)
+	require.Equal(t, "source_branch_push_required", payload.RemotePush.Reason)
+	require.Equal(t, "ahead", payload.RemotePush.SourceBranchStatus)
+	require.Equal(t, []string{
+		"git push -u origin " + currentBranch,
+		"rerun publish with --push",
+	}, payload.RemotePush.NextActions)
+
+	exists, existsErr := gitpkg.LocalBranchExists(context.Background(), repo.Root, "harness-template/workspace")
+	require.NoError(t, existsErr)
+	require.False(t, exists)
+}
+
 func TestHarnessTemplatePublishPushesWhenRemoteTemplateBranchAdvancedBeyondLocal(t *testing.T) {
 	t.Parallel()
 
@@ -244,6 +292,8 @@ func TestHarnessTemplatePublishPushesWhenRemoteTemplateBranchAdvancedBeyondLocal
 
 	repo.WriteFile(t, "docs/guide.md", "Orbit guide v2\n")
 	repo.AddAndCommit(t, "advance runtime branch")
+	currentBranch := strings.TrimSpace(repo.Run(t, "rev-parse", "--abbrev-ref", "HEAD"))
+	repo.Run(t, "push", "origin", currentBranch)
 
 	advanceHarnessRemoteBranch(t, remoteURL, "harness-template/workspace", "advance remote harness template", "docs/remote-note.md", "remote template note\n")
 	remoteHeadBefore := strings.Fields(strings.TrimSpace(repo.Run(t, "ls-remote", remoteURL, "refs/heads/harness-template/workspace")))

@@ -45,6 +45,18 @@ func wantJSON(cmd *cobra.Command) (bool, error) {
 	return jsonOutput, nil
 }
 
+func templatePublishStreamIsTerminal(stream any) bool {
+	file, ok := stream.(*os.File)
+	if !ok {
+		return false
+	}
+	info, err := file.Stat()
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeCharDevice != 0
+}
+
 func emitJSON(writer io.Writer, value any) error {
 	encoder := json.NewEncoder(writer)
 	encoder.SetIndent("", "  ")

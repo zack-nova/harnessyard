@@ -14,11 +14,12 @@ import (
 
 // TemplatePublishInput is the high-level author workflow input for harness template publish.
 type TemplatePublishInput struct {
-	RepoRoot        string
-	TargetBranch    string
-	DefaultTemplate bool
-	Push            bool
-	Remote          string
+	RepoRoot                 string
+	TargetBranch             string
+	DefaultTemplate          bool
+	Push                     bool
+	Remote                   string
+	SourceBranchPushPrompter orbittemplate.SourceBranchPushPrompter
 }
 
 // TemplatePublishPreview contains the resolved local publish plan.
@@ -42,10 +43,12 @@ type TemplatePublishResult struct {
 
 // TemplatePublishRemoteResult reports the remote side of one publish execution.
 type TemplatePublishRemoteResult struct {
-	Attempted bool
-	Success   bool
-	Remote    string
-	Reason    string
+	Attempted          bool
+	Success            bool
+	Remote             string
+	Reason             string
+	SourceBranchStatus orbittemplate.SourceBranchStatus
+	NextActions        []string
 }
 
 // TemplatePublishError reports a publish flow that produced a local result but failed later.
@@ -127,7 +130,7 @@ func PublishTemplate(ctx context.Context, input TemplatePublishInput) (TemplateP
 	}
 	result.RemotePush.Remote = remote
 
-	relation, err := gitpkg.CompareBranchToRemoteBranch(ctx, preview.RepoRoot, remote, preview.SourceBranch)
+	relation, err := gitpkg.CompareBranchToRemoteBranchFullHistory(ctx, preview.RepoRoot, remote, preview.SourceBranch)
 	if err != nil {
 		result.RemotePush.Reason = "remote_source_branch_unavailable"
 		return result, &TemplatePublishError{
@@ -135,11 +138,20 @@ func PublishTemplate(ctx context.Context, input TemplatePublishInput) (TemplateP
 			Err:    fmt.Errorf("check remote runtime branch %q on %q: %w", preview.SourceBranch, remote, err),
 		}
 	}
-	if relation == gitpkg.BranchRelationBehind || relation == gitpkg.BranchRelationDiverged {
-		result.RemotePush.Reason = "source_branch_not_up_to_date"
+	sourceBranchResult, err := orbittemplate.PrepareSourceBranchForPush(ctx, orbittemplate.SourceBranchPushInput{
+		RepoRoot:     preview.RepoRoot,
+		Remote:       remote,
+		SourceBranch: preview.SourceBranch,
+		Relation:     relation,
+		Prompter:     input.SourceBranchPushPrompter,
+	})
+	result.RemotePush.SourceBranchStatus = sourceBranchResult.Status
+	result.RemotePush.Reason = sourceBranchResult.Reason
+	result.RemotePush.NextActions = sourceBranchResult.NextActions
+	if err != nil {
 		return result, &TemplatePublishError{
 			Result: result,
-			Err:    fmt.Errorf("local runtime branch %q is not up to date with %s/%s", preview.SourceBranch, remote, preview.SourceBranch),
+			Err:    err,
 		}
 	}
 

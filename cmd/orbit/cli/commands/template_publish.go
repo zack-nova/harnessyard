@@ -16,10 +16,12 @@ type templatePublishLocalJSON struct {
 }
 
 type templatePublishRemoteJSON struct {
-	Attempted bool   `json:"attempted"`
-	Success   bool   `json:"success"`
-	Remote    string `json:"remote,omitempty"`
-	Reason    string `json:"reason,omitempty"`
+	Attempted          bool     `json:"attempted"`
+	Success            bool     `json:"success"`
+	Remote             string   `json:"remote,omitempty"`
+	Reason             string   `json:"reason,omitempty"`
+	SourceBranchStatus string   `json:"source_branch_status,omitempty"`
+	NextActions        []string `json:"next_actions,omitempty"`
 }
 
 type templatePublishResultJSON struct {
@@ -111,19 +113,20 @@ func NewTemplatePublishCommand() *cobra.Command {
 			skillDetectionPrompter := buildTemplateSkillDetectionPrompter(cmd)
 
 			result, err := orbittemplate.PublishTemplate(cmd.Context(), orbittemplate.TemplatePublishInput{
-				RepoRoot:                repo.Root,
-				OrbitID:                 orbitID,
-				DefaultTemplate:         defaultTemplate,
-				DefaultTemplateSet:      defaultTemplateSet,
-				BackfillBrief:           backfillBrief,
-				AggregateDetectedSkills: aggregateDetectedSkills,
-				AllowOutOfRangeSkills:   allowOutOfRangeSkills,
-				ConfirmPrompter:         confirmPrompter,
-				SkillDetectionPrompter:  skillDetectionPrompter,
-				Push:                    pushEnabled,
-				Remote:                  remoteName,
-				TargetBranch:            targetBranch,
-				Progress:                progress.Stage,
+				RepoRoot:                 repo.Root,
+				OrbitID:                  orbitID,
+				DefaultTemplate:          defaultTemplate,
+				DefaultTemplateSet:       defaultTemplateSet,
+				BackfillBrief:            backfillBrief,
+				AggregateDetectedSkills:  aggregateDetectedSkills,
+				AllowOutOfRangeSkills:    allowOutOfRangeSkills,
+				ConfirmPrompter:          confirmPrompter,
+				SkillDetectionPrompter:   skillDetectionPrompter,
+				SourceBranchPushPrompter: buildTemplateSourceBranchPushPrompter(cmd, jsonOutput),
+				Push:                     pushEnabled,
+				Remote:                   remoteName,
+				TargetBranch:             targetBranch,
+				Progress:                 progress.Stage,
 			})
 			if err != nil {
 				var publishErr *orbittemplate.PublishError
@@ -255,10 +258,12 @@ func templatePublishResultPayload(cmd *cobra.Command, result orbittemplate.Templ
 			Changed: result.Changed,
 		},
 		RemotePush: templatePublishRemoteJSON{
-			Attempted: result.RemotePush.Attempted,
-			Success:   result.RemotePush.Success,
-			Remote:    result.RemotePush.Remote,
-			Reason:    result.RemotePush.Reason,
+			Attempted:          result.RemotePush.Attempted,
+			Success:            result.RemotePush.Success,
+			Remote:             result.RemotePush.Remote,
+			Reason:             result.RemotePush.Reason,
+			SourceBranchStatus: string(result.RemotePush.SourceBranchStatus),
+			NextActions:        append([]string(nil), result.RemotePush.NextActions...),
 		},
 	}
 	if result.Changed {
@@ -340,12 +345,32 @@ func emitTemplatePublishResult(cmd *cobra.Command, result orbittemplate.Template
 			return fmt.Errorf("write command output: %w", err)
 		}
 	}
+	if result.RemotePush.SourceBranchStatus != "" {
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "remote_push.source_branch_status: %s\n", result.RemotePush.SourceBranchStatus); err != nil {
+			return fmt.Errorf("write command output: %w", err)
+		}
+	}
+	for _, action := range result.RemotePush.NextActions {
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "remote_push.next_action: %s\n", action); err != nil {
+			return fmt.Errorf("write command output: %w", err)
+		}
+	}
 
 	return nil
 }
 
 func buildTemplatePublishPrompter(cmd *cobra.Command) orbittemplate.ConfirmPrompter {
 	return orbittemplate.LineConfirmPrompter{
+		Reader: cmd.InOrStdin(),
+		Writer: cmd.ErrOrStderr(),
+	}
+}
+
+func buildTemplateSourceBranchPushPrompter(cmd *cobra.Command, jsonOutput bool) orbittemplate.SourceBranchPushPrompter {
+	if jsonOutput || !templatePublishStreamIsTerminal(cmd.InOrStdin()) || !templatePublishStreamIsTerminal(cmd.ErrOrStderr()) {
+		return nil
+	}
+	return orbittemplate.LineSourceBranchPushPrompter{
 		Reader: cmd.InOrStdin(),
 		Writer: cmd.ErrOrStderr(),
 	}

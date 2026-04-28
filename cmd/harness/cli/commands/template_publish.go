@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	harnesspkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/harness"
+	orbittemplate "github.com/zack-nova/harnessyard/cmd/orbit/cli/template"
 )
 
 type templatePublishLocalJSON struct {
@@ -17,10 +18,12 @@ type templatePublishLocalJSON struct {
 }
 
 type templatePublishRemoteJSON struct {
-	Attempted bool   `json:"attempted"`
-	Success   bool   `json:"success"`
-	Remote    string `json:"remote,omitempty"`
-	Reason    string `json:"reason,omitempty"`
+	Attempted          bool     `json:"attempted"`
+	Success            bool     `json:"success"`
+	Remote             string   `json:"remote,omitempty"`
+	Reason             string   `json:"reason,omitempty"`
+	SourceBranchStatus string   `json:"source_branch_status,omitempty"`
+	NextActions        []string `json:"next_actions,omitempty"`
 }
 
 type templatePublishResultJSON struct {
@@ -94,11 +97,12 @@ func NewTemplatePublishCommand() *cobra.Command {
 			}
 
 			result, err := harnesspkg.PublishTemplate(cmd.Context(), harnesspkg.TemplatePublishInput{
-				RepoRoot:        resolved.Repo.Root,
-				TargetBranch:    targetBranch,
-				DefaultTemplate: defaultTemplate,
-				Push:            pushEnabled,
-				Remote:          remoteName,
+				RepoRoot:                 resolved.Repo.Root,
+				TargetBranch:             targetBranch,
+				DefaultTemplate:          defaultTemplate,
+				Push:                     pushEnabled,
+				Remote:                   remoteName,
+				SourceBranchPushPrompter: buildTemplateSourceBranchPushPrompter(cmd, jsonOutput),
 			})
 			if err != nil {
 				var publishErr *harnesspkg.TemplatePublishError
@@ -222,10 +226,12 @@ func templatePublishResultPayload(cmd *cobra.Command, result harnesspkg.Template
 			Changed: result.Changed,
 		},
 		RemotePush: templatePublishRemoteJSON{
-			Attempted: result.RemotePush.Attempted,
-			Success:   result.RemotePush.Success,
-			Remote:    result.RemotePush.Remote,
-			Reason:    result.RemotePush.Reason,
+			Attempted:          result.RemotePush.Attempted,
+			Success:            result.RemotePush.Success,
+			Remote:             result.RemotePush.Remote,
+			Reason:             result.RemotePush.Reason,
+			SourceBranchStatus: string(result.RemotePush.SourceBranchStatus),
+			NextActions:        append([]string(nil), result.RemotePush.NextActions...),
 		},
 	}
 	if result.Changed {
@@ -304,8 +310,28 @@ func emitTemplatePublishResult(cmd *cobra.Command, result harnesspkg.TemplatePub
 			return fmt.Errorf("write command output: %w", err)
 		}
 	}
+	if result.RemotePush.SourceBranchStatus != "" {
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "remote_push.source_branch_status: %s\n", result.RemotePush.SourceBranchStatus); err != nil {
+			return fmt.Errorf("write command output: %w", err)
+		}
+	}
+	for _, action := range result.RemotePush.NextActions {
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "remote_push.next_action: %s\n", action); err != nil {
+			return fmt.Errorf("write command output: %w", err)
+		}
+	}
 
 	return nil
+}
+
+func buildTemplateSourceBranchPushPrompter(cmd *cobra.Command, jsonOutput bool) orbittemplate.SourceBranchPushPrompter {
+	if jsonOutput || !templatePublishStreamIsTerminal(cmd.InOrStdin()) || !templatePublishStreamIsTerminal(cmd.ErrOrStderr()) {
+		return nil
+	}
+	return orbittemplate.LineSourceBranchPushPrompter{
+		Reader: cmd.InOrStdin(),
+		Writer: cmd.ErrOrStderr(),
+	}
 }
 
 func defaultTemplatePublishPackageName(result harnesspkg.TemplatePublishResult) string {

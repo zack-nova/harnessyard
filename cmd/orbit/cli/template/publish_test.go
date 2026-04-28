@@ -3,6 +3,7 @@ package orbittemplate
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -289,4 +290,145 @@ func TestPublishTemplateAggregatesDetectedSkillsBeforePublishing(t *testing.T) {
 	manifestData, err := gitpkg.ReadFileAtRev(context.Background(), repo.Root, "orbit-template/docs", ".harness/manifest.yaml")
 	require.NoError(t, err)
 	require.Contains(t, string(manifestData), "kind: orbit_template")
+}
+
+func TestPublishTemplatePushPromptsAndPushesSourceBranchWhenRemoteMissing(t *testing.T) {
+	t.Parallel()
+
+	repo := seedPublishSourceRepo(t)
+	remoteURL := testutil.NewBareRemoteFromRepo(t, repo)
+	repo.Run(t, "remote", "add", "origin", remoteURL)
+	deletePublishBareRemoteRef(t, remoteURL, "refs/heads/main")
+
+	var prompt SourceBranchPushPrompt
+	result, err := PublishTemplate(context.Background(), TemplatePublishInput{
+		RepoRoot: repo.Root,
+		OrbitID:  "docs",
+		Push:     true,
+		Remote:   "origin",
+		SourceBranchPushPrompter: sourceBranchPushPrompterFunc(func(_ context.Context, request SourceBranchPushPrompt) (SourceBranchPushDecision, error) {
+			prompt = request
+			return SourceBranchPushDecisionPush, nil
+		}),
+	})
+	require.NoError(t, err)
+	require.True(t, result.LocalSuccess)
+	require.True(t, result.RemotePush.Attempted)
+	require.True(t, result.RemotePush.Success)
+	require.Equal(t, SourceBranchStatusMissing, prompt.Status)
+
+	remoteMain := strings.Fields(strings.TrimSpace(repo.Run(t, "ls-remote", remoteURL, "refs/heads/main")))
+	require.Len(t, remoteMain, 2)
+	require.Equal(t, repo.RevParse(t, "main"), remoteMain[0])
+
+	remoteTemplate := strings.Fields(strings.TrimSpace(repo.Run(t, "ls-remote", remoteURL, "refs/heads/orbit-template/docs")))
+	require.Len(t, remoteTemplate, 2)
+	require.Equal(t, result.Commit, remoteTemplate[0])
+}
+
+func TestPublishTemplatePushPromptsAndPushesSourceBranchWhenLocalAhead(t *testing.T) {
+	t.Parallel()
+
+	repo := seedPublishSourceRepo(t)
+	remoteURL := testutil.NewBareRemoteFromRepo(t, repo)
+	repo.Run(t, "remote", "add", "origin", remoteURL)
+	repo.WriteFile(t, "docs/guide.md", "Orbit guide v2\n")
+	repo.AddAndCommit(t, "advance local source")
+
+	var prompt SourceBranchPushPrompt
+	result, err := PublishTemplate(context.Background(), TemplatePublishInput{
+		RepoRoot: repo.Root,
+		OrbitID:  "docs",
+		Push:     true,
+		Remote:   "origin",
+		SourceBranchPushPrompter: sourceBranchPushPrompterFunc(func(_ context.Context, request SourceBranchPushPrompt) (SourceBranchPushDecision, error) {
+			prompt = request
+			return SourceBranchPushDecisionPush, nil
+		}),
+	})
+	require.NoError(t, err)
+	require.True(t, result.LocalSuccess)
+	require.True(t, result.RemotePush.Attempted)
+	require.True(t, result.RemotePush.Success)
+	require.Equal(t, SourceBranchStatusAhead, prompt.Status)
+
+	remoteMain := strings.Fields(strings.TrimSpace(repo.Run(t, "ls-remote", remoteURL, "refs/heads/main")))
+	require.Len(t, remoteMain, 2)
+	require.Equal(t, repo.RevParse(t, "main"), remoteMain[0])
+}
+
+func TestPublishTemplatePushBlocksNonInteractiveWhenSourceBranchNeedsPush(t *testing.T) {
+	t.Parallel()
+
+	repo := seedPublishSourceRepo(t)
+	remoteURL := testutil.NewBareRemoteFromRepo(t, repo)
+	repo.Run(t, "remote", "add", "origin", remoteURL)
+	repo.WriteFile(t, "README.md", "local source update\n")
+	repo.AddAndCommit(t, "advance local source")
+
+	result, err := PublishTemplate(context.Background(), TemplatePublishInput{
+		RepoRoot: repo.Root,
+		OrbitID:  "docs",
+		Push:     true,
+		Remote:   "origin",
+	})
+	require.Error(t, err)
+
+	var publishErr *PublishError
+	require.ErrorAs(t, err, &publishErr)
+	require.Equal(t, "source_branch_push_required", publishErr.Result.RemotePush.Reason)
+	require.Equal(t, []string{
+		"git push -u origin main",
+		"rerun publish with --push",
+	}, publishErr.Result.RemotePush.NextActions)
+	require.False(t, result.LocalSuccess)
+
+	exists, existsErr := gitpkg.LocalBranchExists(context.Background(), repo.Root, "orbit-template/docs")
+	require.NoError(t, existsErr)
+	require.False(t, exists)
+}
+
+func seedPublishSourceRepo(t *testing.T) *testutil.Repo {
+	t.Helper()
+
+	repo := testutil.NewRepo(t)
+	repo.Run(t, "branch", "-m", "main")
+	repo.WriteFile(t, ".orbit/config.yaml", ""+
+		"version: 1\n"+
+		"shared_scope: []\n"+
+		"behavior:\n"+
+		"  outside_changes_mode: warn\n"+
+		"  block_switch_if_hidden_dirty: true\n"+
+		"  commit_append_trailer: true\n"+
+		"  sparse_checkout_mode: no-cone\n")
+	repo.WriteFile(t, ".harness/manifest.yaml", ""+
+		"schema_version: 1\n"+
+		"kind: source\n"+
+		"source:\n"+
+		"  orbit_id: docs\n"+
+		"  source_branch: main\n")
+	repo.WriteFile(t, ".harness/orbits/docs.yaml", ""+
+		"id: docs\n"+
+		"description: Docs orbit\n"+
+		"include:\n"+
+		"  - docs/**\n")
+	repo.WriteFile(t, "README.md", "author docs\n")
+	repo.WriteFile(t, "docs/guide.md", "Orbit guide\n")
+	repo.AddAndCommit(t, "seed publish source repo")
+
+	return repo
+}
+
+func deletePublishBareRemoteRef(t *testing.T, remoteURL string, ref string) {
+	t.Helper()
+
+	command := exec.Command("git", "--git-dir", remoteURL, "update-ref", "-d", ref)
+	output, err := command.CombinedOutput()
+	require.NoError(t, err, "delete bare remote ref failed:\n%s", string(output))
+}
+
+type sourceBranchPushPrompterFunc func(ctx context.Context, prompt SourceBranchPushPrompt) (SourceBranchPushDecision, error)
+
+func (fn sourceBranchPushPrompterFunc) PromptSourceBranchPush(ctx context.Context, prompt SourceBranchPushPrompt) (SourceBranchPushDecision, error) {
+	return fn(ctx, prompt)
 }

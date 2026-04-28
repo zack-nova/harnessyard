@@ -937,7 +937,53 @@ func TestTemplatePublishPushesToExplicitRemoteWhenRequested(t *testing.T) {
 	require.Contains(t, remoteRef, payload.LocalPublish.Commit)
 }
 
-func TestTemplatePublishPushesWhenLocalSourceBranchIsAheadOfRemote(t *testing.T) {
+func TestTemplatePublishBlocksNonInteractivePushWhenRemoteSourceBranchIsMissing(t *testing.T) {
+	t.Parallel()
+
+	repo := seedTemplatePublishRepo(t)
+	remoteURL := testutil.NewBareRemoteFromRepo(t, repo)
+	repo.Run(t, "remote", "add", "origin", remoteURL)
+	deleteTemplatePublishRemoteRef(t, remoteURL, "refs/heads/main")
+
+	stdout, stderr, err := executeCLI(t, repo.Root, "template", "publish", "--push", "--json")
+	require.Error(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		LocalPublish struct {
+			Success bool   `json:"success"`
+			Changed bool   `json:"changed"`
+			Commit  string `json:"commit"`
+		} `json:"local_publish"`
+		RemotePush struct {
+			Attempted          bool     `json:"attempted"`
+			Success            bool     `json:"success"`
+			Remote             string   `json:"remote"`
+			Reason             string   `json:"reason"`
+			SourceBranchStatus string   `json:"source_branch_status"`
+			NextActions        []string `json:"next_actions"`
+		} `json:"remote_push"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.False(t, payload.LocalPublish.Success)
+	require.False(t, payload.LocalPublish.Changed)
+	require.Empty(t, payload.LocalPublish.Commit)
+	require.False(t, payload.RemotePush.Attempted)
+	require.False(t, payload.RemotePush.Success)
+	require.Equal(t, "origin", payload.RemotePush.Remote)
+	require.Equal(t, "source_branch_push_required", payload.RemotePush.Reason)
+	require.Equal(t, "missing", payload.RemotePush.SourceBranchStatus)
+	require.Equal(t, []string{
+		"git push -u origin main",
+		"rerun publish with --push",
+	}, payload.RemotePush.NextActions)
+
+	exists, existsErr := gitpkg.LocalBranchExists(context.Background(), repo.Root, "orbit-template/docs")
+	require.NoError(t, existsErr)
+	require.False(t, exists)
+}
+
+func TestTemplatePublishBlocksNonInteractivePushWhenLocalSourceBranchIsAheadOfRemote(t *testing.T) {
 	t.Parallel()
 
 	repo := seedTemplatePublishRepo(t)
@@ -948,7 +994,7 @@ func TestTemplatePublishPushesWhenLocalSourceBranchIsAheadOfRemote(t *testing.T)
 	repo.AddAndCommit(t, "advance local main only")
 
 	stdout, stderr, err := executeCLI(t, repo.Root, "template", "publish", "--push", "--json")
-	require.NoError(t, err)
+	require.Error(t, err)
 	require.Empty(t, stderr)
 
 	var payload struct {
@@ -958,18 +1004,29 @@ func TestTemplatePublishPushesWhenLocalSourceBranchIsAheadOfRemote(t *testing.T)
 			Commit  string `json:"commit"`
 		} `json:"local_publish"`
 		RemotePush struct {
-			Attempted bool   `json:"attempted"`
-			Success   bool   `json:"success"`
-			Remote    string `json:"remote"`
+			Attempted   bool     `json:"attempted"`
+			Success     bool     `json:"success"`
+			Remote      string   `json:"remote"`
+			Reason      string   `json:"reason"`
+			NextActions []string `json:"next_actions"`
 		} `json:"remote_push"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
-	require.True(t, payload.LocalPublish.Success)
-	require.True(t, payload.LocalPublish.Changed)
-	require.NotEmpty(t, payload.LocalPublish.Commit)
-	require.True(t, payload.RemotePush.Attempted)
-	require.True(t, payload.RemotePush.Success)
+	require.False(t, payload.LocalPublish.Success)
+	require.False(t, payload.LocalPublish.Changed)
+	require.Empty(t, payload.LocalPublish.Commit)
+	require.False(t, payload.RemotePush.Attempted)
+	require.False(t, payload.RemotePush.Success)
 	require.Equal(t, "origin", payload.RemotePush.Remote)
+	require.Equal(t, "source_branch_push_required", payload.RemotePush.Reason)
+	require.Equal(t, []string{
+		"git push -u origin main",
+		"rerun publish with --push",
+	}, payload.RemotePush.NextActions)
+
+	exists, existsErr := gitpkg.LocalBranchExists(context.Background(), repo.Root, "orbit-template/docs")
+	require.NoError(t, existsErr)
+	require.False(t, exists)
 }
 
 func TestTemplatePublishNoOpStillPushesWhenRequested(t *testing.T) {
@@ -1031,6 +1088,7 @@ func TestTemplatePublishPushesWhenRemoteTemplateBranchAdvancedBeyondLocal(t *tes
 
 	repo.WriteFile(t, "docs/guide.md", "Orbit guide v2\n")
 	repo.AddAndCommit(t, "advance local source branch")
+	repo.Run(t, "push", "origin", "main")
 
 	advanceRemoteBranch(t, remoteURL, "orbit-template/docs", "advance remote published template", "docs/remote-note.md", "remote template note\n")
 	remoteHeadBefore := strings.Fields(strings.TrimSpace(repo.Run(t, "ls-remote", remoteURL, "refs/heads/orbit-template/docs")))
@@ -1277,7 +1335,7 @@ func TestTemplatePublishBlocksPushWhenLocalSourceBranchDivergesFromRemote(t *tes
 	require.False(t, payload.RemotePush.Attempted)
 	require.False(t, payload.RemotePush.Success)
 	require.Equal(t, "origin", payload.RemotePush.Remote)
-	require.Equal(t, "source_branch_not_up_to_date", payload.RemotePush.Reason)
+	require.Equal(t, "source_branch_diverged", payload.RemotePush.Reason)
 
 	exists, existsErr := gitpkg.LocalBranchExists(context.Background(), repo.Root, "orbit-template/docs")
 	require.NoError(t, existsErr)
@@ -1546,6 +1604,14 @@ func removeRemoteBranchPath(t *testing.T, remoteURL string, branch string, messa
 	runGitInDir(t, cloneRoot, "rm", "--", path)
 	runGitInDir(t, cloneRoot, "commit", "-m", message)
 	runGitInDir(t, cloneRoot, "push", "origin", branch)
+}
+
+func deleteTemplatePublishRemoteRef(t *testing.T, remoteURL string, ref string) {
+	t.Helper()
+
+	command := exec.Command("git", "--git-dir", remoteURL, "update-ref", "-d", ref)
+	output, err := command.CombinedOutput()
+	require.NoError(t, err, "delete remote ref failed:\n%s", string(output))
 }
 
 func cloneRemoteRepo(t *testing.T, remoteURL string) string {

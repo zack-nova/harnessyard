@@ -17,10 +17,20 @@ const (
 	BranchRelationAhead    BranchRelation = "ahead"
 	BranchRelationBehind   BranchRelation = "behind"
 	BranchRelationDiverged BranchRelation = "diverged"
+	BranchRelationMissing  BranchRelation = "missing"
 )
 
 // CompareBranchToRemoteBranch compares one local branch to its remote counterpart.
 func CompareBranchToRemoteBranch(ctx context.Context, repoRoot string, remote string, branch string) (BranchRelation, error) {
+	return compareBranchToRemoteBranch(ctx, repoRoot, remote, branch, true)
+}
+
+// CompareBranchToRemoteBranchFullHistory compares one local branch to its remote counterpart with full remote parent history.
+func CompareBranchToRemoteBranchFullHistory(ctx context.Context, repoRoot string, remote string, branch string) (BranchRelation, error) {
+	return compareBranchToRemoteBranch(ctx, repoRoot, remote, branch, false)
+}
+
+func compareBranchToRemoteBranch(ctx context.Context, repoRoot string, remote string, branch string, shallow bool) (BranchRelation, error) {
 	trimmedRemote := strings.TrimSpace(remote)
 	if trimmedRemote == "" {
 		return "", errors.New("remote must not be empty")
@@ -36,12 +46,23 @@ func CompareBranchToRemoteBranch(ctx context.Context, repoRoot string, remote st
 		return "", fmt.Errorf("resolve local branch %q: %w", normalizedBranch, err)
 	}
 
-	remoteRef := localHeadsPrefix + "/" + normalizedBranch
+	head, exists, err := ResolveRemoteBranchHead(ctx, repoRoot, trimmedRemote, normalizedBranch)
+	if err != nil {
+		return "", fmt.Errorf("compare %s against %s/%s: %w", normalizedBranch, trimmedRemote, normalizedBranch, err)
+	}
+	if !exists {
+		return BranchRelationMissing, nil
+	}
+
 	var relation BranchRelation
-	if err := WithFetchedRemoteRef(ctx, repoRoot, trimmedRemote, remoteRef, func(tempRef string) error {
+	fetchRemoteRef := WithFetchedRemoteRef
+	if !shallow {
+		fetchRemoteRef = WithFetchedRemoteRefFullHistory
+	}
+	if err := fetchRemoteRef(ctx, repoRoot, trimmedRemote, head.Ref, func(tempRef string) error {
 		remoteCommit, err := ResolveRevision(ctx, repoRoot, tempRef)
 		if err != nil {
-			return fmt.Errorf("resolve fetched remote branch %q: %w", remoteRef, err)
+			return fmt.Errorf("resolve fetched remote branch %q: %w", head.Ref, err)
 		}
 
 		if localCommit == remoteCommit {
@@ -90,6 +111,25 @@ func PushBranch(ctx context.Context, repoRoot string, remote string, branch stri
 
 	if _, err := runGit(ctx, repoRoot, "push", trimmedRemote, localHeadsPrefix+"/"+normalizedBranch+":"+localHeadsPrefix+"/"+normalizedBranch); err != nil {
 		return fmt.Errorf("push %s to %s: %w", normalizedBranch, trimmedRemote, err)
+	}
+
+	return nil
+}
+
+// PushBranchSetUpstream pushes one local branch to the same branch name on the remote and records upstream tracking.
+func PushBranchSetUpstream(ctx context.Context, repoRoot string, remote string, branch string) error {
+	trimmedRemote := strings.TrimSpace(remote)
+	if trimmedRemote == "" {
+		return errors.New("remote must not be empty")
+	}
+
+	normalizedBranch, err := normalizeLocalBranchName(ctx, repoRoot, branch)
+	if err != nil {
+		return fmt.Errorf("validate branch %q: %w", branch, err)
+	}
+
+	if _, err := runGit(ctx, repoRoot, "push", "--set-upstream", trimmedRemote, localHeadsPrefix+"/"+normalizedBranch+":"+localHeadsPrefix+"/"+normalizedBranch); err != nil {
+		return fmt.Errorf("push %s to %s with upstream: %w", normalizedBranch, trimmedRemote, err)
 	}
 
 	return nil
