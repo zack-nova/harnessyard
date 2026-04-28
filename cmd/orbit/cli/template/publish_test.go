@@ -114,6 +114,55 @@ func TestEnsureBriefExportSyncRejectsDriftedOrbitTemplateBriefUsingPlaceholderCo
 	require.ErrorContains(t, err, "orbit brief backfill --orbit docs")
 }
 
+func TestEnsureBriefExportSyncTreatsFormatterMarkerPaddingAsInSync(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, ".harness/manifest.yaml", ""+
+		"schema_version: 1\n"+
+		"kind: orbit_template\n"+
+		"template:\n"+
+		"  orbit_id: docs\n"+
+		"  created_from_branch: main\n"+
+		"  created_from_commit: abc123\n"+
+		"  created_at: 2026-04-12T10:00:00Z\n")
+	repo.WriteFile(t, ".harness/orbits/docs.yaml", ""+
+		"id: docs\n"+
+		"description: Docs orbit\n"+
+		"meta:\n"+
+		"  file: .harness/orbits/docs.yaml\n"+
+		"  agents_template: |\n"+
+		"    Docs orbit for $project_name\n"+
+		"  include_in_projection: true\n"+
+		"  include_in_write: true\n"+
+		"  include_in_export: true\n"+
+		"  include_description_in_orchestration: true\n"+
+		"members:\n"+
+		"  - key: docs-content\n"+
+		"    role: subject\n"+
+		"    paths:\n"+
+		"      include:\n"+
+		"        - docs/**\n")
+	repo.WriteFile(t, ".harness/vars.yaml", ""+
+		"schema_version: 1\n"+
+		"variables:\n"+
+		"  project_name:\n"+
+		"    value: Acme\n")
+	repo.WriteFile(t, "AGENTS.md", ""+
+		"<!-- orbit:begin orbit_id=\"docs\" -->\n"+
+		"\n"+
+		"Docs orbit for $project_name\n"+
+		"\n"+
+		"<!-- orbit:end orbit_id=\"docs\" -->\n")
+
+	status, err := InspectOrbitBriefLane(context.Background(), repo.Root, "docs")
+	require.NoError(t, err)
+	require.Equal(t, BriefLaneStateMaterializedInSync, status.State)
+
+	_, err = EnsureBriefExportSync(context.Background(), repo.Root, "docs", "publishing", false)
+	require.NoError(t, err)
+}
+
 func TestEnsureBriefExportSyncWarnsWhenBackfillRemovesHostedBrief(t *testing.T) {
 	t.Parallel()
 

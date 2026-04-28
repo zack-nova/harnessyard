@@ -82,7 +82,7 @@ func ParseRuntimeAgentsDocument(data []byte) (AgentsRuntimeDocument, error) {
 				document.Segments = append(document.Segments, AgentsRuntimeSegment{
 					Kind:    AgentsRuntimeSegmentBlock,
 					OrbitID: orbitID,
-					Content: append([]byte(nil), currentBlock.Bytes()...),
+					Content: trimRuntimeAgentsMarkerPadding(currentBlock.Bytes()),
 				})
 				currentOrbitID = ""
 				currentBlock.Reset()
@@ -126,6 +126,33 @@ func WrapRuntimeAgentsBlock(orbitID string, payload []byte) ([]byte, error) {
 	rendered.WriteByte('\n')
 
 	return rendered.Bytes(), nil
+}
+
+func trimRuntimeAgentsMarkerPadding(content []byte) []byte {
+	lines := splitLinesPreserveNewline(content)
+	if len(lines) == 0 {
+		return nil
+	}
+
+	start := 0
+	end := len(lines)
+	if isBlankRuntimeAgentsLine(lines[start]) {
+		start++
+	}
+	if start < end && isBlankRuntimeAgentsLine(lines[end-1]) {
+		end--
+	}
+
+	var trimmed bytes.Buffer
+	for _, line := range lines[start:end] {
+		_, _ = trimmed.Write(line)
+	}
+
+	return trimmed.Bytes()
+}
+
+func isBlankRuntimeAgentsLine(line []byte) bool {
+	return len(bytes.TrimSpace(line)) == 0
 }
 
 func beginRuntimeAgentsMarker(orbitID string) string {

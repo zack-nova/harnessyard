@@ -58,6 +58,27 @@ func TestWrapRuntimeAgentsBlockProducesParseableBlock(t *testing.T) {
 	}, document)
 }
 
+func TestParseRuntimeAgentsDocumentIgnoresFormatterPaddingAroundMarkers(t *testing.T) {
+	t.Parallel()
+
+	document, err := ParseRuntimeAgentsDocument([]byte("" +
+		"<!-- orbit:begin orbit_id=\"docs\" -->\n" +
+		"\n" +
+		"docs guidance\n" +
+		"\n" +
+		"<!-- orbit:end orbit_id=\"docs\" -->\n"))
+	require.NoError(t, err)
+	require.Equal(t, AgentsRuntimeDocument{
+		Segments: []AgentsRuntimeSegment{
+			{
+				Kind:    AgentsRuntimeSegmentBlock,
+				OrbitID: "docs",
+				Content: []byte("docs guidance\n"),
+			},
+		},
+	}, document)
+}
+
 func TestParseRuntimeAgentsDocumentRejectsInvalidContracts(t *testing.T) {
 	t.Parallel()
 

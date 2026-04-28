@@ -176,6 +176,58 @@ func TestBackfillOrbitBriefReturnsSkippedWhenHostedTemplateAlreadyMatches(t *tes
 	require.Contains(t, string(data), "Docs orbit for $project_name\n")
 }
 
+func TestBackfillOrbitBriefSkipsFormatterPaddingAroundMarkers(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, ".harness/manifest.yaml", ""+
+		"schema_version: 1\n"+
+		"kind: source\n"+
+		"source:\n"+
+		"  orbit_id: docs\n"+
+		"  source_branch: main\n")
+	repo.WriteFile(t, ".harness/vars.yaml", ""+
+		"schema_version: 1\n"+
+		"variables:\n"+
+		"  project_name:\n"+
+		"    value: Acme\n")
+	repo.WriteFile(t, ".harness/orbits/docs.yaml", ""+
+		"id: docs\n"+
+		"description: Docs orbit\n"+
+		"meta:\n"+
+		"  file: .harness/orbits/docs.yaml\n"+
+		"  agents_template: |\n"+
+		"    Docs orbit for $project_name\n"+
+		"  include_in_projection: true\n"+
+		"  include_in_write: true\n"+
+		"  include_in_export: true\n"+
+		"  include_description_in_orchestration: true\n"+
+		"members:\n"+
+		"  - key: docs-content\n"+
+		"    role: subject\n"+
+		"    paths:\n"+
+		"      include:\n"+
+		"        - docs/**\n")
+	repo.WriteFile(t, "AGENTS.md", ""+
+		"<!-- orbit:begin orbit_id=\"docs\" -->\n"+
+		"\n"+
+		"Docs orbit for Acme\n"+
+		"\n"+
+		"<!-- orbit:end orbit_id=\"docs\" -->\n")
+
+	result, err := BackfillOrbitBrief(context.Background(), BriefBackfillInput{
+		RepoRoot: repo.Root,
+		OrbitID:  "docs",
+	})
+	require.NoError(t, err)
+	require.Equal(t, GuidanceBackfillStatusSkipped, result.Status)
+
+	specData, err := os.ReadFile(filepath.Join(repo.Root, ".harness", "orbits", "docs.yaml"))
+	require.NoError(t, err)
+	require.Contains(t, string(specData), "    Docs orbit for $project_name\n")
+	require.NotContains(t, string(specData), "agents_template: |+\n\n")
+}
+
 func TestBackfillOrbitBriefFailsClosedWhenHostedAgentsTemplateUsesAlias(t *testing.T) {
 	t.Parallel()
 
