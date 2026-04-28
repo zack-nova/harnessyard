@@ -85,6 +85,11 @@ func newOrbitRenameCommand() *cobra.Command {
 			); err != nil {
 				return fmt.Errorf("write command output: %w", err)
 			}
+			for _, renamedPath := range result.RenamedPaths {
+				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "renamed_path: %s -> %s\n", renamedPath.OldPath, renamedPath.NewPath); err != nil {
+					return fmt.Errorf("write command output: %w", err)
+				}
+			}
 
 			return nil
 		},
