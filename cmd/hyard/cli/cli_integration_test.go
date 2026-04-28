@@ -3228,6 +3228,39 @@ func TestHyardPublishOrbitDirtyTrackedSuggestsCheckpoint(t *testing.T) {
 	require.Equal(t, []string{"docs/guide.md"}, payload.Checkpoint.CandidatePaths)
 }
 
+func TestHyardPublishOrbitCheckpointCommitsUntrackedSourceManifestBeforePublishing(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardSourceRepo(t)
+	repo.AddAndCommit(
+		t,
+		"seed source repo without manifest",
+		".orbit/config.yaml",
+		".harness/orbits/docs.yaml",
+		"README.md",
+		"docs/guide.md",
+	)
+	sourceBefore := strings.TrimSpace(repo.Run(t, "rev-parse", "HEAD"))
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "publish", "orbit", "docs", "--checkpoint", "-m", "Prepare docs", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		LocalPublish struct {
+			Success bool `json:"success"`
+		} `json:"local_publish"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.True(t, payload.LocalPublish.Success)
+
+	sourceAfter := strings.TrimSpace(repo.Run(t, "rev-parse", "HEAD"))
+	require.NotEqual(t, sourceBefore, sourceAfter)
+	require.Equal(t, "Prepare docs", strings.TrimSpace(repo.Run(t, "log", "-1", "--pretty=%B")))
+	require.Contains(t, repo.Run(t, "show", "--name-only", "--pretty=format:", "HEAD"), ".harness/manifest.yaml")
+	require.Empty(t, strings.TrimSpace(repo.Run(t, "status", "--short")))
+}
+
 func TestHyardPublishOrbitYesRequiresExplicitMutationFlow(t *testing.T) {
 	t.Parallel()
 

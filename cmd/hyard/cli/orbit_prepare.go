@@ -958,6 +958,10 @@ func buildHyardOrbitCheckpointPlan(ctx context.Context, packageCtx hyardOrbitPac
 			continue
 		}
 
+		if _, ok := controlPaths[entry.Path]; ok {
+			candidates = append(candidates, entry.Path)
+			continue
+		}
 		if _, ok := worktreeExportPaths[entry.Path]; ok {
 			untrackedExport = append(untrackedExport, entry.Path)
 		}
