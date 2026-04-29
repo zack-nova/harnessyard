@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	orbitcommands "github.com/zack-nova/harnessyard/cmd/orbit/cli/commands"
 	gitpkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/git"
 	orbittemplate "github.com/zack-nova/harnessyard/cmd/orbit/cli/template"
 )
@@ -59,6 +60,9 @@ func runHyardPublishInteractiveRecovery(ctx context.Context, cmd *cobra.Command,
 		return hyardPublishRecoveryContinue, nil
 	}
 
+	if hyardPublishStreamIsTerminal(cmd.InOrStdin()) && hyardPublishStreamIsTerminal(cmd.ErrOrStderr()) {
+		cmd.SetContext(orbitcommands.WithTemplatePublishInteractive(cmd.Context()))
+	}
 	reader := bufio.NewReader(cmd.InOrStdin())
 	cmd.SetIn(reader)
 	if _, err := fmt.Fprint(cmd.ErrOrStderr(), formatHyardPublishRecoveryPrompt(output)); err != nil {

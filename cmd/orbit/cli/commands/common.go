@@ -25,12 +25,23 @@ import (
 type contextKey string
 
 const workingDirContextKey contextKey = "working_dir"
+const templatePublishInteractiveContextKey contextKey = "template_publish_interactive"
 
 var errOrbitNotInitialized = errors.New("orbit is not initialized; run `orbit init` first")
 
 // WithWorkingDir injects the working directory used by command tests.
 func WithWorkingDir(ctx context.Context, workingDir string) context.Context {
 	return context.WithValue(ctx, workingDirContextKey, workingDir)
+}
+
+// WithTemplatePublishInteractive preserves terminal interactivity after a wrapper replaces command input.
+func WithTemplatePublishInteractive(ctx context.Context) context.Context {
+	return context.WithValue(ctx, templatePublishInteractiveContextKey, true)
+}
+
+func templatePublishInteractiveFromContext(ctx context.Context) bool {
+	interactive, ok := ctx.Value(templatePublishInteractiveContextKey).(bool)
+	return ok && interactive
 }
 
 func addJSONFlag(cmd *cobra.Command) {

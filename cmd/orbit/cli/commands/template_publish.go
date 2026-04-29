@@ -367,7 +367,9 @@ func buildTemplatePublishPrompter(cmd *cobra.Command) orbittemplate.ConfirmPromp
 }
 
 func buildTemplateSourceBranchPushPrompter(cmd *cobra.Command, jsonOutput bool) orbittemplate.SourceBranchPushPrompter {
-	if jsonOutput || !templatePublishStreamIsTerminal(cmd.InOrStdin()) || !templatePublishStreamIsTerminal(cmd.ErrOrStderr()) {
+	interactive := templatePublishInteractiveFromContext(cmd.Context()) ||
+		(templatePublishStreamIsTerminal(cmd.InOrStdin()) && templatePublishStreamIsTerminal(cmd.ErrOrStderr()))
+	if jsonOutput || !interactive {
 		return nil
 	}
 	return orbittemplate.LineSourceBranchPushPrompter{
