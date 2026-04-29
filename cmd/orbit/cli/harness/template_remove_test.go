@@ -63,13 +63,13 @@ func TestRemoveTemplateMemberAllowsZeroMemberTemplate(t *testing.T) {
 	manifest, err := LoadManifestFile(repo.Root)
 	require.NoError(t, err)
 	require.Empty(t, manifest.Members)
-	require.False(t, manifest.IncludesRootAgents)
+	require.False(t, manifest.RootGuidance.Agents)
 
 	templateManifest, err := LoadTemplateManifest(repo.Root)
 	require.NoError(t, err)
 	require.Empty(t, templateManifest.Members)
 	require.Empty(t, templateManifest.Variables)
-	require.False(t, templateManifest.Template.IncludesRootAgents)
+	require.False(t, templateManifest.Template.RootGuidance.Agents)
 }
 
 func TestRemoveTemplateMemberRemovesAgentsBlockWhenPresent(t *testing.T) {
@@ -88,11 +88,11 @@ func TestRemoveTemplateMemberRemovesAgentsBlockWhenPresent(t *testing.T) {
 
 	templateManifest, err := LoadTemplateManifest(repo.Root)
 	require.NoError(t, err)
-	require.True(t, templateManifest.Template.IncludesRootAgents)
+	require.True(t, templateManifest.Template.RootGuidance.Agents)
 
 	manifest, err := LoadManifestFile(repo.Root)
 	require.NoError(t, err)
-	require.True(t, manifest.IncludesRootAgents)
+	require.True(t, manifest.RootGuidance.Agents)
 }
 
 func TestRemoveTemplateMemberAllowsTemplateWithAgentPackageTruth(t *testing.T) {
@@ -146,12 +146,14 @@ func seedHarnessTemplateRemoveRepo(t *testing.T, withAgentsBlocks bool) *testuti
 		SchemaVersion: 1,
 		Kind:          TemplateKind,
 		Template: TemplateMetadata{
-			HarnessID:          "workspace",
-			DefaultTemplate:    false,
-			CreatedFromBranch:  "main",
-			CreatedFromCommit:  "abc123",
-			CreatedAt:          time.Date(2026, time.April, 16, 10, 0, 0, 0, time.UTC),
-			IncludesRootAgents: withAgentsBlocks,
+			HarnessID:         "workspace",
+			DefaultTemplate:   false,
+			CreatedFromBranch: "main",
+			CreatedFromCommit: "abc123",
+			CreatedAt:         time.Date(2026, time.April, 16, 10, 0, 0, 0, time.UTC),
+			RootGuidance: RootGuidanceMetadata{
+				Agents: withAgentsBlocks,
+			},
 		},
 		Members: []TemplateMember{
 			{OrbitID: "docs"},
@@ -179,7 +181,9 @@ func seedHarnessTemplateRemoveRepo(t *testing.T, withAgentsBlocks bool) *testuti
 			{OrbitID: "docs"},
 			{OrbitID: "shared"},
 		},
-		IncludesRootAgents: withAgentsBlocks,
+		RootGuidance: RootGuidanceMetadata{
+			Agents: withAgentsBlocks,
+		},
 	})
 	require.NoError(t, err)
 
@@ -251,12 +255,12 @@ func seedSingleMemberHarnessTemplateRemoveRepo(t *testing.T) *testutil.Repo {
 		SchemaVersion: 1,
 		Kind:          TemplateKind,
 		Template: TemplateMetadata{
-			HarnessID:          "workspace",
-			DefaultTemplate:    false,
-			CreatedFromBranch:  "main",
-			CreatedFromCommit:  "abc123",
-			CreatedAt:          time.Date(2026, time.April, 16, 10, 30, 0, 0, time.UTC),
-			IncludesRootAgents: false,
+			HarnessID:         "workspace",
+			DefaultTemplate:   false,
+			CreatedFromBranch: "main",
+			CreatedFromCommit: "abc123",
+			CreatedAt:         time.Date(2026, time.April, 16, 10, 30, 0, 0, time.UTC),
+			RootGuidance:      RootGuidanceMetadata{},
 		},
 		Members: []TemplateMember{
 			{OrbitID: "docs"},
@@ -281,7 +285,7 @@ func seedSingleMemberHarnessTemplateRemoveRepo(t *testing.T) *testutil.Repo {
 		Members: []ManifestMember{
 			{OrbitID: "docs"},
 		},
-		IncludesRootAgents: false,
+		RootGuidance: RootGuidanceMetadata{},
 	})
 	require.NoError(t, err)
 

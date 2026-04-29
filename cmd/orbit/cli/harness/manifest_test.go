@@ -237,9 +237,12 @@ func TestWriteAndLoadHarnessTemplateManifestFileRoundTrip(t *testing.T) {
 
 	repoRoot := t.TempDir()
 	input := ManifestFile{
-		SchemaVersion:      1,
-		Kind:               ManifestKindHarnessTemplate,
-		IncludesRootAgents: true,
+		SchemaVersion: 1,
+		Kind:          ManifestKindHarnessTemplate,
+		RootGuidance: RootGuidanceMetadata{
+			Agents: true,
+			Humans: true,
+		},
 		Template: &ManifestTemplateMetadata{
 			Package:           testHarnessPackage("workspace"),
 			HarnessID:         "workspace",
@@ -278,14 +281,20 @@ func TestWriteAndLoadHarnessTemplateManifestFileRoundTrip(t *testing.T) {
 		"    - package:\n"+
 		"        type: orbit\n"+
 		"        name: docs\n"+
-		"includes_root_agents: true\n", string(data))
+		"root_guidance:\n"+
+		"    agents: true\n"+
+		"    humans: true\n"+
+		"    bootstrap: false\n", string(data))
 
 	loaded, err := LoadManifestFile(repoRoot)
 	require.NoError(t, err)
 	require.Equal(t, ManifestFile{
-		SchemaVersion:      1,
-		Kind:               ManifestKindHarnessTemplate,
-		IncludesRootAgents: true,
+		SchemaVersion: 1,
+		Kind:          ManifestKindHarnessTemplate,
+		RootGuidance: RootGuidanceMetadata{
+			Agents: true,
+			Humans: true,
+		},
 		Template: &ManifestTemplateMetadata{
 			Package:           testHarnessPackage("workspace"),
 			HarnessID:         "workspace",
@@ -335,7 +344,7 @@ func TestWriteAndLoadSourceManifestFileRoundTrip(t *testing.T) {
 	require.Equal(t, input, loaded)
 }
 
-func TestLoadHarnessTemplateManifestFileDefaultsIncludesRootAgentsToFalse(t *testing.T) {
+func TestLoadHarnessTemplateManifestFileRequiresRootGuidance(t *testing.T) {
 	t.Parallel()
 
 	repoRoot := t.TempDir()
@@ -357,24 +366,9 @@ func TestLoadHarnessTemplateManifestFileDefaultsIncludesRootAgentsToFalse(t *tes
 		"      type: orbit\n"+
 		"      name: docs\n"), 0o600))
 
-	loaded, err := LoadManifestFile(repoRoot)
-	require.NoError(t, err)
-	require.Equal(t, ManifestFile{
-		SchemaVersion: 1,
-		Kind:          ManifestKindHarnessTemplate,
-		Template: &ManifestTemplateMetadata{
-			Package:           testHarnessPackage("project_a"),
-			HarnessID:         "project_a",
-			DefaultTemplate:   false,
-			CreatedFromBranch: "main",
-			CreatedFromCommit: "abc123",
-			CreatedAt:         time.Date(2026, time.April, 5, 12, 0, 0, 0, time.UTC),
-		},
-		Members: []ManifestMember{
-			{Package: testOrbitPackage("docs"), OrbitID: "docs"},
-		},
-		IncludesRootAgents: false,
-	}, loaded)
+	_, err := LoadManifestFile(repoRoot)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "root_guidance must be present")
 }
 
 func TestValidateRuntimeManifestFileRejectsMixedFieldsAndInvalidMembers(t *testing.T) {
@@ -728,7 +722,11 @@ func TestParseManifestFileDataAllowsZeroMemberHarnessTemplate(t *testing.T) {
 		"  created_from_branch: main\n" +
 		"  created_from_commit: abc123\n" +
 		"  created_at: 2026-04-05T12:00:00Z\n" +
-		"packages: []\n"))
+		"packages: []\n" +
+		"root_guidance:\n" +
+		"  agents: false\n" +
+		"  humans: false\n" +
+		"  bootstrap: false\n"))
 	require.NoError(t, err)
 	require.Empty(t, manifest.Members)
 }

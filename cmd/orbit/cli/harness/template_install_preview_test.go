@@ -29,7 +29,10 @@ func TestBuildTemplateInstallPreviewAllowsUnresolvedRequiredBindings(t *testing.
 		"  created_from_branch: main\n"+
 		"  created_from_commit: abc123\n"+
 		"  created_at: 2026-04-03T00:00:00Z\n"+
-		"  includes_root_agents: false\n"+
+		"  root_guidance:\n"+
+		"    agents: false\n"+
+		"    humans: false\n"+
+		"    bootstrap: false\n"+
 		"members:\n"+
 		"  - orbit_id: workspace\n"+
 		"variables:\n"+

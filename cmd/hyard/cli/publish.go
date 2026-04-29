@@ -213,6 +213,7 @@ func newPublishHarnessCommand() *cobra.Command {
 		"  hyard publish harness frontend-lab@0.1.0\n" +
 		"  hyard publish harness workspace\n" +
 		"  hyard publish harness workspace --default\n" +
+		"  hyard publish harness workspace --include-bootstrap\n" +
 		"  hyard publish harness workspace --push --remote origin\n" +
 		"  hyard publish harness workspace --json\n"
 	cmd.Args = cobra.MaximumNArgs(1)

@@ -921,13 +921,11 @@ func validateTemplateInstallBranchManifest(branchManifest ManifestFile, manifest
 			manifest.Template.CreatedAt.Format(time.RFC3339),
 		)
 	}
-	if branchManifest.IncludesRootAgents != manifest.Template.IncludesRootAgents {
+	if branchManifest.RootGuidance != manifest.Template.RootGuidance {
 		return fmt.Errorf(
-			"%s includes_root_agents %t must match %s template.includes_root_agents %t",
+			"%s root_guidance must match %s template.root_guidance",
 			ManifestRepoPath(),
-			branchManifest.IncludesRootAgents,
 			TemplateRepoPath(),
-			manifest.Template.IncludesRootAgents,
 		)
 	}
 	if !equalTemplateInstallMemberIDs(branchManifest.Members, manifest.Members) {

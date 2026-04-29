@@ -211,7 +211,10 @@ func seedHarnessTemplateBranchForInspect(t *testing.T, repo *testutil.Repo) {
 		"members:\n"+
 		"  - orbit_id: docs\n"+
 		"  - orbit_id: cmd\n"+
-		"includes_root_agents: true\n")
+		"root_guidance:\n"+
+		"  agents: true\n"+
+		"  humans: false\n"+
+		"  bootstrap: false\n")
 	repo.WriteFile(t, ".harness/orbits/docs.yaml", ""+
 		"id: docs\n"+
 		"description: Docs orbit\n"+

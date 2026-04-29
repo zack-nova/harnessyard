@@ -2,7 +2,7 @@ kind: template
 template_kind: harness
 reason: valid .harness/manifest.yaml present with kind=harness_template
 harness_id: workspace
-includes_root_agents: true
+root_guidance: agents=true humans=false bootstrap=false
 manifest_member_count: 2
 manifest_member_ids: [cmd docs]
 member_count_scope: manifest

@@ -14,17 +14,17 @@ import (
 	orbittemplate "github.com/zack-nova/harnessyard/cmd/orbit/cli/template"
 )
 
-const rootAgentsContributor = "root_agents"
+const rootGuidanceContributor = "root_guidance"
 
 // TemplateSavePreviewInput describes the harness runtime-to-template preview pipeline.
 type TemplateSavePreviewInput struct {
-	RepoRoot                  string
-	TargetBranch              string
-	DefaultTemplate           bool
-	EditTemplate              bool
-	Editor                    orbittemplate.Editor
-	Now                       time.Time
-	IncludeCompletedBootstrap bool
+	RepoRoot         string
+	TargetBranch     string
+	DefaultTemplate  bool
+	EditTemplate     bool
+	Editor           orbittemplate.Editor
+	Now              time.Time
+	IncludeBootstrap bool
 }
 
 // TemplateSavePreview contains the fully built harness template tree and manifest.
@@ -106,7 +106,7 @@ func BuildTemplateSavePreview(ctx context.Context, input TemplateSavePreviewInpu
 			ctx,
 			input.RepoRoot,
 			member,
-			input.IncludeCompletedBootstrap,
+			input.IncludeBootstrap,
 		)
 		if err != nil {
 			return TemplateSavePreview{}, fmt.Errorf("build member candidate for %q: %w", member.OrbitID, err)
@@ -124,20 +124,18 @@ func BuildTemplateSavePreview(ctx context.Context, input TemplateSavePreviewInpu
 		return TemplateSavePreview{}, fmt.Errorf("merge member candidates: %w", err)
 	}
 
-	rootAgents, err := BuildRootAgentsTemplateFile(ctx, input.RepoRoot)
+	rootGuidanceFiles, err := buildRootGuidanceTemplateFiles(ctx, input.RepoRoot, runtimeFile, input.IncludeBootstrap)
 	if err != nil {
-		return TemplateSavePreview{}, fmt.Errorf("build root AGENTS template file: %w", err)
+		return TemplateSavePreview{}, fmt.Errorf("build root guidance template files: %w", err)
 	}
-	merged, err = mergeRootAgentsTemplateResult(merged, rootAgents)
+	merged, err = mergeRootGuidanceTemplateResult(merged, rootGuidanceFiles)
 	if err != nil {
-		return TemplateSavePreview{}, fmt.Errorf("merge root AGENTS template file: %w", err)
+		return TemplateSavePreview{}, fmt.Errorf("merge root guidance template files: %w", err)
 	}
-	if rootAgents.ReplacementSummary != nil {
-		replacementSummaries = append(replacementSummaries, *rootAgents.ReplacementSummary)
-	}
-	if rootAgents.Ambiguity != nil {
-		ambiguities = append(ambiguities, *rootAgents.Ambiguity)
-		addTemplateAmbiguitySource(ambiguitySources, []orbittemplate.FileReplacementAmbiguity{*rootAgents.Ambiguity}, rootAgentsContributor)
+	replacementSummaries = append(replacementSummaries, rootGuidanceFiles.ReplacementSummaries...)
+	if len(rootGuidanceFiles.Ambiguities) > 0 {
+		ambiguities = append(ambiguities, rootGuidanceFiles.Ambiguities...)
+		addTemplateAmbiguitySource(ambiguitySources, rootGuidanceFiles.Ambiguities, rootGuidanceContributor)
 	}
 
 	sortTemplateReplacementSummaries(replacementSummaries)
@@ -179,16 +177,17 @@ func BuildTemplateSavePreview(ctx context.Context, input TemplateSavePreviewInpu
 		return TemplateSavePreview{}, fmt.Errorf("build harness template member snapshots: %w", err)
 	}
 
+	rootGuidance := rootGuidanceFromTemplateFiles(files)
 	manifest := TemplateManifest{
 		SchemaVersion: templateSchemaVersion,
 		Kind:          TemplateKind,
 		Template: TemplateMetadata{
-			HarnessID:          runtimeFile.Harness.ID,
-			DefaultTemplate:    input.DefaultTemplate,
-			CreatedFromBranch:  currentBranch,
-			CreatedFromCommit:  headCommit,
-			CreatedAt:          resolveTemplateSaveTime(input.Now),
-			IncludesRootAgents: includesRootAgentsFile(files),
+			HarnessID:         runtimeFile.Harness.ID,
+			DefaultTemplate:   input.DefaultTemplate,
+			CreatedFromBranch: currentBranch,
+			CreatedFromCommit: headCommit,
+			CreatedAt:         resolveTemplateSaveTime(input.Now),
+			RootGuidance:      rootGuidance,
 		},
 		Members:   append([]TemplateMember(nil), merged.Members...),
 		Variables: variableSpecs,
@@ -325,8 +324,8 @@ func WriteTemplateSavePreview(ctx context.Context, input TemplateSaveWriteInput)
 			CreatedFromCommit: preview.Manifest.Template.CreatedFromCommit,
 			CreatedAt:         preview.Manifest.Template.CreatedAt,
 		},
-		Members:            manifestMembersFromTemplateMembers(preview.Manifest.Members),
-		IncludesRootAgents: preview.Manifest.Template.IncludesRootAgents,
+		Members:      manifestMembersFromTemplateMembers(preview.Manifest.Members),
+		RootGuidance: preview.Manifest.Template.RootGuidance,
 	})
 	if err != nil {
 		return TemplateSaveResult{}, fmt.Errorf("build branch manifest: %w", err)
@@ -372,36 +371,38 @@ func memberIDsFromTemplateMembers(members []TemplateMember) []string {
 	return ids
 }
 
-func mergeRootAgentsTemplateResult(
+func mergeRootGuidanceTemplateResult(
 	merged TemplateMergeResult,
-	rootAgents RootAgentsTemplateResult,
+	rootGuidance rootGuidanceTemplateResult,
 ) (TemplateMergeResult, error) {
-	if !rootAgents.IncludesRootAgents || rootAgents.File == nil {
+	if len(rootGuidance.Files) == 0 {
 		return merged, nil
 	}
 
 	files := append([]orbittemplate.CandidateFile(nil), merged.Files...)
-	foundRootAgents := false
-	for index, file := range files {
-		if file.Path != rootAgentsPath {
-			continue
+	for _, rootFile := range rootGuidance.Files {
+		foundRootFile := false
+		for index, file := range files {
+			if file.Path != rootFile.Path {
+				continue
+			}
+			foundRootFile = true
+			if !candidateFilesEqual(file, rootFile) {
+				return TemplateMergeResult{}, fmt.Errorf("path conflict for %q", rootFile.Path)
+			}
+			files[index] = cloneCandidateFile(file)
+			break
 		}
-		foundRootAgents = true
-		if !candidateFilesEqual(file, *rootAgents.File) {
-			return TemplateMergeResult{}, fmt.Errorf("path conflict for %q", rootAgentsPath)
+		if !foundRootFile {
+			files = append(files, cloneCandidateFile(rootFile))
+			sort.Slice(files, func(left, right int) bool {
+				return files[left].Path < files[right].Path
+			})
 		}
-		files[index] = cloneCandidateFile(file)
-		break
-	}
-	if !foundRootAgents {
-		files = append(files, cloneCandidateFile(*rootAgents.File))
-		sort.Slice(files, func(left, right int) bool {
-			return files[left].Path < files[right].Path
-		})
 	}
 
 	variables := cloneTemplateVariables(merged.Variables)
-	for name, next := range rootAgents.Variables {
+	for name, next := range rootGuidance.Variables {
 		current, ok := variables[name]
 		if !ok {
 			variables[name] = next

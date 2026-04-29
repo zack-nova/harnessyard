@@ -163,7 +163,10 @@ func TestBranchStatusSupportsTemplateKindInJSONOutput(t *testing.T) {
 		"  created_at: 2026-03-25T10:00:00Z\n"+
 		"members:\n"+
 		"  - orbit_id: docs\n"+
-		"includes_root_agents: false\n")
+		"root_guidance:\n"+
+		"  agents: false\n"+
+		"  humans: false\n"+
+		"  bootstrap: false\n")
 	repo.WriteFile(t, ".harness/orbits/docs.yaml", ""+
 		"id: docs\n"+
 		"include:\n"+

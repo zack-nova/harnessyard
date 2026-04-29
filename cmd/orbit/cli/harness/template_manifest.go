@@ -26,14 +26,21 @@ type TemplateManifest struct {
 	Variables     map[string]TemplateVariableSpec `yaml:"variables"`
 }
 
-// TemplateMetadata stores harness template provenance and root AGENTS.md inclusion state.
+// TemplateMetadata stores harness template provenance and root guidance inclusion state.
 type TemplateMetadata struct {
-	HarnessID          string    `yaml:"harness_id"`
-	DefaultTemplate    bool      `yaml:"default_template"`
-	CreatedFromBranch  string    `yaml:"created_from_branch"`
-	CreatedFromCommit  string    `yaml:"created_from_commit"`
-	CreatedAt          time.Time `yaml:"created_at"`
-	IncludesRootAgents bool      `yaml:"includes_root_agents"`
+	HarnessID         string               `yaml:"harness_id"`
+	DefaultTemplate   bool                 `yaml:"default_template"`
+	CreatedFromBranch string               `yaml:"created_from_branch"`
+	CreatedFromCommit string               `yaml:"created_from_commit"`
+	CreatedAt         time.Time            `yaml:"created_at"`
+	RootGuidance      RootGuidanceMetadata `yaml:"root_guidance"`
+}
+
+// RootGuidanceMetadata records which root guidance artifacts are carried by one harness template.
+type RootGuidanceMetadata struct {
+	Agents    bool `yaml:"agents" json:"agents"`
+	Humans    bool `yaml:"humans" json:"humans"`
+	Bootstrap bool `yaml:"bootstrap" json:"bootstrap"`
 }
 
 // TemplateMember stores one member orbit in a harness template manifest.
@@ -56,12 +63,18 @@ type rawTemplateManifest struct {
 }
 
 type rawTemplateMetadata struct {
-	HarnessID          *string    `yaml:"harness_id"`
-	DefaultTemplate    *bool      `yaml:"default_template"`
-	CreatedFromBranch  *string    `yaml:"created_from_branch"`
-	CreatedFromCommit  *string    `yaml:"created_from_commit"`
-	CreatedAt          *time.Time `yaml:"created_at"`
-	IncludesRootAgents *bool      `yaml:"includes_root_agents"`
+	HarnessID         *string                  `yaml:"harness_id"`
+	DefaultTemplate   *bool                    `yaml:"default_template"`
+	CreatedFromBranch *string                  `yaml:"created_from_branch"`
+	CreatedFromCommit *string                  `yaml:"created_from_commit"`
+	CreatedAt         *time.Time               `yaml:"created_at"`
+	RootGuidance      *rawRootGuidanceMetadata `yaml:"root_guidance"`
+}
+
+type rawRootGuidanceMetadata struct {
+	Agents    *bool `yaml:"agents"`
+	Humans    *bool `yaml:"humans"`
+	Bootstrap *bool `yaml:"bootstrap"`
 }
 
 type rawTemplateMember struct {
@@ -254,17 +267,39 @@ func (raw rawTemplateMetadata) toTemplateMetadata() (TemplateMetadata, error) {
 		return TemplateMetadata{}, fmt.Errorf("template.created_from_commit must be present")
 	case raw.CreatedAt == nil:
 		return TemplateMetadata{}, fmt.Errorf("template.created_at must be present")
-	case raw.IncludesRootAgents == nil:
-		return TemplateMetadata{}, fmt.Errorf("template.includes_root_agents must be present")
+	case raw.RootGuidance == nil:
+		return TemplateMetadata{}, fmt.Errorf("template.root_guidance must be present")
+	}
+
+	rootGuidance, err := raw.RootGuidance.toRootGuidanceMetadata()
+	if err != nil {
+		return TemplateMetadata{}, err
 	}
 
 	return TemplateMetadata{
-		HarnessID:          *raw.HarnessID,
-		DefaultTemplate:    *raw.DefaultTemplate,
-		CreatedFromBranch:  *raw.CreatedFromBranch,
-		CreatedFromCommit:  *raw.CreatedFromCommit,
-		CreatedAt:          raw.CreatedAt.UTC(),
-		IncludesRootAgents: *raw.IncludesRootAgents,
+		HarnessID:         *raw.HarnessID,
+		DefaultTemplate:   *raw.DefaultTemplate,
+		CreatedFromBranch: *raw.CreatedFromBranch,
+		CreatedFromCommit: *raw.CreatedFromCommit,
+		CreatedAt:         raw.CreatedAt.UTC(),
+		RootGuidance:      rootGuidance,
+	}, nil
+}
+
+func (raw rawRootGuidanceMetadata) toRootGuidanceMetadata() (RootGuidanceMetadata, error) {
+	switch {
+	case raw.Agents == nil:
+		return RootGuidanceMetadata{}, fmt.Errorf("template.root_guidance.agents must be present")
+	case raw.Humans == nil:
+		return RootGuidanceMetadata{}, fmt.Errorf("template.root_guidance.humans must be present")
+	case raw.Bootstrap == nil:
+		return RootGuidanceMetadata{}, fmt.Errorf("template.root_guidance.bootstrap must be present")
+	}
+
+	return RootGuidanceMetadata{
+		Agents:    *raw.Agents,
+		Humans:    *raw.Humans,
+		Bootstrap: *raw.Bootstrap,
 	}, nil
 }
 
@@ -287,7 +322,11 @@ func templateManifestNode(manifest TemplateManifest) *yaml.Node {
 	contractutil.AppendMapping(templateNode, "created_from_branch", contractutil.StringNode(manifest.Template.CreatedFromBranch))
 	contractutil.AppendMapping(templateNode, "created_from_commit", contractutil.StringNode(manifest.Template.CreatedFromCommit))
 	contractutil.AppendMapping(templateNode, "created_at", contractutil.TimestampNode(manifest.Template.CreatedAt))
-	contractutil.AppendMapping(templateNode, "includes_root_agents", contractutil.BoolNode(manifest.Template.IncludesRootAgents))
+	rootGuidanceNode := contractutil.MappingNode()
+	contractutil.AppendMapping(rootGuidanceNode, "agents", contractutil.BoolNode(manifest.Template.RootGuidance.Agents))
+	contractutil.AppendMapping(rootGuidanceNode, "humans", contractutil.BoolNode(manifest.Template.RootGuidance.Humans))
+	contractutil.AppendMapping(rootGuidanceNode, "bootstrap", contractutil.BoolNode(manifest.Template.RootGuidance.Bootstrap))
+	contractutil.AppendMapping(templateNode, "root_guidance", rootGuidanceNode)
 	contractutil.AppendMapping(root, "template", templateNode)
 
 	membersNode := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}

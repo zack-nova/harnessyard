@@ -55,6 +55,7 @@ func NewTemplatePublishCommand() *cobra.Command {
 		Example: "" +
 			"  harness template publish --to harness-template/workspace\n" +
 			"  harness template publish --to harness-template/workspace --default\n" +
+			"  harness template publish --to harness-template/workspace --include-bootstrap\n" +
 			"  harness template publish --to harness-template/workspace --push --remote origin\n" +
 			"  harness template publish --to harness-template/workspace --json\n",
 		Args: cobra.NoArgs,
@@ -80,6 +81,10 @@ func NewTemplatePublishCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("read --default flag: %w", err)
 			}
+			includeBootstrap, err := cmd.Flags().GetBool("include-bootstrap")
+			if err != nil {
+				return fmt.Errorf("read --include-bootstrap flag: %w", err)
+			}
 			pushEnabled, err := cmd.Flags().GetBool("push")
 			if err != nil {
 				return fmt.Errorf("read --push flag: %w", err)
@@ -100,6 +105,7 @@ func NewTemplatePublishCommand() *cobra.Command {
 				RepoRoot:                 resolved.Repo.Root,
 				TargetBranch:             targetBranch,
 				DefaultTemplate:          defaultTemplate,
+				IncludeBootstrap:         includeBootstrap,
 				Push:                     pushEnabled,
 				Remote:                   remoteName,
 				SourceBranchPushPrompter: buildTemplateSourceBranchPushPrompter(cmd, jsonOutput),
@@ -121,6 +127,7 @@ func NewTemplatePublishCommand() *cobra.Command {
 
 	cmd.Flags().String("to", "", "Target harness template branch name")
 	cmd.Flags().Bool("default", false, "Mark the published harness template branch as the default template candidate")
+	cmd.Flags().Bool("include-bootstrap", false, "Include bootstrap guidance and currently still-present completed bootstrap export files in the published template")
 	cmd.Flags().Bool("push", false, "Push the published harness template branch after local publish succeeds")
 	cmd.Flags().String("remote", "", "Remote name to use with --push; defaults to origin")
 	addPathFlag(cmd)

@@ -119,11 +119,11 @@ func RemoveTemplateMember(ctx context.Context, repoRoot string, orbitID string) 
 	nextTemplateManifest := source.Manifest
 	nextTemplateManifest.Members = nextMembers
 	nextTemplateManifest.Variables = nextVariables
-	nextTemplateManifest.Template.IncludesRootAgents = includesRootAgentsFile(remainingFiles)
+	nextTemplateManifest.Template.RootGuidance = rootGuidanceFromTemplateFiles(remainingFiles)
 
 	nextBranchManifest := branchManifest
 	nextBranchManifest.Members = manifestMembersFromTemplateMembers(nextMembers)
-	nextBranchManifest.IncludesRootAgents = nextTemplateManifest.Template.IncludesRootAgents
+	nextBranchManifest.RootGuidance = nextTemplateManifest.Template.RootGuidance
 
 	touchedPaths := append([]string{ManifestRepoPath(), TemplateRepoPath()}, removedPaths...)
 	if removedAgentsBlock {

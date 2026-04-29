@@ -13,6 +13,15 @@ import (
 
 const rootAgentsPath = "AGENTS.md"
 
+func isRootGuidancePath(path string) bool {
+	switch path {
+	case rootAgentsPath, rootHumansPath, rootBootstrapPath:
+		return true
+	default:
+		return false
+	}
+}
+
 // RootAgentsTemplateResult captures the root AGENTS whole-file lane output for harness template save.
 type RootAgentsTemplateResult struct {
 	File               *orbittemplate.CandidateFile
@@ -22,40 +31,138 @@ type RootAgentsTemplateResult struct {
 	IncludesRootAgents bool
 }
 
+type rootGuidanceTemplateFileResult struct {
+	File               *orbittemplate.CandidateFile
+	Variables          map[string]TemplateVariableSpec
+	ReplacementSummary *orbittemplate.FileReplacementSummary
+	Ambiguity          *orbittemplate.FileReplacementAmbiguity
+}
+
+type rootGuidanceTemplateResult struct {
+	Files                []orbittemplate.CandidateFile
+	Variables            map[string]TemplateVariableSpec
+	ReplacementSummaries []orbittemplate.FileReplacementSummary
+	Ambiguities          []orbittemplate.FileReplacementAmbiguity
+}
+
 // BuildRootAgentsTemplateFile builds the root AGENTS whole-file candidate for harness template save.
 func BuildRootAgentsTemplateFile(ctx context.Context, repoRoot string) (RootAgentsTemplateResult, error) {
-	varsFile, err := loadOptionalTemplateCandidateVars(ctx, repoRoot)
+	result, err := buildRootGuidanceTemplateFile(ctx, repoRoot, rootAgentsPath)
 	if err != nil {
-		return RootAgentsTemplateResult{}, fmt.Errorf("load harness vars: %w", err)
+		return RootAgentsTemplateResult{}, err
 	}
 
-	data, err := gitpkg.ReadTrackedFileWorktreeOrHEAD(ctx, repoRoot, rootAgentsPath)
+	return RootAgentsTemplateResult{
+		File:               result.File,
+		Variables:          result.Variables,
+		ReplacementSummary: result.ReplacementSummary,
+		Ambiguity:          result.Ambiguity,
+		IncludesRootAgents: result.File != nil,
+	}, nil
+}
+
+func buildRootGuidanceTemplateFiles(ctx context.Context, repoRoot string, runtimeFile RuntimeFile, includeBootstrap bool) (rootGuidanceTemplateResult, error) {
+	targetPaths := []string{rootAgentsPath, rootHumansPath}
+	includeBootstrapFile, err := shouldIncludeRootBootstrapTemplateFile(ctx, repoRoot, runtimeFile, includeBootstrap)
+	if err != nil {
+		return rootGuidanceTemplateResult{}, err
+	}
+	if includeBootstrapFile {
+		targetPaths = append(targetPaths, rootBootstrapPath)
+	}
+	result := rootGuidanceTemplateResult{
+		Files:     make([]orbittemplate.CandidateFile, 0, len(targetPaths)),
+		Variables: map[string]TemplateVariableSpec{},
+	}
+
+	for _, path := range targetPaths {
+		fileResult, err := buildRootGuidanceTemplateFile(ctx, repoRoot, path)
+		if err != nil {
+			return rootGuidanceTemplateResult{}, err
+		}
+		if fileResult.File == nil {
+			continue
+		}
+		result.Files = append(result.Files, *fileResult.File)
+		for name, spec := range fileResult.Variables {
+			current, ok := result.Variables[name]
+			if !ok {
+				result.Variables[name] = spec
+				continue
+			}
+			merged, err := mergeTemplateVariableSpec(name, current, spec)
+			if err != nil {
+				return rootGuidanceTemplateResult{}, err
+			}
+			result.Variables[name] = merged
+		}
+		if fileResult.ReplacementSummary != nil {
+			result.ReplacementSummaries = append(result.ReplacementSummaries, *fileResult.ReplacementSummary)
+		}
+		if fileResult.Ambiguity != nil {
+			result.Ambiguities = append(result.Ambiguities, *fileResult.Ambiguity)
+		}
+	}
+
+	return result, nil
+}
+
+func shouldIncludeRootBootstrapTemplateFile(ctx context.Context, repoRoot string, runtimeFile RuntimeFile, includeBootstrap bool) (bool, error) {
+	if includeBootstrap {
+		return true, nil
+	}
+
+	repo, err := gitpkg.DiscoverRepo(ctx, repoRoot)
+	if err != nil {
+		return false, fmt.Errorf("discover repository git dir: %w", err)
+	}
+
+	for _, member := range runtimeFile.Members {
+		status, err := orbittemplate.InspectBootstrapOrbit(ctx, repoRoot, repo.GitDir, member.OrbitID)
+		if err != nil {
+			return false, fmt.Errorf("inspect bootstrap state for orbit %q: %w", member.OrbitID, err)
+		}
+		if orbittemplate.PlanBootstrapCompose(status).Action == orbittemplate.BootstrapActionAllow {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func buildRootGuidanceTemplateFile(ctx context.Context, repoRoot string, repoPath string) (rootGuidanceTemplateFileResult, error) {
+	varsFile, err := loadOptionalTemplateCandidateVars(ctx, repoRoot)
+	if err != nil {
+		return rootGuidanceTemplateFileResult{}, fmt.Errorf("load harness vars: %w", err)
+	}
+
+	data, err := gitpkg.ReadTrackedFileWorktreeOrHEAD(ctx, repoRoot, repoPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return RootAgentsTemplateResult{
+			return rootGuidanceTemplateFileResult{
 				Variables: map[string]TemplateVariableSpec{},
 			}, nil
 		}
-		return RootAgentsTemplateResult{}, fmt.Errorf("read root AGENTS.md: %w", err)
+		return rootGuidanceTemplateFileResult{}, fmt.Errorf("read root %s: %w", repoPath, err)
 	}
 
-	mode, err := gitpkg.TrackedFileModeWorktreeOrHEAD(ctx, repoRoot, rootAgentsPath)
+	mode, err := gitpkg.TrackedFileModeWorktreeOrHEAD(ctx, repoRoot, repoPath)
 	if err != nil {
-		return RootAgentsTemplateResult{}, fmt.Errorf("read root AGENTS.md mode: %w", err)
+		return rootGuidanceTemplateFileResult{}, fmt.Errorf("read root %s mode: %w", repoPath, err)
 	}
 	data, err = orbittemplate.NormalizeRuntimeAgentsPayload(data)
 	if err != nil {
-		return RootAgentsTemplateResult{}, fmt.Errorf("normalize root AGENTS.md: %w", err)
+		return rootGuidanceTemplateFileResult{}, fmt.Errorf("normalize root %s: %w", repoPath, err)
 	}
 
 	candidate := orbittemplate.CandidateFile{
-		Path:    rootAgentsPath,
+		Path:    repoPath,
 		Content: data,
 		Mode:    mode,
 	}
 	replaced, err := orbittemplate.ReplaceRuntimeValues(candidate, varsFile.Variables)
 	if err != nil {
-		return RootAgentsTemplateResult{}, fmt.Errorf("replace runtime values for %s: %w", candidate.Path, err)
+		return rootGuidanceTemplateFileResult{}, fmt.Errorf("replace runtime values for %s: %w", candidate.Path, err)
 	}
 
 	renderedCandidate := &orbittemplate.CandidateFile{
@@ -80,18 +187,17 @@ func BuildRootAgentsTemplateFile(ctx context.Context, repoRoot string) (RootAgen
 		}
 	}
 
-	variableSpecs := buildRootAgentsVariableSpecs(*renderedCandidate, varsFile.Variables)
+	variableSpecs := buildRootGuidanceVariableSpecs(*renderedCandidate, varsFile.Variables)
 
-	return RootAgentsTemplateResult{
+	return rootGuidanceTemplateFileResult{
 		File:               renderedCandidate,
 		Variables:          variableSpecs,
 		ReplacementSummary: replacementSummary,
 		Ambiguity:          ambiguity,
-		IncludesRootAgents: true,
 	}, nil
 }
 
-func buildRootAgentsVariableSpecs(
+func buildRootGuidanceVariableSpecs(
 	file orbittemplate.CandidateFile,
 	runtimeBindings map[string]bindings.VariableBinding,
 ) map[string]TemplateVariableSpec {

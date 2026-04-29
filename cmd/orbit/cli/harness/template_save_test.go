@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	gitpkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/git"
+	statepkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/state"
 	orbittemplate "github.com/zack-nova/harnessyard/cmd/orbit/cli/template"
 	"github.com/zack-nova/harnessyard/cmd/orbit/cli/testutil"
 )
@@ -53,6 +54,169 @@ func TestBuildTemplateSavePreviewIncludesMemberSnapshotFiles(t *testing.T) {
 			},
 		},
 	}, snapshot)
+}
+
+func TestBuildTemplateSavePreviewIncludesRootHumansGuidance(t *testing.T) {
+	t.Parallel()
+
+	repo := seedTemplateSaveRepo(t)
+	humansBlock, err := orbittemplate.WrapRuntimeAgentsBlock("docs", []byte("Help humans operate Orbit\n"))
+	require.NoError(t, err)
+	repo.WriteFile(t, "HUMANS.md", "Workspace notes for Orbit\n\n"+string(humansBlock))
+	repo.AddAndCommit(t, "add root humans guidance")
+
+	preview, err := BuildTemplateSavePreview(context.Background(), TemplateSavePreviewInput{
+		RepoRoot:     repo.Root,
+		TargetBranch: "harness-template/workspace",
+		Now:          time.Date(2026, time.April, 16, 9, 5, 0, 0, time.UTC),
+	})
+	require.NoError(t, err)
+
+	require.Contains(t, preview.FilePaths(), "HUMANS.md")
+	require.Equal(t, RootGuidanceMetadata{Humans: true}, preview.Manifest.Template.RootGuidance)
+	humansFile := requireTemplateSaveFile(t, preview.Files, "HUMANS.md")
+	require.Equal(t, "Workspace notes for $project_name\n\nHelp humans operate $project_name\n", string(humansFile.Content))
+}
+
+func TestBuildTemplateSavePreviewIncludesPendingRootBootstrapGuidance(t *testing.T) {
+	t.Parallel()
+
+	repo := seedTemplateSaveRepo(t)
+	repo.WriteFile(t, ".harness/orbits/docs.yaml", ""+
+		"id: docs\n"+
+		"description: Docs orbit\n"+
+		"meta:\n"+
+		"  file: .harness/orbits/docs.yaml\n"+
+		"  bootstrap_template: |\n"+
+		"    Bootstrap Orbit\n"+
+		"  include_in_projection: true\n"+
+		"  include_in_write: true\n"+
+		"  include_in_export: true\n"+
+		"  include_description_in_orchestration: true\n"+
+		"members:\n"+
+		"  - key: docs-content\n"+
+		"    role: subject\n"+
+		"    scopes:\n"+
+		"      export: true\n"+
+		"    paths:\n"+
+		"      include:\n"+
+		"        - docs/**\n")
+	bootstrapBlock, err := orbittemplate.WrapRuntimeAgentsBlock("docs", []byte("Bootstrap Orbit for humans\n"))
+	require.NoError(t, err)
+	repo.WriteFile(t, "BOOTSTRAP.md", "Workspace bootstrap for Orbit\n\n"+string(bootstrapBlock))
+	repo.AddAndCommit(t, "add pending root bootstrap guidance")
+
+	preview, err := BuildTemplateSavePreview(context.Background(), TemplateSavePreviewInput{
+		RepoRoot:     repo.Root,
+		TargetBranch: "harness-template/workspace",
+		Now:          time.Date(2026, time.April, 16, 9, 7, 0, 0, time.UTC),
+	})
+	require.NoError(t, err)
+
+	require.Contains(t, preview.FilePaths(), "BOOTSTRAP.md")
+	require.Equal(t, RootGuidanceMetadata{Bootstrap: true}, preview.Manifest.Template.RootGuidance)
+	bootstrapFile := requireTemplateSaveFile(t, preview.Files, "BOOTSTRAP.md")
+	require.Equal(t, "Workspace bootstrap for $project_name\n\nBootstrap $project_name for humans\n", string(bootstrapFile.Content))
+}
+
+func TestBuildTemplateSavePreviewSkipsCompletedRootBootstrapGuidance(t *testing.T) {
+	t.Parallel()
+
+	repo := seedTemplateSaveRepo(t)
+	repo.WriteFile(t, ".harness/orbits/docs.yaml", ""+
+		"id: docs\n"+
+		"description: Docs orbit\n"+
+		"meta:\n"+
+		"  file: .harness/orbits/docs.yaml\n"+
+		"  bootstrap_template: |\n"+
+		"    Bootstrap Orbit\n"+
+		"  include_in_projection: true\n"+
+		"  include_in_write: true\n"+
+		"  include_in_export: true\n"+
+		"  include_description_in_orchestration: true\n"+
+		"members:\n"+
+		"  - key: docs-content\n"+
+		"    role: subject\n"+
+		"    scopes:\n"+
+		"      export: true\n"+
+		"    paths:\n"+
+		"      include:\n"+
+		"        - docs/**\n")
+	bootstrapBlock, err := orbittemplate.WrapRuntimeAgentsBlock("docs", []byte("Bootstrap Orbit for humans\n"))
+	require.NoError(t, err)
+	repo.WriteFile(t, "BOOTSTRAP.md", "Workspace bootstrap for Orbit\n\n"+string(bootstrapBlock))
+	store, err := statepkg.NewFSStore(repo.GitDir(t))
+	require.NoError(t, err)
+	require.NoError(t, store.WriteRuntimeStateSnapshot(statepkg.RuntimeStateSnapshot{
+		Orbit:     "docs",
+		UpdatedAt: time.Date(2026, time.April, 16, 8, 30, 0, 0, time.UTC),
+		Bootstrap: &statepkg.RuntimeBootstrapState{
+			Completed:   true,
+			CompletedAt: time.Date(2026, time.April, 16, 8, 20, 0, 0, time.UTC),
+		},
+	}))
+	repo.AddAndCommit(t, "add completed root bootstrap guidance")
+
+	preview, err := BuildTemplateSavePreview(context.Background(), TemplateSavePreviewInput{
+		RepoRoot:     repo.Root,
+		TargetBranch: "harness-template/workspace",
+		Now:          time.Date(2026, time.April, 16, 9, 8, 0, 0, time.UTC),
+	})
+	require.NoError(t, err)
+	require.NotContains(t, preview.FilePaths(), "BOOTSTRAP.md")
+	require.False(t, preview.Manifest.Template.RootGuidance.Bootstrap)
+}
+
+func TestBuildTemplateSavePreviewIncludesCompletedRootBootstrapWhenRequested(t *testing.T) {
+	t.Parallel()
+
+	repo := seedTemplateSaveRepo(t)
+	repo.WriteFile(t, ".harness/orbits/docs.yaml", ""+
+		"id: docs\n"+
+		"description: Docs orbit\n"+
+		"meta:\n"+
+		"  file: .harness/orbits/docs.yaml\n"+
+		"  bootstrap_template: |\n"+
+		"    Bootstrap Orbit\n"+
+		"  include_in_projection: true\n"+
+		"  include_in_write: true\n"+
+		"  include_in_export: true\n"+
+		"  include_description_in_orchestration: true\n"+
+		"members:\n"+
+		"  - key: docs-content\n"+
+		"    role: subject\n"+
+		"    scopes:\n"+
+		"      export: true\n"+
+		"    paths:\n"+
+		"      include:\n"+
+		"        - docs/**\n")
+	bootstrapBlock, err := orbittemplate.WrapRuntimeAgentsBlock("docs", []byte("Bootstrap Orbit for humans\n"))
+	require.NoError(t, err)
+	repo.WriteFile(t, "BOOTSTRAP.md", "Workspace bootstrap for Orbit\n\n"+string(bootstrapBlock))
+	store, err := statepkg.NewFSStore(repo.GitDir(t))
+	require.NoError(t, err)
+	require.NoError(t, store.WriteRuntimeStateSnapshot(statepkg.RuntimeStateSnapshot{
+		Orbit:     "docs",
+		UpdatedAt: time.Date(2026, time.April, 16, 8, 30, 0, 0, time.UTC),
+		Bootstrap: &statepkg.RuntimeBootstrapState{
+			Completed:   true,
+			CompletedAt: time.Date(2026, time.April, 16, 8, 20, 0, 0, time.UTC),
+		},
+	}))
+	repo.AddAndCommit(t, "add completed root bootstrap guidance")
+
+	preview, err := BuildTemplateSavePreview(context.Background(), TemplateSavePreviewInput{
+		RepoRoot:         repo.Root,
+		TargetBranch:     "harness-template/workspace",
+		Now:              time.Date(2026, time.April, 16, 9, 8, 0, 0, time.UTC),
+		IncludeBootstrap: true,
+	})
+	require.NoError(t, err)
+	require.Contains(t, preview.FilePaths(), "BOOTSTRAP.md")
+	require.True(t, preview.Manifest.Template.RootGuidance.Bootstrap)
+
+	bootstrapFile := requireTemplateSaveFile(t, preview.Files, "BOOTSTRAP.md")
+	require.Equal(t, "Workspace bootstrap for $project_name\n\nBootstrap $project_name for humans\n", string(bootstrapFile.Content))
 }
 
 func TestBuildTemplateSavePreviewSnapshotTracksEditedFiles(t *testing.T) {
@@ -322,6 +486,23 @@ func seedUncommittedTemplateSaveRepo(t *testing.T) *testutil.Repo {
 	repo.Run(t, "add", "-A")
 
 	return repo
+}
+
+func requireTemplateSaveFile(
+	t *testing.T,
+	files []orbittemplate.CandidateFile,
+	path string,
+) orbittemplate.CandidateFile {
+	t.Helper()
+
+	for _, file := range files {
+		if file.Path == path {
+			return file
+		}
+	}
+
+	require.Failf(t, "missing template save file", "expected %s in preview files", path)
+	return orbittemplate.CandidateFile{}
 }
 
 type rewriteTemplateFileEditor struct {

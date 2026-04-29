@@ -46,6 +46,10 @@
     "detached_install_ids": [],
     "invalid_install_count": 0,
     "invalid_install_ids": [],
-    "includes_root_agents": true
+    "root_guidance": {
+      "agents": true,
+      "humans": false,
+      "bootstrap": false
+    }
   }
 }

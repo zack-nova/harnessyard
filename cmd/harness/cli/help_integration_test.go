@@ -313,7 +313,7 @@ func TestHarnessTemplateSaveHelpIncludesDefaultExample(t *testing.T) {
 	require.Contains(t, stdout, "Examples:")
 	require.Contains(t, stdout, "harness template save --to harness-template/workspace --dry-run")
 	require.Contains(t, stdout, "--edit-template")
-	require.Contains(t, stdout, "harness template save --to harness-template/workspace --include-completed-bootstrap")
+	require.Contains(t, stdout, "harness template save --to harness-template/workspace --include-bootstrap")
 	require.Contains(t, stdout, "harness template save --to harness-template/workspace --default --json")
 	require.Contains(t, stdout, "--dry-run")
 	require.Contains(t, stdout, "--overwrite")

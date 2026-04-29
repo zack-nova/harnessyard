@@ -24,7 +24,10 @@ func seedHarnessTemplateInstallSourceRepo(t *testing.T) *testutil.Repo {
 		"  created_from_branch: main\n"+
 		"  created_from_commit: abc123\n"+
 		"  created_at: 2026-04-03T00:00:00Z\n"+
-		"  includes_root_agents: false\n"+
+		"  root_guidance:\n"+
+		"    agents: false\n"+
+		"    humans: false\n"+
+		"    bootstrap: false\n"+
 		"members:\n"+
 		"  - orbit_id: workspace\n"+
 		"variables:\n"+
@@ -39,7 +42,11 @@ func seedHarnessTemplateInstallSourceRepo(t *testing.T) *testutil.Repo {
 		"  created_from_commit: abc123\n"+
 		"  created_at: 2026-04-03T00:00:00Z\n"+
 		"members:\n"+
-		"  - orbit_id: workspace\n")
+		"  - orbit_id: workspace\n"+
+		"root_guidance:\n"+
+		"  agents: false\n"+
+		"  humans: false\n"+
+		"  bootstrap: false\n")
 	repo.WriteFile(t, ".harness/orbits/workspace.yaml", ""+
 		"id: workspace\n"+
 		"description: Workspace orbit\n"+
@@ -215,7 +222,10 @@ func TestResolveLocalTemplateInstallSourceRejectsPartialMemberSnapshotSet(t *tes
 		"  created_from_branch: main\n"+
 		"  created_from_commit: abc123\n"+
 		"  created_at: 2026-04-03T00:00:00Z\n"+
-		"  includes_root_agents: false\n"+
+		"  root_guidance:\n"+
+		"    agents: false\n"+
+		"    humans: false\n"+
+		"    bootstrap: false\n"+
 		"members:\n"+
 		"  - orbit_id: shared\n"+
 		"  - orbit_id: workspace\n"+
@@ -232,7 +242,11 @@ func TestResolveLocalTemplateInstallSourceRejectsPartialMemberSnapshotSet(t *tes
 		"  created_at: 2026-04-03T00:00:00Z\n"+
 		"members:\n"+
 		"  - orbit_id: shared\n"+
-		"  - orbit_id: workspace\n")
+		"  - orbit_id: workspace\n"+
+		"root_guidance:\n"+
+		"  agents: false\n"+
+		"  humans: false\n"+
+		"  bootstrap: false\n")
 	repo.WriteFile(t, ".harness/orbits/shared.yaml", ""+
 		"id: shared\n"+
 		"description: Shared orbit\n"+
@@ -300,7 +314,10 @@ func TestResolveLocalTemplateInstallSourceRejectsZeroMemberTemplate(t *testing.T
 		"  created_from_branch: main\n"+
 		"  created_from_commit: abc123\n"+
 		"  created_at: 2026-04-03T00:00:00Z\n"+
-		"  includes_root_agents: false\n"+
+		"  root_guidance:\n"+
+		"    agents: false\n"+
+		"    humans: false\n"+
+		"    bootstrap: false\n"+
 		"members: []\n"+
 		"variables: {}\n")
 	repo.WriteFile(t, ".harness/manifest.yaml", ""+
@@ -311,7 +328,11 @@ func TestResolveLocalTemplateInstallSourceRejectsZeroMemberTemplate(t *testing.T
 		"  created_from_branch: main\n"+
 		"  created_from_commit: abc123\n"+
 		"  created_at: 2026-04-03T00:00:00Z\n"+
-		"members: []\n")
+		"members: []\n"+
+		"root_guidance:\n"+
+		"  agents: false\n"+
+		"  humans: false\n"+
+		"  bootstrap: false\n")
 	repo.Run(t, "rm", "-f", ".harness/orbits/workspace.yaml")
 	repo.AddAndCommit(t, "make harness template empty")
 
@@ -350,7 +371,11 @@ func TestResolveLocalTemplateInstallSourceRejectsBranchManifestTemplateMismatch(
 		"  created_from_commit: abc123\n"+
 		"  created_at: 2026-04-03T00:00:00Z\n"+
 		"members:\n"+
-		"  - orbit_id: workspace\n")
+		"  - orbit_id: workspace\n"+
+		"root_guidance:\n"+
+		"  agents: false\n"+
+		"  humans: false\n"+
+		"  bootstrap: false\n")
 	repo.AddAndCommit(t, "corrupt branch manifest harness id")
 
 	_, err := ResolveLocalTemplateInstallSource(context.Background(), repo.Root, "HEAD")
@@ -374,7 +399,11 @@ func TestResolveLocalTemplateInstallSourceRejectsBranchManifestDefaultTemplateMi
 		"  created_from_commit: abc123\n"+
 		"  created_at: 2026-04-03T00:00:00Z\n"+
 		"members:\n"+
-		"  - orbit_id: workspace\n")
+		"  - orbit_id: workspace\n"+
+		"root_guidance:\n"+
+		"  agents: false\n"+
+		"  humans: false\n"+
+		"  bootstrap: false\n")
 	repo.AddAndCommit(t, "corrupt branch manifest default template")
 
 	_, err := ResolveLocalTemplateInstallSource(context.Background(), repo.Root, "HEAD")
@@ -448,7 +477,11 @@ func TestEnumerateRemoteTemplateInstallSourcesRejectsBranchesWithDefaultTemplate
 		"  created_from_commit: abc123\n"+
 		"  created_at: 2026-04-03T00:00:00Z\n"+
 		"members:\n"+
-		"  - orbit_id: workspace\n")
+		"  - orbit_id: workspace\n"+
+		"root_guidance:\n"+
+		"  agents: false\n"+
+		"  humans: false\n"+
+		"  bootstrap: false\n")
 	sourceRepo.AddAndCommit(t, "corrupt branch manifest default template")
 	sourceRepo.Run(t, "checkout", "main")
 
@@ -476,7 +509,10 @@ func TestEnumerateRemoteTemplateInstallSourcesIgnoresZeroMemberTemplates(t *test
 		"  created_from_branch: main\n"+
 		"  created_from_commit: abc123\n"+
 		"  created_at: 2026-04-03T00:00:00Z\n"+
-		"  includes_root_agents: false\n"+
+		"  root_guidance:\n"+
+		"    agents: false\n"+
+		"    humans: false\n"+
+		"    bootstrap: false\n"+
 		"members: []\n"+
 		"variables: {}\n")
 	sourceRepo.WriteFile(t, ".harness/manifest.yaml", ""+
@@ -487,7 +523,11 @@ func TestEnumerateRemoteTemplateInstallSourcesIgnoresZeroMemberTemplates(t *test
 		"  created_from_branch: main\n"+
 		"  created_from_commit: abc123\n"+
 		"  created_at: 2026-04-03T00:00:00Z\n"+
-		"members: []\n")
+		"members: []\n"+
+		"root_guidance:\n"+
+		"  agents: false\n"+
+		"  humans: false\n"+
+		"  bootstrap: false\n")
 	sourceRepo.Run(t, "rm", "-f", ".harness/orbits/workspace.yaml")
 	sourceRepo.AddAndCommit(t, "make empty harness template branch")
 	sourceRepo.Run(t, "checkout", "main")

@@ -4776,12 +4776,12 @@ func TestHarnessRemoveDeletesTemplateMemberFromHarnessTemplate(t *testing.T) {
 		SchemaVersion: 1,
 		Kind:          harnesspkg.TemplateKind,
 		Template: harnesspkg.TemplateMetadata{
-			HarnessID:          "workspace",
-			DefaultTemplate:    false,
-			CreatedFromBranch:  "main",
-			CreatedFromCommit:  "abc123",
-			CreatedAt:          time.Date(2026, time.April, 16, 12, 30, 0, 0, time.UTC),
-			IncludesRootAgents: false,
+			HarnessID:         "workspace",
+			DefaultTemplate:   false,
+			CreatedFromBranch: "main",
+			CreatedFromCommit: "abc123",
+			CreatedAt:         time.Date(2026, time.April, 16, 12, 30, 0, 0, time.UTC),
+			RootGuidance:      harnesspkg.RootGuidanceMetadata{},
 		},
 		Members: []harnesspkg.TemplateMember{
 			{OrbitID: "docs"},
@@ -4854,12 +4854,14 @@ func TestHarnessRemoveTemplateMemberJSONOutputIncludesTemplateSummary(t *testing
 		SchemaVersion: 1,
 		Kind:          harnesspkg.TemplateKind,
 		Template: harnesspkg.TemplateMetadata{
-			HarnessID:          "workspace",
-			DefaultTemplate:    false,
-			CreatedFromBranch:  "main",
-			CreatedFromCommit:  "abc123",
-			CreatedAt:          time.Date(2026, time.April, 16, 12, 45, 0, 0, time.UTC),
-			IncludesRootAgents: true,
+			HarnessID:         "workspace",
+			DefaultTemplate:   false,
+			CreatedFromBranch: "main",
+			CreatedFromCommit: "abc123",
+			CreatedAt:         time.Date(2026, time.April, 16, 12, 45, 0, 0, time.UTC),
+			RootGuidance: harnesspkg.RootGuidanceMetadata{
+				Agents: true,
+			},
 		},
 		Members: []harnesspkg.TemplateMember{
 			{OrbitID: "docs"},
@@ -4882,7 +4884,9 @@ func TestHarnessRemoveTemplateMemberJSONOutputIncludesTemplateSummary(t *testing
 		Members: []harnesspkg.ManifestMember{
 			{OrbitID: "docs"},
 		},
-		IncludesRootAgents: true,
+		RootGuidance: harnesspkg.RootGuidanceMetadata{
+			Agents: true,
+		},
 	})
 	require.NoError(t, err)
 
@@ -4958,12 +4962,12 @@ func TestHarnessRemoveTemplateMemberJSONOutputKeepsFalseSummaryFields(t *testing
 		SchemaVersion: 1,
 		Kind:          harnesspkg.TemplateKind,
 		Template: harnesspkg.TemplateMetadata{
-			HarnessID:          "workspace",
-			DefaultTemplate:    false,
-			CreatedFromBranch:  "main",
-			CreatedFromCommit:  "abc123",
-			CreatedAt:          time.Date(2026, time.April, 16, 12, 40, 0, 0, time.UTC),
-			IncludesRootAgents: false,
+			HarnessID:         "workspace",
+			DefaultTemplate:   false,
+			CreatedFromBranch: "main",
+			CreatedFromCommit: "abc123",
+			CreatedAt:         time.Date(2026, time.April, 16, 12, 40, 0, 0, time.UTC),
+			RootGuidance:      harnesspkg.RootGuidanceMetadata{},
 		},
 		Members: []harnesspkg.TemplateMember{
 			{OrbitID: "docs"},
@@ -4986,7 +4990,7 @@ func TestHarnessRemoveTemplateMemberJSONOutputKeepsFalseSummaryFields(t *testing
 		Members: []harnesspkg.ManifestMember{
 			{OrbitID: "docs"},
 		},
-		IncludesRootAgents: false,
+		RootGuidance: harnesspkg.RootGuidanceMetadata{},
 	})
 	require.NoError(t, err)
 
@@ -5106,12 +5110,14 @@ func seedSingleMemberHarnessTemplateRemoveCLIRepo(t *testing.T, withAgents bool)
 		SchemaVersion: 1,
 		Kind:          harnesspkg.TemplateKind,
 		Template: harnesspkg.TemplateMetadata{
-			HarnessID:          "workspace",
-			DefaultTemplate:    false,
-			CreatedFromBranch:  "main",
-			CreatedFromCommit:  "abc123",
-			CreatedAt:          time.Date(2026, time.April, 16, 12, 50, 0, 0, time.UTC),
-			IncludesRootAgents: withAgents,
+			HarnessID:         "workspace",
+			DefaultTemplate:   false,
+			CreatedFromBranch: "main",
+			CreatedFromCommit: "abc123",
+			CreatedAt:         time.Date(2026, time.April, 16, 12, 50, 0, 0, time.UTC),
+			RootGuidance: harnesspkg.RootGuidanceMetadata{
+				Agents: withAgents,
+			},
 		},
 		Members: []harnesspkg.TemplateMember{
 			{OrbitID: "docs"},
@@ -5134,7 +5140,9 @@ func seedSingleMemberHarnessTemplateRemoveCLIRepo(t *testing.T, withAgents bool)
 		Members: []harnesspkg.ManifestMember{
 			{OrbitID: "docs"},
 		},
-		IncludesRootAgents: withAgents,
+		RootGuidance: harnesspkg.RootGuidanceMetadata{
+			Agents: withAgents,
+		},
 	})
 	require.NoError(t, err)
 
@@ -9475,14 +9483,18 @@ func TestHarnessTemplateSaveCreatesHarnessTemplateBranch(t *testing.T) {
 	require.Empty(t, stderr)
 
 	var payload struct {
-		HarnessRoot        string   `json:"harness_root"`
-		HarnessID          string   `json:"harness_id"`
-		TargetBranch       string   `json:"target_branch"`
-		Commit             string   `json:"commit"`
-		Files              []string `json:"files"`
-		MemberCount        int      `json:"member_count"`
-		DefaultTemplate    bool     `json:"default_template"`
-		IncludesRootAgents bool     `json:"includes_root_agents"`
+		HarnessRoot     string   `json:"harness_root"`
+		HarnessID       string   `json:"harness_id"`
+		TargetBranch    string   `json:"target_branch"`
+		Commit          string   `json:"commit"`
+		Files           []string `json:"files"`
+		MemberCount     int      `json:"member_count"`
+		DefaultTemplate bool     `json:"default_template"`
+		RootGuidance    struct {
+			Agents    bool `json:"agents"`
+			Humans    bool `json:"humans"`
+			Bootstrap bool `json:"bootstrap"`
+		} `json:"root_guidance"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
 	require.Equal(t, repo.Root, payload.HarnessRoot)
@@ -9491,7 +9503,9 @@ func TestHarnessTemplateSaveCreatesHarnessTemplateBranch(t *testing.T) {
 	require.NotEmpty(t, payload.Commit)
 	require.Equal(t, 2, payload.MemberCount)
 	require.False(t, payload.DefaultTemplate)
-	require.True(t, payload.IncludesRootAgents)
+	require.True(t, payload.RootGuidance.Agents)
+	require.False(t, payload.RootGuidance.Humans)
+	require.False(t, payload.RootGuidance.Bootstrap)
 	require.Contains(t, payload.Files, ".harness/template.yaml")
 	require.Contains(t, payload.Files, ".harness/orbits/docs.yaml")
 	require.Contains(t, payload.Files, ".harness/orbits/cmd.yaml")
@@ -9521,7 +9535,8 @@ func TestHarnessTemplateSaveCreatesHarnessTemplateBranch(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(manifestData), "kind: harness_template")
 	require.Contains(t, string(manifestData), "default_template: false")
-	require.Contains(t, string(manifestData), "includes_root_agents: true")
+	require.Contains(t, string(manifestData), "root_guidance:")
+	require.Contains(t, string(manifestData), "agents: true")
 
 	branchManifestData, err := gitpkg.ReadFileAtRev(context.Background(), repo.Root, "harness-template/workspace", ".harness/manifest.yaml")
 	require.NoError(t, err)
@@ -9543,10 +9558,14 @@ func TestHarnessTemplateSaveCreatesHarnessTemplateBranch(t *testing.T) {
 				Kind         string `json:"kind"`
 				TemplateKind string `json:"template_kind"`
 			} `json:"classification"`
-			HarnessID          string `json:"harness_id"`
-			MemberCount        int    `json:"member_count"`
-			DefinitionCount    int    `json:"definition_count"`
-			IncludesRootAgents bool   `json:"includes_root_agents"`
+			HarnessID       string `json:"harness_id"`
+			MemberCount     int    `json:"member_count"`
+			DefinitionCount int    `json:"definition_count"`
+			RootGuidance    struct {
+				Agents    bool `json:"agents"`
+				Humans    bool `json:"humans"`
+				Bootstrap bool `json:"bootstrap"`
+			} `json:"root_guidance"`
 		} `json:"inspection"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(inspectStdout), &inspectPayload))
@@ -9555,7 +9574,7 @@ func TestHarnessTemplateSaveCreatesHarnessTemplateBranch(t *testing.T) {
 	require.Equal(t, harnesspkg.DefaultHarnessIDForPath(repo.Root), inspectPayload.Inspection.HarnessID)
 	require.Equal(t, 2, inspectPayload.Inspection.MemberCount)
 	require.Equal(t, 2, inspectPayload.Inspection.DefinitionCount)
-	require.True(t, inspectPayload.Inspection.IncludesRootAgents)
+	require.True(t, inspectPayload.Inspection.RootGuidance.Agents)
 }
 
 func TestHarnessTemplateSaveIgnoresLegacyRuntimeFileWhenManifestIsValid(t *testing.T) {
@@ -9631,7 +9650,8 @@ func TestHarnessTemplateSaveDryRunDoesNotWriteBranch(t *testing.T) {
 	require.Contains(t, stdout, "default_template: false")
 	require.Contains(t, stdout, "created_from_branch: "+currentBranch)
 	require.Contains(t, stdout, "created_from_commit: "+currentCommit)
-	require.Contains(t, stdout, "includes_root_agents: true")
+	require.Contains(t, stdout, "root_guidance:")
+	require.Contains(t, stdout, "agents: true")
 	require.Contains(t, stdout, "members:")
 	require.Contains(t, stdout, "cmd")
 	require.Contains(t, stdout, "docs")
@@ -9654,14 +9674,18 @@ func TestHarnessTemplateSaveDryRunJSONContract(t *testing.T) {
 	require.Empty(t, stderr)
 
 	var payload struct {
-		DryRun             bool     `json:"dry_run"`
-		HarnessRoot        string   `json:"harness_root"`
-		HarnessID          string   `json:"harness_id"`
-		TargetBranch       string   `json:"target_branch"`
-		Files              []string `json:"files"`
-		MemberCount        int      `json:"member_count"`
-		DefaultTemplate    bool     `json:"default_template"`
-		IncludesRootAgents bool     `json:"includes_root_agents"`
+		DryRun          bool     `json:"dry_run"`
+		HarnessRoot     string   `json:"harness_root"`
+		HarnessID       string   `json:"harness_id"`
+		TargetBranch    string   `json:"target_branch"`
+		Files           []string `json:"files"`
+		MemberCount     int      `json:"member_count"`
+		DefaultTemplate bool     `json:"default_template"`
+		RootGuidance    struct {
+			Agents    bool `json:"agents"`
+			Humans    bool `json:"humans"`
+			Bootstrap bool `json:"bootstrap"`
+		} `json:"root_guidance"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
 	require.True(t, payload.DryRun)
@@ -9670,7 +9694,7 @@ func TestHarnessTemplateSaveDryRunJSONContract(t *testing.T) {
 	require.Equal(t, "harness-template/workspace", payload.TargetBranch)
 	require.Equal(t, 2, payload.MemberCount)
 	require.True(t, payload.DefaultTemplate)
-	require.True(t, payload.IncludesRootAgents)
+	require.True(t, payload.RootGuidance.Agents)
 	require.Contains(t, payload.Files, ".harness/template.yaml")
 	require.Contains(t, payload.Files, ".harness/orbits/docs.yaml")
 	require.Contains(t, payload.Files, ".harness/template_members/docs.yaml")
@@ -9694,7 +9718,8 @@ func TestHarnessTemplateSaveTextOutputContract(t *testing.T) {
 	require.Contains(t, stdout, "files: 8\n")
 	require.Contains(t, stdout, "member_count: 2\n")
 	require.Contains(t, stdout, "default_template: false\n")
-	require.Contains(t, stdout, "includes_root_agents: true\n")
+	require.Contains(t, stdout, "root_guidance:\n")
+	require.Contains(t, stdout, "agents: true\n")
 }
 
 func TestHarnessTemplateSaveRequiresOverwriteForExistingBranch(t *testing.T) {
@@ -9858,7 +9883,7 @@ func TestHarnessTemplateSaveFailsClosedOnReplacementAmbiguity(t *testing.T) {
 	require.Empty(t, stdout)
 	require.Empty(t, stderr)
 	require.ErrorContains(t, err, "replacement ambiguity detected")
-	require.ErrorContains(t, err, `AGENTS.md [root_agents]`)
+	require.ErrorContains(t, err, `AGENTS.md [root_guidance]`)
 	require.ErrorContains(t, err, `docs/guide.md [docs]`)
 
 	exists, err := gitpkg.LocalBranchExists(context.Background(), repo.Root, "harness-template/workspace")
@@ -9889,15 +9914,19 @@ func TestHarnessTemplateSaveJSONFailureIncludesAmbiguityContributors(t *testing.
 	require.Empty(t, stderr)
 
 	var payload struct {
-		DryRun             bool   `json:"dry_run"`
-		Saved              bool   `json:"saved"`
-		HarnessRoot        string `json:"harness_root"`
-		HarnessID          string `json:"harness_id"`
-		TargetBranch       string `json:"target_branch"`
-		DefaultTemplate    bool   `json:"default_template"`
-		IncludesRootAgents bool   `json:"includes_root_agents"`
-		Message            string `json:"message"`
-		Ambiguities        []struct {
+		DryRun          bool   `json:"dry_run"`
+		Saved           bool   `json:"saved"`
+		HarnessRoot     string `json:"harness_root"`
+		HarnessID       string `json:"harness_id"`
+		TargetBranch    string `json:"target_branch"`
+		DefaultTemplate bool   `json:"default_template"`
+		RootGuidance    struct {
+			Agents    bool `json:"agents"`
+			Humans    bool `json:"humans"`
+			Bootstrap bool `json:"bootstrap"`
+		} `json:"root_guidance"`
+		Message     string `json:"message"`
+		Ambiguities []struct {
 			Path         string   `json:"path"`
 			Contributors []string `json:"contributors"`
 			Ambiguities  []struct {
@@ -9913,9 +9942,9 @@ func TestHarnessTemplateSaveJSONFailureIncludesAmbiguityContributors(t *testing.
 	require.Equal(t, harnesspkg.DefaultHarnessIDForPath(repo.Root), payload.HarnessID)
 	require.Equal(t, "harness-template/workspace", payload.TargetBranch)
 	require.False(t, payload.DefaultTemplate)
-	require.True(t, payload.IncludesRootAgents)
+	require.True(t, payload.RootGuidance.Agents)
 	require.Contains(t, payload.Message, "replacement ambiguity detected")
-	require.Contains(t, payload.Message, `AGENTS.md [root_agents]`)
+	require.Contains(t, payload.Message, `AGENTS.md [root_guidance]`)
 	require.Contains(t, payload.Message, `docs/guide.md [docs]`)
 	require.Contains(t, payload.Ambiguities, struct {
 		Path         string   `json:"path"`
@@ -9926,7 +9955,7 @@ func TestHarnessTemplateSaveJSONFailureIncludesAmbiguityContributors(t *testing.
 		} `json:"ambiguities"`
 	}{
 		Path:         "AGENTS.md",
-		Contributors: []string{"root_agents"},
+		Contributors: []string{"root_guidance"},
 		Ambiguities: []struct {
 			Literal   string   `json:"literal"`
 			Variables []string `json:"variables"`
@@ -9985,7 +10014,7 @@ func TestHarnessTemplateSaveDryRunJSONIncludesAmbiguityContributors(t *testing.T
 		} `json:"ambiguities"`
 	}{
 		Path:         "AGENTS.md",
-		Contributors: []string{"root_agents"},
+		Contributors: []string{"root_guidance"},
 		Ambiguities: []struct {
 			Literal   string   `json:"literal"`
 			Variables []string `json:"variables"`

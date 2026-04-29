@@ -17,6 +17,7 @@ type TemplatePublishInput struct {
 	RepoRoot                 string
 	TargetBranch             string
 	DefaultTemplate          bool
+	IncludeBootstrap         bool
 	Push                     bool
 	Remote                   string
 	SourceBranchPushPrompter orbittemplate.SourceBranchPushPrompter
@@ -85,9 +86,10 @@ func BuildTemplatePublishPreview(ctx context.Context, input TemplatePublishInput
 	}
 
 	preview, err := BuildTemplateSavePreview(ctx, TemplateSavePreviewInput{
-		RepoRoot:        input.RepoRoot,
-		TargetBranch:    input.TargetBranch,
-		DefaultTemplate: input.DefaultTemplate,
+		RepoRoot:         input.RepoRoot,
+		TargetBranch:     input.TargetBranch,
+		DefaultTemplate:  input.DefaultTemplate,
+		IncludeBootstrap: input.IncludeBootstrap,
 	})
 	if err != nil {
 		return TemplatePublishPreview{}, fmt.Errorf("build publish preview: %w", err)
@@ -361,8 +363,8 @@ func buildTemplateBranchManifest(preview TemplateSavePreview) ManifestFile {
 			CreatedFromCommit: preview.Manifest.Template.CreatedFromCommit,
 			CreatedAt:         preview.Manifest.Template.CreatedAt,
 		},
-		Members:            manifestMembersFromTemplateMembers(preview.Manifest.Members),
-		IncludesRootAgents: preview.Manifest.Template.IncludesRootAgents,
+		Members:      manifestMembersFromTemplateMembers(preview.Manifest.Members),
+		RootGuidance: preview.Manifest.Template.RootGuidance,
 	}
 }
 
@@ -373,7 +375,7 @@ func templateManifestEquivalent(expected TemplateManifest, actual TemplateManife
 		actual.Template.DefaultTemplate == expected.Template.DefaultTemplate &&
 		actual.Template.CreatedFromBranch == expected.Template.CreatedFromBranch &&
 		actual.Template.CreatedFromCommit == expected.Template.CreatedFromCommit &&
-		actual.Template.IncludesRootAgents == expected.Template.IncludesRootAgents &&
+		actual.Template.RootGuidance == expected.Template.RootGuidance &&
 		!actual.Template.CreatedAt.IsZero() &&
 		reflect.DeepEqual(actual.Members, expected.Members) &&
 		reflect.DeepEqual(actual.Variables, expected.Variables)
@@ -389,7 +391,7 @@ func branchManifestEquivalent(expected ManifestFile, actual ManifestFile) bool {
 		actual.Template.CreatedFromBranch == expected.Template.CreatedFromBranch &&
 		actual.Template.CreatedFromCommit == expected.Template.CreatedFromCommit &&
 		!actual.Template.CreatedAt.IsZero() &&
-		actual.IncludesRootAgents == expected.IncludesRootAgents &&
+		actual.RootGuidance == expected.RootGuidance &&
 		reflect.DeepEqual(actual.Members, expected.Members)
 }
 

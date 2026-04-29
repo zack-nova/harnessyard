@@ -74,7 +74,7 @@ func validateTemplateMemberSnapshotOwnership(
 	unownedPaths := make([]string, 0)
 	for _, file := range finalFiles {
 		switch {
-		case file.Path == rootAgentsPath:
+		case isRootGuidancePath(file.Path):
 			continue
 		case strings.HasPrefix(file.Path, ".harness/"):
 			continue

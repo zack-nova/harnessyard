@@ -63,7 +63,7 @@ func TestHarnessTemplateSaveDryRunIncludesCompletedBootstrapMembersWhenExplicitl
 		},
 	}))
 
-	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "template", "save", "--to", "harness-template/workspace", "--dry-run", "--include-completed-bootstrap", "--json")
+	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "template", "save", "--to", "harness-template/workspace", "--dry-run", "--include-bootstrap", "--json")
 	require.NoError(t, err)
 	require.Empty(t, stderr)
 

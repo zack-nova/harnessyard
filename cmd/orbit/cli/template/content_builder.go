@@ -179,6 +179,8 @@ func isForbiddenTemplatePath(path string) bool {
 		return true
 	case path == runtimeHumansRepoPath:
 		return true
+	case path == runtimeBootstrapRepoPath:
+		return true
 	case strings.HasPrefix(path, ".harness/"):
 		return true
 	case strings.HasPrefix(path, ".git/orbit/state/"):

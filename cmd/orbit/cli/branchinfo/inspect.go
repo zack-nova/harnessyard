@@ -45,26 +45,26 @@ type DefinitionMemberSummary struct {
 
 // Inspection captures the stable branch-inspection details surfaced by CLI commands.
 type Inspection struct {
-	Classification        Classification            `json:"classification"`
-	SourceBranch          string                    `json:"source_branch,omitempty"`
-	PublishOrbitID        string                    `json:"publish_orbit_id,omitempty"`
-	HarnessID             string                    `json:"harness_id,omitempty"`
-	ManifestMemberCount   int                       `json:"manifest_member_count"`
-	ManifestMemberIDs     []string                  `json:"manifest_member_ids"`
-	MemberCountScope      string                    `json:"member_count_scope"`
-	MemberCount           int                       `json:"member_count"`
-	MemberIDs             []string                  `json:"member_ids"`
-	DefinitionCount       int                       `json:"definition_count"`
-	DefinitionIDs         []string                  `json:"definition_ids"`
-	DefinitionMemberCount int                       `json:"definition_member_count"`
-	DefinitionMembers     []DefinitionMemberSummary `json:"definition_members"`
-	InstallCount          int                       `json:"install_count"`
-	InstallIDs            []string                  `json:"install_ids"`
-	DetachedInstallCount  int                       `json:"detached_install_count"`
-	DetachedInstallIDs    []string                  `json:"detached_install_ids"`
-	InvalidInstallCount   int                       `json:"invalid_install_count"`
-	InvalidInstallIDs     []string                  `json:"invalid_install_ids"`
-	IncludesRootAgents    *bool                     `json:"includes_root_agents,omitempty"`
+	Classification        Classification                   `json:"classification"`
+	SourceBranch          string                           `json:"source_branch,omitempty"`
+	PublishOrbitID        string                           `json:"publish_orbit_id,omitempty"`
+	HarnessID             string                           `json:"harness_id,omitempty"`
+	ManifestMemberCount   int                              `json:"manifest_member_count"`
+	ManifestMemberIDs     []string                         `json:"manifest_member_ids"`
+	MemberCountScope      string                           `json:"member_count_scope"`
+	MemberCount           int                              `json:"member_count"`
+	MemberIDs             []string                         `json:"member_ids"`
+	DefinitionCount       int                              `json:"definition_count"`
+	DefinitionIDs         []string                         `json:"definition_ids"`
+	DefinitionMemberCount int                              `json:"definition_member_count"`
+	DefinitionMembers     []DefinitionMemberSummary        `json:"definition_members"`
+	InstallCount          int                              `json:"install_count"`
+	InstallIDs            []string                         `json:"install_ids"`
+	DetachedInstallCount  int                              `json:"detached_install_count"`
+	DetachedInstallIDs    []string                         `json:"detached_install_ids"`
+	InvalidInstallCount   int                              `json:"invalid_install_count"`
+	InvalidInstallIDs     []string                         `json:"invalid_install_ids"`
+	RootGuidance          *harnesspkg.RootGuidanceMetadata `json:"root_guidance,omitempty"`
 }
 
 // InspectRevision classifies one revision and loads the documented branch summary fields.
@@ -140,8 +140,8 @@ func populateTemplateInspection(ctx context.Context, repoRoot string, rev string
 		}
 		inspection.setManifestMembers(manifest.Members)
 		if classification.TemplateKind == TemplateKindHarness {
-			includesRootAgents := manifest.IncludesRootAgents
-			inspection.IncludesRootAgents = &includesRootAgents
+			rootGuidance := manifest.RootGuidance
+			inspection.RootGuidance = &rootGuidance
 		}
 
 		return nil

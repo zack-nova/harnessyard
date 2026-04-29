@@ -30,14 +30,14 @@ const (
 
 // ManifestFile is the schema-backed single-control-plane manifest stored in .harness/manifest.yaml.
 type ManifestFile struct {
-	SchemaVersion      int                             `yaml:"schema_version"`
-	Kind               string                          `yaml:"kind"`
-	Source             *ManifestSourceMetadata         `yaml:"source,omitempty"`
-	Runtime            *ManifestRuntimeMetadata        `yaml:"runtime,omitempty"`
-	Template           *ManifestTemplateMetadata       `yaml:"template,omitempty"`
-	Members            []ManifestMember                `yaml:"members,omitempty"`
-	Variables          map[string]ManifestVariableSpec `yaml:"variables,omitempty"`
-	IncludesRootAgents bool                            `yaml:"includes_root_agents,omitempty"`
+	SchemaVersion int                             `yaml:"schema_version"`
+	Kind          string                          `yaml:"kind"`
+	Source        *ManifestSourceMetadata         `yaml:"source,omitempty"`
+	Runtime       *ManifestRuntimeMetadata        `yaml:"runtime,omitempty"`
+	Template      *ManifestTemplateMetadata       `yaml:"template,omitempty"`
+	Members       []ManifestMember                `yaml:"members,omitempty"`
+	Variables     map[string]ManifestVariableSpec `yaml:"variables,omitempty"`
+	RootGuidance  RootGuidanceMetadata            `yaml:"root_guidance,omitempty"`
 }
 
 // ManifestSourceMetadata stores source-branch authoring identity.
@@ -94,6 +94,7 @@ type rawManifestFile struct {
 	Packages           []rawManifestMember                `yaml:"packages"`
 	Variables          map[string]rawManifestVariableSpec `yaml:"variables"`
 	IncludesRootAgents *bool                              `yaml:"includes_root_agents"`
+	RootGuidance       *rawRootGuidanceMetadata           `yaml:"root_guidance"`
 }
 
 type rawManifestSource struct {
@@ -228,8 +229,8 @@ func ValidateSourceManifestFile(file ManifestFile) error {
 	if file.Members != nil {
 		return fmt.Errorf("members must not be present")
 	}
-	if file.IncludesRootAgents {
-		return fmt.Errorf("includes_root_agents must not be present")
+	if !isZeroRootGuidance(file.RootGuidance) {
+		return fmt.Errorf("root_guidance must not be present")
 	}
 	if err := ids.ValidatePackageIdentity(
 		ensureOrbitPackageIdentity(file.Source.Package, file.Source.OrbitID),
@@ -262,8 +263,8 @@ func ValidateRuntimeManifestFile(file ManifestFile) error {
 	if file.Members == nil {
 		return fmt.Errorf("packages must be present")
 	}
-	if file.IncludesRootAgents {
-		return fmt.Errorf("includes_root_agents must not be present")
+	if !isZeroRootGuidance(file.RootGuidance) {
+		return fmt.Errorf("root_guidance must not be present")
 	}
 	if err := ids.ValidatePackageIdentity(
 		ensureHarnessPackageIdentity(file.Runtime.Package, file.Runtime.ID),
@@ -336,8 +337,8 @@ func ValidateOrbitTemplateManifestFile(file ManifestFile) error {
 	if file.Members != nil {
 		return fmt.Errorf("members must not be present")
 	}
-	if file.IncludesRootAgents {
-		return fmt.Errorf("includes_root_agents must not be present")
+	if !isZeroRootGuidance(file.RootGuidance) {
+		return fmt.Errorf("root_guidance must not be present")
 	}
 	if err := ids.ValidatePackageIdentity(
 		ensureOrbitPackageIdentity(file.Template.Package, file.Template.OrbitID),
@@ -509,6 +510,9 @@ func (raw rawManifestFile) toManifestFile() (ManifestFile, error) {
 		if raw.IncludesRootAgents != nil {
 			return ManifestFile{}, fmt.Errorf("includes_root_agents must not be present")
 		}
+		if raw.RootGuidance != nil {
+			return ManifestFile{}, fmt.Errorf("root_guidance must not be present")
+		}
 
 		sourceMetadata, err := raw.Source.toManifestSourceMetadata()
 		if err != nil {
@@ -535,6 +539,9 @@ func (raw rawManifestFile) toManifestFile() (ManifestFile, error) {
 		}
 		if raw.IncludesRootAgents != nil {
 			return ManifestFile{}, fmt.Errorf("includes_root_agents must not be present")
+		}
+		if raw.RootGuidance != nil {
+			return ManifestFile{}, fmt.Errorf("root_guidance must not be present")
 		}
 
 		runtimeMetadata, err := raw.Runtime.toManifestRuntimeMetadata()
@@ -566,6 +573,9 @@ func (raw rawManifestFile) toManifestFile() (ManifestFile, error) {
 		}
 		if raw.IncludesRootAgents != nil {
 			return ManifestFile{}, fmt.Errorf("includes_root_agents must not be present")
+		}
+		if raw.RootGuidance != nil {
+			return ManifestFile{}, fmt.Errorf("root_guidance must not be present")
 		}
 
 		templateMetadata, err := raw.Template.toOrbitTemplateMetadata()
@@ -607,6 +617,9 @@ func (raw rawManifestFile) toManifestFile() (ManifestFile, error) {
 		if raw.Variables != nil {
 			return ManifestFile{}, fmt.Errorf("variables must not be present")
 		}
+		if raw.IncludesRootAgents != nil {
+			return ManifestFile{}, fmt.Errorf("includes_root_agents must not be present")
+		}
 
 		templateMetadata, err := raw.Template.toHarnessTemplateMetadata()
 		if err != nil {
@@ -621,9 +634,14 @@ func (raw rawManifestFile) toManifestFile() (ManifestFile, error) {
 			}
 			file.Members = append(file.Members, member)
 		}
-		if raw.IncludesRootAgents != nil {
-			file.IncludesRootAgents = *raw.IncludesRootAgents
+		if raw.RootGuidance == nil {
+			return ManifestFile{}, fmt.Errorf("root_guidance must be present")
 		}
+		rootGuidance, err := raw.RootGuidance.toRootGuidanceMetadata()
+		if err != nil {
+			return ManifestFile{}, err
+		}
+		file.RootGuidance = rootGuidance
 
 	default:
 		return ManifestFile{}, fmt.Errorf(
@@ -859,10 +877,18 @@ func manifestFileNode(file ManifestFile) *yaml.Node {
 	case ManifestKindHarnessTemplate:
 		contractutil.AppendMapping(root, "template", harnessTemplateNode(file.Template))
 		contractutil.AppendMapping(root, "packages", templateMembersNode(file.Members))
-		contractutil.AppendMapping(root, "includes_root_agents", contractutil.BoolNode(file.IncludesRootAgents))
+		rootGuidanceNode := contractutil.MappingNode()
+		contractutil.AppendMapping(rootGuidanceNode, "agents", contractutil.BoolNode(file.RootGuidance.Agents))
+		contractutil.AppendMapping(rootGuidanceNode, "humans", contractutil.BoolNode(file.RootGuidance.Humans))
+		contractutil.AppendMapping(rootGuidanceNode, "bootstrap", contractutil.BoolNode(file.RootGuidance.Bootstrap))
+		contractutil.AppendMapping(root, "root_guidance", rootGuidanceNode)
 	}
 
 	return root
+}
+
+func isZeroRootGuidance(rootGuidance RootGuidanceMetadata) bool {
+	return !rootGuidance.Agents && !rootGuidance.Humans && !rootGuidance.Bootstrap
 }
 
 func sourceNode(source *ManifestSourceMetadata) *yaml.Node {

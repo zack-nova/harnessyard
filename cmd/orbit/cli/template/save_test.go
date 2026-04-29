@@ -313,6 +313,8 @@ func TestBuildTemplateSavePreviewSkipsRuntimeGuidanceExportsAndWarns(t *testing.
 		"    Docs orbit for $project_name\n"+
 		"  humans_template: |\n"+
 		"    Run docs workflow for $project_name\n"+
+		"  bootstrap_template: |\n"+
+		"    Bootstrap docs workflow for $project_name\n"+
 		"  include_in_projection: true\n"+
 		"  include_in_write: true\n"+
 		"  include_in_export: true\n"+
@@ -324,6 +326,7 @@ func TestBuildTemplateSavePreviewSkipsRuntimeGuidanceExportsAndWarns(t *testing.
 		"      include:\n"+
 		"        - AGENTS.md\n"+
 		"        - HUMANS.md\n"+
+		"        - BOOTSTRAP.md\n"+
 		"        - README.md\n"+
 		"behavior:\n"+
 		"  scope:\n"+
@@ -342,6 +345,7 @@ func TestBuildTemplateSavePreviewSkipsRuntimeGuidanceExportsAndWarns(t *testing.
 		"    description: Product title\n")
 	repo.WriteFile(t, "AGENTS.md", "Docs orbit for Orbit\n")
 	repo.WriteFile(t, "HUMANS.md", "Run docs workflow for Orbit\n")
+	repo.WriteFile(t, "BOOTSTRAP.md", "Bootstrap docs workflow for Orbit\n")
 	repo.WriteFile(t, "README.md", "Orbit readme\n")
 	repo.AddAndCommit(t, "seed runtime repo with guidance artifacts in member export")
 
@@ -358,7 +362,7 @@ func TestBuildTemplateSavePreviewSkipsRuntimeGuidanceExportsAndWarns(t *testing.
 		"README.md",
 	}, preview.FilePaths())
 	require.Equal(t, []string{
-		"skip runtime guidance export paths for orbit \"docs\": AGENTS.md, HUMANS.md; template publishing uses meta.agents_template/meta.humans_template instead",
+		"skip runtime guidance export paths for orbit \"docs\": AGENTS.md, BOOTSTRAP.md, HUMANS.md; template publishing uses authored guidance fields instead",
 	}, preview.Warnings)
 }
 

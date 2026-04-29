@@ -129,13 +129,15 @@ func TestTemplateSaveFailurePayloadForAmbiguityPreview(t *testing.T) {
 				}},
 			}},
 			AmbiguitySources: map[string][]string{
-				"AGENTS.md":     {"root_agents"},
+				"AGENTS.md":     {"root_guidance"},
 				"docs/guide.md": {"docs"},
 			},
 			Manifest: harnesspkg.TemplateManifest{
 				Template: harnesspkg.TemplateMetadata{
-					DefaultTemplate:    true,
-					IncludesRootAgents: true,
+					DefaultTemplate: true,
+					RootGuidance: harnesspkg.RootGuidanceMetadata{
+						Agents: true,
+					},
 				},
 			},
 		},
@@ -148,9 +150,9 @@ func TestTemplateSaveFailurePayloadForAmbiguityPreview(t *testing.T) {
 	require.Equal(t, "workspace", payload.HarnessID)
 	require.Equal(t, "harness-template/workspace", payload.TargetBranch)
 	require.True(t, payload.DefaultTemplate)
-	require.True(t, payload.IncludesRootAgents)
+	require.True(t, payload.RootGuidance.Agents)
 	require.Contains(t, payload.Message, "replacement ambiguity detected")
-	require.Contains(t, payload.Message, "AGENTS.md [root_agents]")
+	require.Contains(t, payload.Message, "AGENTS.md [root_guidance]")
 	require.Contains(t, payload.Message, "docs/guide.md [docs]")
 	require.Len(t, payload.Ambiguities, 1)
 	require.Equal(t, "docs/guide.md", payload.Ambiguities[0].Path)
@@ -168,8 +170,10 @@ func TestTemplateSaveFailurePayloadForTargetBranchExists(t *testing.T) {
 			TargetBranch: "harness-template/workspace",
 			Manifest: harnesspkg.TemplateManifest{
 				Template: harnesspkg.TemplateMetadata{
-					DefaultTemplate:    false,
-					IncludesRootAgents: true,
+					DefaultTemplate: false,
+					RootGuidance: harnesspkg.RootGuidanceMetadata{
+						Agents: true,
+					},
 				},
 			},
 		},
@@ -184,7 +188,7 @@ func TestTemplateSaveFailurePayloadForTargetBranchExists(t *testing.T) {
 	require.Equal(t, "workspace", payload.HarnessID)
 	require.Equal(t, "harness-template/workspace", payload.TargetBranch)
 	require.False(t, payload.DefaultTemplate)
-	require.True(t, payload.IncludesRootAgents)
+	require.True(t, payload.RootGuidance.Agents)
 	require.True(t, payload.OverwriteRequired)
 	require.Equal(t, `target branch "harness-template/workspace" already exists; re-run with --overwrite to replace it`, payload.Message)
 }

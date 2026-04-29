@@ -108,12 +108,18 @@ func buildTemplateSaveVariableSpecs(
 	return variables, nil
 }
 
-func includesRootAgentsFile(files []orbittemplate.CandidateFile) bool {
+func rootGuidanceFromTemplateFiles(files []orbittemplate.CandidateFile) RootGuidanceMetadata {
+	rootGuidance := RootGuidanceMetadata{}
 	for _, file := range files {
-		if file.Path == rootAgentsPath {
-			return true
+		switch file.Path {
+		case rootAgentsPath:
+			rootGuidance.Agents = true
+		case rootHumansPath:
+			rootGuidance.Humans = true
+		case rootBootstrapPath:
+			rootGuidance.Bootstrap = true
 		}
 	}
 
-	return false
+	return rootGuidance
 }

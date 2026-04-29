@@ -18,12 +18,14 @@ func TestWriteAndLoadTemplateManifestRoundTrip(t *testing.T) {
 		SchemaVersion: 1,
 		Kind:          TemplateKind,
 		Template: TemplateMetadata{
-			HarnessID:          "project_a",
-			DefaultTemplate:    false,
-			CreatedFromBranch:  "main",
-			CreatedFromCommit:  "abc123",
-			CreatedAt:          createdAt,
-			IncludesRootAgents: true,
+			HarnessID:         "project_a",
+			DefaultTemplate:   false,
+			CreatedFromBranch: "main",
+			CreatedFromCommit: "abc123",
+			CreatedAt:         createdAt,
+			RootGuidance: RootGuidanceMetadata{
+				Agents: true,
+			},
 		},
 		Members: []TemplateMember{
 			{OrbitID: "docs"},
@@ -55,7 +57,10 @@ func TestWriteAndLoadTemplateManifestRoundTrip(t *testing.T) {
 		"    created_from_branch: main\n"+
 		"    created_from_commit: abc123\n"+
 		"    created_at: 2026-03-25T13:00:00Z\n"+
-		"    includes_root_agents: true\n"+
+		"    root_guidance:\n"+
+		"        agents: true\n"+
+		"        humans: false\n"+
+		"        bootstrap: false\n"+
 		"members:\n"+
 		"    - orbit_id: cli\n"+
 		"    - orbit_id: docs\n"+
@@ -77,6 +82,44 @@ func TestWriteAndLoadTemplateManifestRoundTrip(t *testing.T) {
 	require.Equal(t, expected, loaded)
 }
 
+func TestWriteAndLoadTemplateManifestRootGuidanceRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := t.TempDir()
+	createdAt := time.Date(2026, time.March, 25, 13, 0, 0, 0, time.UTC)
+	input := TemplateManifest{
+		SchemaVersion: 1,
+		Kind:          TemplateKind,
+		Template: TemplateMetadata{
+			HarnessID:         "project_a",
+			DefaultTemplate:   false,
+			CreatedFromBranch: "main",
+			CreatedFromCommit: "abc123",
+			CreatedAt:         createdAt,
+			RootGuidance: RootGuidanceMetadata{
+				Agents:    true,
+				Humans:    true,
+				Bootstrap: false,
+			},
+		},
+		Members:   []TemplateMember{},
+		Variables: map[string]TemplateVariableSpec{},
+	}
+
+	filename, err := WriteTemplateManifest(repoRoot, input)
+	require.NoError(t, err)
+	data, err := os.ReadFile(filename)
+	require.NoError(t, err)
+	require.Contains(t, string(data), "root_guidance:\n")
+	require.Contains(t, string(data), "agents: true\n")
+	require.Contains(t, string(data), "humans: true\n")
+	require.Contains(t, string(data), "bootstrap: false\n")
+
+	loaded, err := LoadTemplateManifest(repoRoot)
+	require.NoError(t, err)
+	require.Equal(t, input, loaded)
+}
+
 func TestLoadTemplateManifestAllowsEmptyMembersAndVariables(t *testing.T) {
 	t.Parallel()
 
@@ -91,7 +134,10 @@ func TestLoadTemplateManifestAllowsEmptyMembersAndVariables(t *testing.T) {
 		"  created_from_branch: main\n"+
 		"  created_from_commit: abc123\n"+
 		"  created_at: 2026-03-25T13:00:00Z\n"+
-		"  includes_root_agents: false\n"+
+		"  root_guidance:\n"+
+		"    agents: false\n"+
+		"    humans: false\n"+
+		"    bootstrap: false\n"+
 		"members: []\n"+
 		"variables: {}\n"), 0o600))
 
@@ -101,12 +147,12 @@ func TestLoadTemplateManifestAllowsEmptyMembersAndVariables(t *testing.T) {
 		SchemaVersion: 1,
 		Kind:          TemplateKind,
 		Template: TemplateMetadata{
-			HarnessID:          "project_a",
-			DefaultTemplate:    false,
-			CreatedFromBranch:  "main",
-			CreatedFromCommit:  "abc123",
-			CreatedAt:          time.Date(2026, time.March, 25, 13, 0, 0, 0, time.UTC),
-			IncludesRootAgents: false,
+			HarnessID:         "project_a",
+			DefaultTemplate:   false,
+			CreatedFromBranch: "main",
+			CreatedFromCommit: "abc123",
+			CreatedAt:         time.Date(2026, time.March, 25, 13, 0, 0, 0, time.UTC),
+			RootGuidance:      RootGuidanceMetadata{},
 		},
 		Members:   []TemplateMember{},
 		Variables: map[string]TemplateVariableSpec{},
@@ -120,12 +166,12 @@ func TestValidateTemplateManifestRejectsDuplicateMembers(t *testing.T) {
 		SchemaVersion: 1,
 		Kind:          TemplateKind,
 		Template: TemplateMetadata{
-			HarnessID:          "project_a",
-			DefaultTemplate:    false,
-			CreatedFromBranch:  "main",
-			CreatedFromCommit:  "abc123",
-			CreatedAt:          time.Date(2026, time.March, 25, 13, 0, 0, 0, time.UTC),
-			IncludesRootAgents: false,
+			HarnessID:         "project_a",
+			DefaultTemplate:   false,
+			CreatedFromBranch: "main",
+			CreatedFromCommit: "abc123",
+			CreatedAt:         time.Date(2026, time.March, 25, 13, 0, 0, 0, time.UTC),
+			RootGuidance:      RootGuidanceMetadata{},
 		},
 		Members: []TemplateMember{
 			{OrbitID: "docs"},

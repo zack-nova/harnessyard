@@ -249,7 +249,10 @@ func TestWriteTemplateBranchSupportsExplicitManifestPath(t *testing.T) {
 			"  created_from_branch: main\n" +
 			"  created_from_commit: abc123\n" +
 			"  created_at: 2026-03-26T10:00:00Z\n" +
-			"  includes_root_agents: false\n" +
+			"  root_guidance:\n" +
+			"    agents: false\n" +
+			"    humans: false\n" +
+			"    bootstrap: false\n" +
 			"members: []\n" +
 			"variables: {}\n"),
 		Files: []TemplateTreeFile{

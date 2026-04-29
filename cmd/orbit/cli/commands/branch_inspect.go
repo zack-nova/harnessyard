@@ -82,8 +82,14 @@ func NewBranchInspectCommand() *cobra.Command {
 					return fmt.Errorf("write command output: %w", err)
 				}
 			}
-			if inspection.IncludesRootAgents != nil {
-				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "includes_root_agents: %t\n", *inspection.IncludesRootAgents); err != nil {
+			if inspection.RootGuidance != nil {
+				if _, err := fmt.Fprintf(
+					cmd.OutOrStdout(),
+					"root_guidance: agents=%t humans=%t bootstrap=%t\n",
+					inspection.RootGuidance.Agents,
+					inspection.RootGuidance.Humans,
+					inspection.RootGuidance.Bootstrap,
+				); err != nil {
 					return fmt.Errorf("write command output: %w", err)
 				}
 			}

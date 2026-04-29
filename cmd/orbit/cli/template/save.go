@@ -278,7 +278,7 @@ func ensureWorktreeExportPayloadIsPresent(
 }
 
 func isRuntimeGuidanceTemplateArtifact(path string) bool {
-	return path == sharedFilePathAgents || path == runtimeHumansRepoPath
+	return path == sharedFilePathAgents || path == runtimeHumansRepoPath || path == runtimeBootstrapRepoPath
 }
 
 func skippedRuntimeGuidanceExportWarnings(orbitID string, paths []string) []string {
@@ -288,7 +288,7 @@ func skippedRuntimeGuidanceExportWarnings(orbitID string, paths []string) []stri
 	sort.Strings(paths)
 	return []string{
 		fmt.Sprintf(
-			"skip runtime guidance export paths for orbit %q: %s; template publishing uses meta.agents_template/meta.humans_template instead",
+			"skip runtime guidance export paths for orbit %q: %s; template publishing uses authored guidance fields instead",
 			orbitID,
 			strings.Join(paths, ", "),
 		),

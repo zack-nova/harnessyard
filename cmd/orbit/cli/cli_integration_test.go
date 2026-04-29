@@ -4106,7 +4106,10 @@ func seedBriefBackfillRevisionRepo(t *testing.T, revisionKind string) *testutil.
 			"  created_at: 2026-04-07T00:00:00Z\n"+
 			"members:\n"+
 			"  - orbit_id: docs\n"+
-			"includes_root_agents: false\n")
+			"root_guidance:\n"+
+			"  agents: false\n"+
+			"  humans: false\n"+
+			"  bootstrap: false\n")
 	}
 
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
@@ -4176,7 +4179,10 @@ func seedBriefMaterializeRevisionRepo(t *testing.T, revisionKind string, agentsT
 			"  created_at: 2026-04-07T00:00:00Z\n"+
 			"members:\n"+
 			"  - orbit_id: docs\n"+
-			"includes_root_agents: false\n")
+			"root_guidance:\n"+
+			"  agents: false\n"+
+			"  humans: false\n"+
+			"  bootstrap: false\n")
 	}
 
 	repo.WriteFile(t, ".harness/vars.yaml", ""+

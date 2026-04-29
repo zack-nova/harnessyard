@@ -44,13 +44,19 @@ type templateSaveConflictJSON struct {
 	Message      string   `json:"message"`
 }
 
+type rootGuidanceJSON struct {
+	Agents    bool `json:"agents"`
+	Humans    bool `json:"humans"`
+	Bootstrap bool `json:"bootstrap"`
+}
+
 type templateSaveManifestJSON struct {
-	HarnessID          string `json:"harness_id"`
-	DefaultTemplate    bool   `json:"default_template"`
-	CreatedFromBranch  string `json:"created_from_branch"`
-	CreatedFromCommit  string `json:"created_from_commit"`
-	CreatedAt          string `json:"created_at"`
-	IncludesRootAgents bool   `json:"includes_root_agents"`
+	HarnessID         string           `json:"harness_id"`
+	DefaultTemplate   bool             `json:"default_template"`
+	CreatedFromBranch string           `json:"created_from_branch"`
+	CreatedFromCommit string           `json:"created_from_commit"`
+	CreatedAt         string           `json:"created_at"`
+	RootGuidance      rootGuidanceJSON `json:"root_guidance"`
 }
 
 type templateSaveVariableJSON struct {
@@ -60,51 +66,51 @@ type templateSaveVariableJSON struct {
 }
 
 type templateSavePreviewJSON struct {
-	DryRun             bool                              `json:"dry_run"`
-	HarnessRoot        string                            `json:"harness_root"`
-	HarnessID          string                            `json:"harness_id"`
-	TargetBranch       string                            `json:"target_branch"`
-	Files              []string                          `json:"files"`
-	Warnings           []string                          `json:"warnings,omitempty"`
-	MemberCount        int                               `json:"member_count"`
-	DefaultTemplate    bool                              `json:"default_template"`
-	IncludesRootAgents bool                              `json:"includes_root_agents"`
-	Replacements       []templateSaveFileReplacementJSON `json:"replacements"`
-	Ambiguities        []templateSaveFileAmbiguityJSON   `json:"ambiguities"`
-	Conflicts          []templateSaveConflictJSON        `json:"conflicts,omitempty"`
-	Manifest           templateSaveManifestJSON          `json:"manifest"`
-	Members            []string                          `json:"members"`
-	Variables          []templateSaveVariableJSON        `json:"variables"`
+	DryRun          bool                              `json:"dry_run"`
+	HarnessRoot     string                            `json:"harness_root"`
+	HarnessID       string                            `json:"harness_id"`
+	TargetBranch    string                            `json:"target_branch"`
+	Files           []string                          `json:"files"`
+	Warnings        []string                          `json:"warnings,omitempty"`
+	MemberCount     int                               `json:"member_count"`
+	DefaultTemplate bool                              `json:"default_template"`
+	RootGuidance    rootGuidanceJSON                  `json:"root_guidance"`
+	Replacements    []templateSaveFileReplacementJSON `json:"replacements"`
+	Ambiguities     []templateSaveFileAmbiguityJSON   `json:"ambiguities"`
+	Conflicts       []templateSaveConflictJSON        `json:"conflicts,omitempty"`
+	Manifest        templateSaveManifestJSON          `json:"manifest"`
+	Members         []string                          `json:"members"`
+	Variables       []templateSaveVariableJSON        `json:"variables"`
 }
 
 type templateSaveFailureJSON struct {
-	DryRun             bool                            `json:"dry_run"`
-	Saved              bool                            `json:"saved"`
-	Stage              string                          `json:"stage,omitempty"`
-	Reason             string                          `json:"reason,omitempty"`
-	HarnessRoot        string                          `json:"harness_root"`
-	HarnessID          string                          `json:"harness_id,omitempty"`
-	TargetBranch       string                          `json:"target_branch"`
-	DefaultTemplate    bool                            `json:"default_template"`
-	IncludesRootAgents bool                            `json:"includes_root_agents"`
-	OverwriteRequired  bool                            `json:"overwrite_required,omitempty"`
-	Ambiguities        []templateSaveFileAmbiguityJSON `json:"ambiguities,omitempty"`
-	Conflicts          []templateSaveConflictJSON      `json:"conflicts,omitempty"`
-	Message            string                          `json:"message"`
+	DryRun            bool                            `json:"dry_run"`
+	Saved             bool                            `json:"saved"`
+	Stage             string                          `json:"stage,omitempty"`
+	Reason            string                          `json:"reason,omitempty"`
+	HarnessRoot       string                          `json:"harness_root"`
+	HarnessID         string                          `json:"harness_id,omitempty"`
+	TargetBranch      string                          `json:"target_branch"`
+	DefaultTemplate   bool                            `json:"default_template"`
+	RootGuidance      rootGuidanceJSON                `json:"root_guidance"`
+	OverwriteRequired bool                            `json:"overwrite_required,omitempty"`
+	Ambiguities       []templateSaveFileAmbiguityJSON `json:"ambiguities,omitempty"`
+	Conflicts         []templateSaveConflictJSON      `json:"conflicts,omitempty"`
+	Message           string                          `json:"message"`
 }
 
 type templateSaveResultJSON struct {
-	DryRun             bool     `json:"dry_run"`
-	HarnessRoot        string   `json:"harness_root"`
-	HarnessID          string   `json:"harness_id"`
-	TargetBranch       string   `json:"target_branch"`
-	Ref                string   `json:"ref"`
-	Commit             string   `json:"commit"`
-	Files              []string `json:"files"`
-	Warnings           []string `json:"warnings,omitempty"`
-	MemberCount        int      `json:"member_count"`
-	DefaultTemplate    bool     `json:"default_template"`
-	IncludesRootAgents bool     `json:"includes_root_agents"`
+	DryRun          bool             `json:"dry_run"`
+	HarnessRoot     string           `json:"harness_root"`
+	HarnessID       string           `json:"harness_id"`
+	TargetBranch    string           `json:"target_branch"`
+	Ref             string           `json:"ref"`
+	Commit          string           `json:"commit"`
+	Files           []string         `json:"files"`
+	Warnings        []string         `json:"warnings,omitempty"`
+	MemberCount     int              `json:"member_count"`
+	DefaultTemplate bool             `json:"default_template"`
+	RootGuidance    rootGuidanceJSON `json:"root_guidance"`
 }
 
 // NewTemplateSaveCommand creates the harness template save command.
@@ -119,7 +125,7 @@ func NewTemplateSaveCommand() *cobra.Command {
 			"  harness template save --to harness-template/workspace\n" +
 			"  harness template save --to harness-template/workspace --dry-run\n" +
 			"  harness template save --to harness-template/workspace --edit-template\n" +
-			"  harness template save --to harness-template/workspace --include-completed-bootstrap\n" +
+			"  harness template save --to harness-template/workspace --include-bootstrap\n" +
 			"  harness template save --to harness-template/workspace --default --json\n",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
@@ -159,9 +165,9 @@ func NewTemplateSaveCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("read --edit-template flag: %w", err)
 			}
-			includeCompletedBootstrap, err := cmd.Flags().GetBool("include-completed-bootstrap")
+			includeBootstrap, err := cmd.Flags().GetBool("include-bootstrap")
 			if err != nil {
-				return fmt.Errorf("read --include-completed-bootstrap flag: %w", err)
+				return fmt.Errorf("read --include-bootstrap flag: %w", err)
 			}
 
 			jsonOutput, err := wantJSON(cmd)
@@ -174,12 +180,12 @@ func NewTemplateSaveCommand() *cobra.Command {
 			}
 
 			previewInput := harnesspkg.TemplateSavePreviewInput{
-				RepoRoot:                  resolved.Repo.Root,
-				TargetBranch:              targetBranch,
-				DefaultTemplate:           defaultTemplate,
-				EditTemplate:              editTemplate,
-				Now:                       time.Now().UTC(),
-				IncludeCompletedBootstrap: includeCompletedBootstrap,
+				RepoRoot:         resolved.Repo.Root,
+				TargetBranch:     targetBranch,
+				DefaultTemplate:  defaultTemplate,
+				EditTemplate:     editTemplate,
+				Now:              time.Now().UTC(),
+				IncludeBootstrap: includeBootstrap,
 			}
 			if editTemplate {
 				editor, err := orbittemplate.NewEnvironmentEditor()
@@ -281,7 +287,7 @@ func NewTemplateSaveCommand() *cobra.Command {
 			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "default_template: %t\n", result.Preview.Manifest.Template.DefaultTemplate); err != nil {
 				return fmt.Errorf("write command output: %w", err)
 			}
-			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "includes_root_agents: %t\n", result.Preview.Manifest.Template.IncludesRootAgents); err != nil {
+			if err := emitRootGuidanceText(cmd, result.Preview.Manifest.Template.RootGuidance); err != nil {
 				return fmt.Errorf("write command output: %w", err)
 			}
 			if err := emitTemplateSaveWarnings(cmd, result.Preview.Warnings); err != nil {
@@ -295,7 +301,7 @@ func NewTemplateSaveCommand() *cobra.Command {
 	cmd.Flags().String("to", "", "Target harness template branch name")
 	cmd.Flags().Bool("dry-run", false, "Preview harness template save without writing a branch")
 	cmd.Flags().Bool("edit-template", false, "Edit the generated harness template tree before saving")
-	cmd.Flags().Bool("include-completed-bootstrap", false, "Include currently still-present completed bootstrap export files in the save preview/write set")
+	cmd.Flags().Bool("include-bootstrap", false, "Include bootstrap guidance and currently still-present completed bootstrap export files in the save preview/write set")
 	cmd.Flags().Bool("overwrite", false, "Overwrite an existing target harness template branch")
 	cmd.Flags().Bool("default", false, "Mark the saved harness template branch as the default template candidate")
 	addPathFlag(cmd)
@@ -391,7 +397,7 @@ func emitTemplateSavePreview(cmd *cobra.Command, preview harnesspkg.TemplateSave
 	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "created_at: %s\n", preview.Manifest.Template.CreatedAt.UTC().Format(time.RFC3339)); err != nil {
 		return fmt.Errorf("write command output: %w", err)
 	}
-	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "includes_root_agents: %t\n", preview.Manifest.Template.IncludesRootAgents); err != nil {
+	if err := emitRootGuidanceText(cmd, preview.Manifest.Template.RootGuidance); err != nil {
 		return fmt.Errorf("write command output: %w", err)
 	}
 
@@ -462,6 +468,23 @@ func emitTemplateSaveWarnings(cmd *cobra.Command, warnings []string) error {
 	return nil
 }
 
+func emitRootGuidanceText(cmd *cobra.Command, rootGuidance harnesspkg.RootGuidanceMetadata) error {
+	if _, err := fmt.Fprintln(cmd.OutOrStdout(), "root_guidance:"); err != nil {
+		return fmt.Errorf("write command output: %w", err)
+	}
+	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "agents: %t\n", rootGuidance.Agents); err != nil {
+		return fmt.Errorf("write command output: %w", err)
+	}
+	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "humans: %t\n", rootGuidance.Humans); err != nil {
+		return fmt.Errorf("write command output: %w", err)
+	}
+	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "bootstrap: %t\n", rootGuidance.Bootstrap); err != nil {
+		return fmt.Errorf("write command output: %w", err)
+	}
+
+	return nil
+}
+
 func templateSavePreviewPayload(repoRoot string, preview harnesspkg.TemplateSavePreview) templateSavePreviewJSON {
 	memberIDs := make([]string, 0, len(preview.Manifest.Members))
 	for _, member := range preview.Manifest.Members {
@@ -470,24 +493,24 @@ func templateSavePreviewPayload(repoRoot string, preview harnesspkg.TemplateSave
 	sort.Strings(memberIDs)
 
 	return templateSavePreviewJSON{
-		DryRun:             true,
-		HarnessRoot:        repoRoot,
-		HarnessID:          preview.HarnessID,
-		TargetBranch:       preview.TargetBranch,
-		Files:              preview.FilePaths(),
-		Warnings:           append([]string(nil), preview.Warnings...),
-		MemberCount:        len(preview.Manifest.Members),
-		DefaultTemplate:    preview.Manifest.Template.DefaultTemplate,
-		IncludesRootAgents: preview.Manifest.Template.IncludesRootAgents,
-		Replacements:       templateSaveReplacementPayload(preview.ReplacementSummaries),
-		Ambiguities:        templateSaveAmbiguityPayload(preview.Ambiguities, preview.AmbiguitySources),
+		DryRun:          true,
+		HarnessRoot:     repoRoot,
+		HarnessID:       preview.HarnessID,
+		TargetBranch:    preview.TargetBranch,
+		Files:           preview.FilePaths(),
+		Warnings:        append([]string(nil), preview.Warnings...),
+		MemberCount:     len(preview.Manifest.Members),
+		DefaultTemplate: preview.Manifest.Template.DefaultTemplate,
+		RootGuidance:    rootGuidancePayload(preview.Manifest.Template.RootGuidance),
+		Replacements:    templateSaveReplacementPayload(preview.ReplacementSummaries),
+		Ambiguities:     templateSaveAmbiguityPayload(preview.Ambiguities, preview.AmbiguitySources),
 		Manifest: templateSaveManifestJSON{
-			HarnessID:          preview.HarnessID,
-			DefaultTemplate:    preview.Manifest.Template.DefaultTemplate,
-			CreatedFromBranch:  preview.Manifest.Template.CreatedFromBranch,
-			CreatedFromCommit:  preview.Manifest.Template.CreatedFromCommit,
-			CreatedAt:          preview.Manifest.Template.CreatedAt.UTC().Format(time.RFC3339),
-			IncludesRootAgents: preview.Manifest.Template.IncludesRootAgents,
+			HarnessID:         preview.HarnessID,
+			DefaultTemplate:   preview.Manifest.Template.DefaultTemplate,
+			CreatedFromBranch: preview.Manifest.Template.CreatedFromBranch,
+			CreatedFromCommit: preview.Manifest.Template.CreatedFromCommit,
+			CreatedAt:         preview.Manifest.Template.CreatedAt.UTC().Format(time.RFC3339),
+			RootGuidance:      rootGuidancePayload(preview.Manifest.Template.RootGuidance),
 		},
 		Members:   memberIDs,
 		Variables: templateSaveVariablePayload(preview.Manifest.Variables),
@@ -516,16 +539,16 @@ func templateSaveFailurePayload(
 ) (templateSaveFailureJSON, bool) {
 	if preview != nil && len(preview.Ambiguities) > 0 {
 		return templateSaveFailureJSON{
-			DryRun:             false,
-			Saved:              false,
-			Stage:              "preview",
-			Reason:             "replacement_ambiguity",
-			HarnessRoot:        repoRoot,
-			HarnessID:          preview.HarnessID,
-			TargetBranch:       preview.TargetBranch,
-			DefaultTemplate:    preview.Manifest.Template.DefaultTemplate,
-			IncludesRootAgents: preview.Manifest.Template.IncludesRootAgents,
-			Ambiguities:        templateSaveAmbiguityPayload(preview.Ambiguities, preview.AmbiguitySources),
+			DryRun:          false,
+			Saved:           false,
+			Stage:           "preview",
+			Reason:          "replacement_ambiguity",
+			HarnessRoot:     repoRoot,
+			HarnessID:       preview.HarnessID,
+			TargetBranch:    preview.TargetBranch,
+			DefaultTemplate: preview.Manifest.Template.DefaultTemplate,
+			RootGuidance:    rootGuidancePayload(preview.Manifest.Template.RootGuidance),
+			Ambiguities:     templateSaveAmbiguityPayload(preview.Ambiguities, preview.AmbiguitySources),
 			Message: fmt.Sprintf(
 				"replacement ambiguity detected in %s; resolve the previewed ambiguities before saving",
 				harnesspkg.FormatTemplateAmbiguitySources(preview.AmbiguitySources),
@@ -551,7 +574,7 @@ func templateSaveFailurePayload(
 				payload.HarnessID = preview.HarnessID
 				payload.TargetBranch = preview.TargetBranch
 				payload.DefaultTemplate = preview.Manifest.Template.DefaultTemplate
-				payload.IncludesRootAgents = preview.Manifest.Template.IncludesRootAgents
+				payload.RootGuidance = rootGuidancePayload(preview.Manifest.Template.RootGuidance)
 			}
 			return payload, true
 		}
@@ -597,17 +620,25 @@ func templateSaveConflicts(err error) ([]templateSaveConflictJSON, bool) {
 
 func templateSaveResultPayload(repoRoot string, result harnesspkg.TemplateSaveResult) templateSaveResultJSON {
 	return templateSaveResultJSON{
-		DryRun:             false,
-		HarnessRoot:        repoRoot,
-		HarnessID:          result.Preview.HarnessID,
-		TargetBranch:       result.WriteResult.Branch,
-		Ref:                result.WriteResult.Ref,
-		Commit:             result.WriteResult.Commit,
-		Files:              result.Preview.FilePaths(),
-		Warnings:           append([]string(nil), result.Preview.Warnings...),
-		MemberCount:        len(result.Preview.Manifest.Members),
-		DefaultTemplate:    result.Preview.Manifest.Template.DefaultTemplate,
-		IncludesRootAgents: result.Preview.Manifest.Template.IncludesRootAgents,
+		DryRun:          false,
+		HarnessRoot:     repoRoot,
+		HarnessID:       result.Preview.HarnessID,
+		TargetBranch:    result.WriteResult.Branch,
+		Ref:             result.WriteResult.Ref,
+		Commit:          result.WriteResult.Commit,
+		Files:           result.Preview.FilePaths(),
+		Warnings:        append([]string(nil), result.Preview.Warnings...),
+		MemberCount:     len(result.Preview.Manifest.Members),
+		DefaultTemplate: result.Preview.Manifest.Template.DefaultTemplate,
+		RootGuidance:    rootGuidancePayload(result.Preview.Manifest.Template.RootGuidance),
+	}
+}
+
+func rootGuidancePayload(rootGuidance harnesspkg.RootGuidanceMetadata) rootGuidanceJSON {
+	return rootGuidanceJSON{
+		Agents:    rootGuidance.Agents,
+		Humans:    rootGuidance.Humans,
+		Bootstrap: rootGuidance.Bootstrap,
 	}
 }
 
