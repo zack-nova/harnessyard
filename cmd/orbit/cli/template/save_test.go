@@ -290,6 +290,78 @@ func TestBuildTemplateSavePreviewKeepsAgentsTemplateInCompanionSpecAndSkipsRootA
 	}, preview.Manifest.Variables)
 }
 
+func TestBuildTemplateSavePreviewSkipsRuntimeGuidanceExportsAndWarns(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, ".orbit/config.yaml", ""+
+		"version: 1\n"+
+		"shared_scope: []\n"+
+		"behavior:\n"+
+		"  outside_changes_mode: warn\n"+
+		"  block_switch_if_hidden_dirty: true\n"+
+		"  commit_append_trailer: true\n"+
+		"  sparse_checkout_mode: no-cone\n")
+	repo.WriteFile(t, ".harness/orbits/docs.yaml", ""+
+		"package:\n"+
+		"  type: orbit\n"+
+		"  name: docs\n"+
+		"description: Docs orbit\n"+
+		"meta:\n"+
+		"  file: .harness/orbits/docs.yaml\n"+
+		"  agents_template: |\n"+
+		"    Docs orbit for $project_name\n"+
+		"  humans_template: |\n"+
+		"    Run docs workflow for $project_name\n"+
+		"  include_in_projection: true\n"+
+		"  include_in_write: true\n"+
+		"  include_in_export: true\n"+
+		"  include_description_in_orchestration: true\n"+
+		"content:\n"+
+		"  - name: guide-docs\n"+
+		"    role: rule\n"+
+		"    paths:\n"+
+		"      include:\n"+
+		"        - AGENTS.md\n"+
+		"        - HUMANS.md\n"+
+		"        - README.md\n"+
+		"behavior:\n"+
+		"  scope:\n"+
+		"    projection_roles: [meta, subject, rule, process]\n"+
+		"    write_roles: [meta, rule]\n"+
+		"    export_roles: [meta, rule]\n"+
+		"    orchestration_roles: [meta, rule, process]\n"+
+		"  orchestration:\n"+
+		"    include_orbit_description: true\n"+
+		"    materialize_agents_from_meta: true\n")
+	repo.WriteFile(t, ".harness/vars.yaml", ""+
+		"schema_version: 1\n"+
+		"variables:\n"+
+		"  project_name:\n"+
+		"    value: Orbit\n"+
+		"    description: Product title\n")
+	repo.WriteFile(t, "AGENTS.md", "Docs orbit for Orbit\n")
+	repo.WriteFile(t, "HUMANS.md", "Run docs workflow for Orbit\n")
+	repo.WriteFile(t, "README.md", "Orbit readme\n")
+	repo.AddAndCommit(t, "seed runtime repo with guidance artifacts in member export")
+
+	preview, err := BuildTemplateSavePreview(context.Background(), TemplateSavePreviewInput{
+		RepoRoot:     repo.Root,
+		OrbitID:      "docs",
+		TargetBranch: "orbit-template/docs",
+		Now:          time.Date(2026, time.March, 21, 10, 0, 0, 0, time.UTC),
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, []string{
+		".harness/orbits/docs.yaml",
+		"README.md",
+	}, preview.FilePaths())
+	require.Equal(t, []string{
+		"skip runtime guidance export paths for orbit \"docs\": AGENTS.md, HUMANS.md; template publishing uses meta.agents_template/meta.humans_template instead",
+	}, preview.Warnings)
+}
+
 func TestBuildTemplateSavePreviewIncludesCapabilityAssetsAndKeepsCapabilitiesInCompanionSpec(t *testing.T) {
 	t.Parallel()
 

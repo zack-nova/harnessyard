@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -141,9 +142,11 @@ func BuildTemplateSavePreview(ctx context.Context, input TemplateSavePreviewInpu
 	buildResult.Files = normalizeTemplateSaveFiles(buildResult.Files)
 	sortFileReplacementSummaries(buildResult.ReplacementSummaries)
 	sortFileReplacementAmbiguities(buildResult.Ambiguities)
-	if err := ensureWorktreeExportPayloadIsPresent(ctx, input.RepoRoot, repoConfig, spec, buildResult.Files, input.IncludeCompletedBootstrap); err != nil {
+	payloadWarnings, err := ensureWorktreeExportPayloadIsPresent(ctx, input.RepoRoot, repoConfig, spec, buildResult.Files, input.IncludeCompletedBootstrap)
+	if err != nil {
 		return TemplateSavePreview{}, err
 	}
+	warnings = append(warnings, payloadWarnings...)
 
 	state, err := LoadCurrentRepoState(ctx, input.RepoRoot)
 	if err != nil {
@@ -214,19 +217,19 @@ func ensureWorktreeExportPayloadIsPresent(
 	spec orbit.OrbitSpec,
 	payloadFiles []CandidateFile,
 	includeCompletedBootstrap bool,
-) error {
+) ([]string, error) {
 	if !spec.HasMemberSchema() {
-		return nil
+		return nil, nil
 	}
 
 	worktreeFiles, err := gitpkg.WorktreeFiles(ctx, repoRoot)
 	if err != nil {
-		return fmt.Errorf("load worktree files: %w", err)
+		return nil, fmt.Errorf("load worktree files: %w", err)
 	}
 
 	worktreePlan, err := orbit.ResolveProjectionPlan(repoConfig, spec, worktreeFiles)
 	if err != nil {
-		return fmt.Errorf("load worktree export plan: %w", err)
+		return nil, fmt.Errorf("load worktree export plan: %w", err)
 	}
 	filteredWorktreeExport, err := FilterCompletedBootstrapExportPaths(ctx, RuntimeExportBootstrapFilterInput{
 		RepoRoot:                  repoRoot,
@@ -236,7 +239,7 @@ func ensureWorktreeExportPayloadIsPresent(
 		IncludeCompletedBootstrap: includeCompletedBootstrap,
 	})
 	if err != nil {
-		return fmt.Errorf("filter worktree bootstrap export paths: %w", err)
+		return nil, fmt.Errorf("filter worktree bootstrap export paths: %w", err)
 	}
 
 	payloadSet := make(map[string]struct{}, len(payloadFiles))
@@ -245,26 +248,51 @@ func ensureWorktreeExportPayloadIsPresent(
 	}
 
 	missingPayloadPaths := make([]string, 0)
+	skippedRuntimeGuidancePaths := make([]string, 0)
 	for _, path := range filteredWorktreeExport.ExportPaths {
 		if _, ok := payloadSet[path]; ok {
 			continue
 		}
+		if isRuntimeGuidanceTemplateArtifact(path) {
+			skippedRuntimeGuidancePaths = append(skippedRuntimeGuidancePaths, path)
+			continue
+		}
 		missingPayloadPaths = append(missingPayloadPaths, path)
 	}
+
+	warnings := skippedRuntimeGuidanceExportWarnings(spec.ID, skippedRuntimeGuidancePaths)
 	if len(missingPayloadPaths) == 0 {
-		return nil
+		return warnings, nil
 	}
 
 	if len(missingPayloadPaths) == 1 {
 		path := missingPayloadPaths[0]
-		return fmt.Errorf("member export path %q is missing from the template payload; run git add %s before template save", path, path)
+		return warnings, fmt.Errorf("member export path %q is missing from the template payload; run git add %s before template save", path, path)
 	}
 
-	return fmt.Errorf(
+	return warnings, fmt.Errorf(
 		"member export paths are missing from the template payload: %s; run git add %s before template save",
 		strings.Join(missingPayloadPaths, ", "),
 		strings.Join(missingPayloadPaths, " "),
 	)
+}
+
+func isRuntimeGuidanceTemplateArtifact(path string) bool {
+	return path == sharedFilePathAgents || path == runtimeHumansRepoPath
+}
+
+func skippedRuntimeGuidanceExportWarnings(orbitID string, paths []string) []string {
+	if len(paths) == 0 {
+		return nil
+	}
+	sort.Strings(paths)
+	return []string{
+		fmt.Sprintf(
+			"skip runtime guidance export paths for orbit %q: %s; template publishing uses meta.agents_template/meta.humans_template instead",
+			orbitID,
+			strings.Join(paths, ", "),
+		),
+	}
 }
 
 func loadTemplateSaveRepositoryConfig(ctx context.Context, repoRoot string) (orbit.RepositoryConfig, error) {
