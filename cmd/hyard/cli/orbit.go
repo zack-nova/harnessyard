@@ -51,6 +51,7 @@ func newOrbitRenameCommand() *cobra.Command {
 		Short: "Rename a hosted orbit package",
 		Long: "Rename a hosted orbit package in the current workspace.\n" +
 			"The command updates the hosted OrbitSpec filename, package identity, meta.file,\n" +
+			"package-owned paths, package-prefixed member markers, runtime guidance markers,\n" +
 			"and the current source/orbit-template manifest when it points at the renamed package.",
 		Example: "" +
 			"  hyard orbit rename docs api\n" +
@@ -87,6 +88,11 @@ func newOrbitRenameCommand() *cobra.Command {
 			}
 			for _, renamedPath := range result.RenamedPaths {
 				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "renamed_path: %s -> %s\n", renamedPath.OldPath, renamedPath.NewPath); err != nil {
+					return fmt.Errorf("write command output: %w", err)
+				}
+			}
+			for _, updatedFile := range result.UpdatedFiles {
+				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "updated_file: %s\n", updatedFile); err != nil {
 					return fmt.Errorf("write command output: %w", err)
 				}
 			}

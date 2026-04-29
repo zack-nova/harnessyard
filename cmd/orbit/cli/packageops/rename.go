@@ -1,21 +1,29 @@
 package packageops
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
+	gitpkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/git"
 	"github.com/zack-nova/harnessyard/cmd/orbit/cli/harness"
 	"github.com/zack-nova/harnessyard/cmd/orbit/cli/ids"
+	"github.com/zack-nova/harnessyard/cmd/orbit/cli/internal/contractutil"
 	"github.com/zack-nova/harnessyard/cmd/orbit/cli/orbit"
+	orbittemplate "github.com/zack-nova/harnessyard/cmd/orbit/cli/template"
+	"gopkg.in/yaml.v3"
 )
 
 const manifestRelativePath = ".harness/manifest.yaml"
+
+var runtimeGuidanceMarkerLinePattern = regexp.MustCompile(`^<!--\s*orbit:(begin|end)\s+orbit_id="([^"]+)"\s*-->$`)
 
 // RenameHostedOrbitPackageResult summarizes a hosted orbit package rename.
 type RenameHostedOrbitPackageResult struct {
@@ -27,6 +35,7 @@ type RenameHostedOrbitPackageResult struct {
 	ManifestPath      string        `json:"manifest_path,omitempty"`
 	ManifestChanged   bool          `json:"manifest_changed"`
 	RenamedPaths      []RenamedPath `json:"renamed_paths,omitempty"`
+	UpdatedFiles      []string      `json:"updated_files,omitempty"`
 }
 
 // RenamedPath records one repo-relative package-owned path moved during rename.
@@ -39,6 +48,12 @@ type manifestRenamePlan struct {
 	path    string
 	changed bool
 	file    harness.ManifestFile
+}
+
+type fileMutation struct {
+	Path     string
+	Original []byte
+	Next     []byte
 }
 
 // RenameHostedOrbitPackage renames the authored hosted OrbitSpec identity and
@@ -112,8 +127,28 @@ func RenameHostedOrbitPackage(ctx context.Context, repoRoot string, oldPackage s
 		}
 		return RenameHostedOrbitPackageResult{}, err
 	}
+	fileMutations, err := planRenameFileMutations(ctx, repoRoot, renamedSpec, appliedPathRenames, oldPackage, newPackage)
+	if err != nil {
+		if rollbackErr := rollbackPathRenames(repoRoot, appliedPathRenames); rollbackErr != nil {
+			return RenameHostedOrbitPackageResult{}, fmt.Errorf("plan renamed package file updates: %w; rollback renamed paths: %w", err, rollbackErr)
+		}
+		return RenameHostedOrbitPackageResult{}, err
+	}
+	appliedFileMutations, err := applyFileMutations(repoRoot, fileMutations)
+	if err != nil {
+		if rollbackErr := rollbackFileMutations(repoRoot, appliedFileMutations); rollbackErr != nil {
+			return RenameHostedOrbitPackageResult{}, fmt.Errorf("update renamed package files: %w; rollback updated files: %w", err, rollbackErr)
+		}
+		if rollbackErr := rollbackPathRenames(repoRoot, appliedPathRenames); rollbackErr != nil {
+			return RenameHostedOrbitPackageResult{}, fmt.Errorf("update renamed package files: %w; rollback renamed paths: %w", err, rollbackErr)
+		}
+		return RenameHostedOrbitPackageResult{}, err
+	}
 
 	if _, err := orbit.WriteHostedOrbitSpec(repoRoot, renamedSpec); err != nil {
+		if rollbackErr := rollbackFileMutations(repoRoot, appliedFileMutations); rollbackErr != nil {
+			return RenameHostedOrbitPackageResult{}, fmt.Errorf("write renamed orbit package: %w; rollback updated files: %w", err, rollbackErr)
+		}
 		if rollbackErr := rollbackPathRenames(repoRoot, appliedPathRenames); rollbackErr != nil {
 			return RenameHostedOrbitPackageResult{}, fmt.Errorf("write renamed orbit package: %w; rollback renamed paths: %w", err, rollbackErr)
 		}
@@ -123,6 +158,9 @@ func RenameHostedOrbitPackage(ctx context.Context, repoRoot string, oldPackage s
 		if _, err := harness.WriteManifestFile(repoRoot, manifestPlan.file); err != nil {
 			if cleanupErr := os.Remove(newPath); cleanupErr != nil && !errors.Is(cleanupErr, os.ErrNotExist) {
 				return RenameHostedOrbitPackageResult{}, fmt.Errorf("write renamed manifest package: %w; rollback new orbit package %q: %w", err, newPackage, cleanupErr)
+			}
+			if rollbackErr := rollbackFileMutations(repoRoot, appliedFileMutations); rollbackErr != nil {
+				return RenameHostedOrbitPackageResult{}, fmt.Errorf("write renamed manifest package: %w; rollback updated files: %w", err, rollbackErr)
 			}
 			if rollbackErr := rollbackPathRenames(repoRoot, appliedPathRenames); rollbackErr != nil {
 				return RenameHostedOrbitPackageResult{}, fmt.Errorf("write renamed manifest package: %w; rollback renamed paths: %w", err, rollbackErr)
@@ -143,6 +181,7 @@ func RenameHostedOrbitPackage(ctx context.Context, repoRoot string, oldPackage s
 		ManifestPath:      manifestPlan.path,
 		ManifestChanged:   manifestPlan.changed,
 		RenamedPaths:      appliedPathRenames,
+		UpdatedFiles:      mutationPaths(appliedFileMutations),
 	}, nil
 }
 
@@ -166,9 +205,11 @@ func renamedHostedSpec(spec orbit.OrbitSpec, oldPackage string, newPackage strin
 		spec.Meta.File = newRelativePath
 	}
 	for index := range spec.Members {
+		spec.Members[index] = renamedOrbitMemberIdentity(spec.Members[index], oldPackage, newPackage)
 		spec.Members[index].Paths = renamedOrbitMemberPaths(spec.Members[index].Paths, oldPackage, newPackage, &pathRenames)
 	}
 	for index := range spec.Content {
+		spec.Content[index] = renamedOrbitMemberIdentity(spec.Content[index], oldPackage, newPackage)
 		spec.Content[index].Paths = renamedOrbitMemberPaths(spec.Content[index].Paths, oldPackage, newPackage, &pathRenames)
 	}
 	if spec.Capabilities != nil {
@@ -181,6 +222,7 @@ func renamedHostedSpec(spec orbit.OrbitSpec, oldPackage string, newPackage strin
 	}
 	if spec.AgentAddons != nil && spec.AgentAddons.Hooks != nil {
 		for index := range spec.AgentAddons.Hooks.Entries {
+			spec.AgentAddons.Hooks.Entries[index].ID = renamedIdentifier(spec.AgentAddons.Hooks.Entries[index].ID, oldPackage, newPackage)
 			nextPath, renames := renamedPathPattern(spec.AgentAddons.Hooks.Entries[index].Handler.Path, oldPackage, newPackage)
 			spec.AgentAddons.Hooks.Entries[index].Handler.Path = nextPath
 			pathRenames = append(pathRenames, renames...)
@@ -223,14 +265,26 @@ func planManifestRename(repoRoot string, oldPackage string, newPackage string) (
 		plan.file.Template.OrbitID = newPackage
 		plan.changed = true
 	case harness.ManifestKindRuntime, harness.ManifestKindHarnessTemplate:
+		oldMemberFound := false
 		for _, member := range file.Members {
-			if manifestOrbitName(member.Package, member.OrbitID) == oldPackage {
-				return manifestRenamePlan{}, fmt.Errorf("renaming runtime or harness-template members is not supported yet; remove or reinstall package %q instead", oldPackage)
+			current := manifestOrbitName(member.Package, member.OrbitID)
+			if current == newPackage {
+				return manifestRenamePlan{}, fmt.Errorf("%s member package %q already exists", manifestKindLabel(file.Kind), newPackage)
 			}
+			if current == oldPackage {
+				oldMemberFound = true
+			}
+		}
+		if oldMemberFound {
+			return manifestRenamePlan{}, fmt.Errorf("renaming runtime or harness-template members is not supported yet; remove or reinstall package %q instead", oldPackage)
 		}
 	}
 
 	return plan, nil
+}
+
+func manifestKindLabel(kind string) string {
+	return strings.ReplaceAll(kind, "_", "-")
 }
 
 func manifestOrbitName(identity ids.PackageIdentity, fallback string) string {
@@ -244,6 +298,25 @@ func renamedOrbitIdentity(identity ids.PackageIdentity, newPackage string) ids.P
 	identity.Type = ids.PackageTypeOrbit
 	identity.Name = newPackage
 	return identity
+}
+
+func renamedOrbitMemberIdentity(member orbit.OrbitMember, oldPackage string, newPackage string) orbit.OrbitMember {
+	member.Key = renamedIdentifier(member.Key, oldPackage, newPackage)
+	member.Name = renamedIdentifier(member.Name, oldPackage, newPackage)
+	return member
+}
+
+func renamedIdentifier(value string, oldPackage string, newPackage string) string {
+	switch {
+	case value == oldPackage:
+		return newPackage
+	case strings.HasPrefix(value, oldPackage+"-"):
+		return newPackage + strings.TrimPrefix(value, oldPackage)
+	case strings.HasPrefix(value, oldPackage+"_"):
+		return newPackage + strings.TrimPrefix(value, oldPackage)
+	default:
+		return value
+	}
 }
 
 func renamedOrbitMemberPaths(paths orbit.OrbitMemberPaths, oldPackage string, newPackage string, pathRenames *[]RenamedPath) orbit.OrbitMemberPaths {
@@ -445,4 +518,373 @@ func rollbackPathRenames(repoRoot string, pathRenames []RenamedPath) error {
 	}
 
 	return nil
+}
+
+func planRenameFileMutations(
+	ctx context.Context,
+	repoRoot string,
+	spec orbit.OrbitSpec,
+	pathRenames []RenamedPath,
+	oldPackage string,
+	newPackage string,
+) ([]fileMutation, error) {
+	candidatePaths := map[string]struct{}{
+		"AGENTS.md":    {},
+		"HUMANS.md":    {},
+		"BOOTSTRAP.md": {},
+	}
+
+	worktreeFiles, err := gitpkg.WorktreeFiles(ctx, repoRoot)
+	if err != nil {
+		return nil, fmt.Errorf("list worktree files: %w", err)
+	}
+	for _, file := range worktreeFiles {
+		normalizedPath, err := ids.NormalizeRepoRelativePath(file)
+		if err != nil {
+			return nil, fmt.Errorf("normalize worktree file %q: %w", file, err)
+		}
+		if !isMemberHintFile(normalizedPath) {
+			continue
+		}
+		owned, err := packageRenameShouldUpdateMemberHint(spec, pathRenames, normalizedPath)
+		if err != nil {
+			return nil, err
+		}
+		if owned {
+			candidatePaths[normalizedPath] = struct{}{}
+		}
+	}
+
+	paths := make([]string, 0, len(candidatePaths))
+	for path := range candidatePaths {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+
+	mutations := make([]fileMutation, 0, len(paths))
+	for _, candidatePath := range paths {
+		mutation, ok, err := planRenameFileMutation(repoRoot, candidatePath, oldPackage, newPackage)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			mutations = append(mutations, mutation)
+		}
+	}
+
+	return mutations, nil
+}
+
+func packageRenameShouldUpdateMemberHint(spec orbit.OrbitSpec, pathRenames []RenamedPath, normalizedPath string) (bool, error) {
+	if pathUnderAnyRenamedPath(normalizedPath, pathRenames) {
+		return true, nil
+	}
+	if len(spec.Include) > 0 {
+		matches, err := orbit.PathMatchesOrbit(orbit.GlobalConfig{}, spec.LegacyDefinition(), normalizedPath)
+		if err != nil {
+			return false, fmt.Errorf("match member hint file %q against legacy include paths: %w", normalizedPath, err)
+		}
+		if matches {
+			return true, nil
+		}
+	}
+	if spec.HasMemberSchema() {
+		for _, member := range spec.Members {
+			matches, err := orbit.MemberMatchesPath(member, normalizedPath)
+			if err != nil {
+				return false, fmt.Errorf("match member hint file %q against member %q: %w", normalizedPath, member.Name, err)
+			}
+			if matches {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+
+	matches, err := orbit.PathMatchesOrbit(orbit.GlobalConfig{}, spec.LegacyDefinition(), normalizedPath)
+	if err != nil {
+		return false, fmt.Errorf("match member hint file %q against legacy orbit paths: %w", normalizedPath, err)
+	}
+	return matches, nil
+}
+
+func pathUnderAnyRenamedPath(normalizedPath string, pathRenames []RenamedPath) bool {
+	for _, pathRename := range pathRenames {
+		if normalizedPath == pathRename.NewPath || strings.HasPrefix(normalizedPath, pathRename.NewPath+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+func isMemberHintFile(normalizedPath string) bool {
+	if path.Base(normalizedPath) == "SKILL.md" ||
+		strings.HasPrefix(normalizedPath, "commands/") ||
+		strings.HasPrefix(normalizedPath, "skills/") {
+		return false
+	}
+	return path.Base(normalizedPath) == ".orbit-member.yaml" || path.Ext(normalizedPath) == ".md"
+}
+
+func planRenameFileMutation(repoRoot string, repoPath string, oldPackage string, newPackage string) (fileMutation, bool, error) {
+	filename := filepath.Join(repoRoot, filepath.FromSlash(repoPath))
+	//nolint:gosec // repoPath is normalized repo-relative input selected from Git-visible files or fixed root guidance names.
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return fileMutation{}, false, nil
+		}
+		return fileMutation{}, false, fmt.Errorf("read rename candidate %q: %w", repoPath, err)
+	}
+
+	var next []byte
+	var changed bool
+	switch {
+	case repoPath == "AGENTS.md" || repoPath == "HUMANS.md" || repoPath == "BOOTSTRAP.md":
+		next, changed, err = renamedRuntimeGuidanceMarkerData(data, repoPath, oldPackage, newPackage)
+	case path.Base(repoPath) == ".orbit-member.yaml":
+		next, changed, err = renamedMemberHintYAMLData(data, repoPath, oldPackage, newPackage)
+	case path.Ext(repoPath) == ".md":
+		next, changed, err = renamedMarkdownMemberHintData(data, repoPath, oldPackage, newPackage)
+	default:
+		return fileMutation{}, false, nil
+	}
+	if err != nil {
+		return fileMutation{}, false, err
+	}
+	if !changed || bytes.Equal(data, next) {
+		return fileMutation{}, false, nil
+	}
+
+	return fileMutation{Path: repoPath, Original: data, Next: next}, true, nil
+}
+
+func renamedRuntimeGuidanceMarkerData(data []byte, label string, oldPackage string, newPackage string) ([]byte, bool, error) {
+	if !bytes.Contains(data, []byte("<!-- orbit:")) {
+		return data, false, nil
+	}
+	document, err := orbittemplate.ParseRuntimeAgentsDocument(data)
+	if err != nil {
+		return nil, false, fmt.Errorf("parse %s: %w", label, err)
+	}
+	oldFound := false
+	newFound := false
+	for _, segment := range document.Segments {
+		if segment.Kind != orbittemplate.AgentsRuntimeSegmentBlock {
+			continue
+		}
+		switch segment.OrbitID {
+		case oldPackage:
+			oldFound = true
+		case newPackage:
+			newFound = true
+		}
+	}
+	if !oldFound {
+		return data, false, nil
+	}
+	if newFound {
+		return nil, false, fmt.Errorf("%s already contains orbit block %q while renaming %q", label, newPackage, oldPackage)
+	}
+
+	var output bytes.Buffer
+	for _, line := range splitLinesPreserveNewline(data) {
+		body, ending := splitLineEnding(line)
+		matches := runtimeGuidanceMarkerLinePattern.FindStringSubmatch(strings.TrimSpace(string(body)))
+		if matches != nil && matches[2] == oldPackage {
+			if _, err := fmt.Fprintf(&output, "<!-- orbit:%s orbit_id=%q -->", matches[1], newPackage); err != nil {
+				return nil, false, fmt.Errorf("write renamed %s marker: %w", label, err)
+			}
+			output.Write(ending)
+			continue
+		}
+		output.Write(line)
+	}
+
+	next := output.Bytes()
+	if _, err := orbittemplate.ParseRuntimeAgentsDocument(next); err != nil {
+		return nil, false, fmt.Errorf("parse renamed %s: %w", label, err)
+	}
+
+	return next, true, nil
+}
+
+func splitLinesPreserveNewline(data []byte) [][]byte {
+	if len(data) == 0 {
+		return nil
+	}
+	lines := make([][]byte, 0, bytes.Count(data, []byte{'\n'})+1)
+	start := 0
+	for index, value := range data {
+		if value != '\n' {
+			continue
+		}
+		lines = append(lines, append([]byte(nil), data[start:index+1]...))
+		start = index + 1
+	}
+	if start < len(data) {
+		lines = append(lines, append([]byte(nil), data[start:]...))
+	}
+	return lines
+}
+
+func splitLineEnding(line []byte) ([]byte, []byte) {
+	if !bytes.HasSuffix(line, []byte{'\n'}) {
+		return line, nil
+	}
+	body := line[:len(line)-1]
+	if bytes.HasSuffix(body, []byte{'\r'}) {
+		return body[:len(body)-1], []byte("\r\n")
+	}
+	return body, []byte{'\n'}
+}
+
+func renamedMarkdownMemberHintData(data []byte, hintPath string, oldPackage string, newPackage string) ([]byte, bool, error) {
+	content := strings.ReplaceAll(string(data), "\r\n", "\n")
+	if !strings.HasPrefix(content, "---\n") {
+		return data, false, nil
+	}
+
+	rest := strings.TrimPrefix(content, "---\n")
+	end := strings.Index(rest, "\n---\n")
+	if end < 0 {
+		return nil, false, fmt.Errorf("%s frontmatter must terminate with ---", hintPath)
+	}
+
+	frontmatterContent := []byte(rest[:end])
+	body := rest[end+len("\n---\n"):]
+	nextFrontmatter, changed, err := renamedMemberHintYAMLData(frontmatterContent, hintPath, oldPackage, newPackage)
+	if err != nil {
+		return nil, false, err
+	}
+	if !changed {
+		return data, false, nil
+	}
+
+	var output bytes.Buffer
+	output.WriteString("---\n")
+	output.Write(nextFrontmatter)
+	output.WriteString("---\n")
+	output.WriteString(body)
+
+	return output.Bytes(), true, nil
+}
+
+func renamedMemberHintYAMLData(data []byte, hintPath string, oldPackage string, newPackage string) ([]byte, bool, error) {
+	var document yaml.Node
+	if err := yaml.Unmarshal(data, &document); err != nil {
+		return nil, false, fmt.Errorf("%s member hint is invalid YAML: %w", hintPath, err)
+	}
+	if len(document.Content) == 0 {
+		return data, false, nil
+	}
+	root := document.Content[0]
+	if root.Kind != yaml.MappingNode {
+		return data, false, nil
+	}
+
+	changed, found, err := renameMemberHintNameInRoot(root, oldPackage, newPackage)
+	if err != nil {
+		return nil, false, fmt.Errorf("%s: %w", hintPath, err)
+	}
+	if !found || !changed {
+		return data, false, nil
+	}
+
+	next, err := yaml.Marshal(&document)
+	if err != nil {
+		return nil, false, fmt.Errorf("marshal renamed member hint %q: %w", hintPath, err)
+	}
+	return next, true, nil
+}
+
+func renameMemberHintNameInRoot(root *yaml.Node, oldPackage string, newPackage string) (bool, bool, error) {
+	for index := 0; index+1 < len(root.Content); index += 2 {
+		keyNode := root.Content[index]
+		valueNode := root.Content[index+1]
+		if keyNode.Value != "orbit_member" {
+			continue
+		}
+		if valueNode.Kind != yaml.MappingNode {
+			return false, true, fmt.Errorf("orbit_member must be a mapping")
+		}
+		changed, err := renameMemberHintNameInMapping(valueNode, oldPackage, newPackage)
+		return changed, true, err
+	}
+
+	if !isFlatMemberHintRoot(root) {
+		return false, false, nil
+	}
+	changed, err := renameMemberHintNameInMapping(root, oldPackage, newPackage)
+	return changed, true, err
+}
+
+func renameMemberHintNameInMapping(mapping *yaml.Node, oldPackage string, newPackage string) (bool, error) {
+	for index := 0; index+1 < len(mapping.Content); index += 2 {
+		keyNode := mapping.Content[index]
+		valueNode := mapping.Content[index+1]
+		if keyNode.Value != "name" {
+			continue
+		}
+		if valueNode.Kind != yaml.ScalarNode {
+			return false, fmt.Errorf("name must be a scalar")
+		}
+		next := renamedIdentifier(valueNode.Value, oldPackage, newPackage)
+		if next == valueNode.Value {
+			return false, nil
+		}
+		if err := ids.ValidateOrbitID(next); err != nil {
+			return false, fmt.Errorf("renamed member hint name %q: %w", next, err)
+		}
+		valueNode.Value = next
+		return true, nil
+	}
+	return false, nil
+}
+
+func isFlatMemberHintRoot(root *yaml.Node) bool {
+	hasName := false
+	for index := 0; index+1 < len(root.Content); index += 2 {
+		keyNode := root.Content[index]
+		switch keyNode.Value {
+		case "name":
+			hasName = true
+		case "description", "role", "lane", "scopes":
+		default:
+			return false
+		}
+	}
+	return hasName
+}
+
+func applyFileMutations(repoRoot string, mutations []fileMutation) ([]fileMutation, error) {
+	applied := make([]fileMutation, 0, len(mutations))
+	for _, mutation := range mutations {
+		filename := filepath.Join(repoRoot, filepath.FromSlash(mutation.Path))
+		if err := contractutil.AtomicWriteFile(filename, mutation.Next); err != nil {
+			return applied, fmt.Errorf("write renamed file %q: %w", mutation.Path, err)
+		}
+		applied = append(applied, mutation)
+	}
+	return applied, nil
+}
+
+func rollbackFileMutations(repoRoot string, mutations []fileMutation) error {
+	for index := len(mutations) - 1; index >= 0; index-- {
+		mutation := mutations[index]
+		filename := filepath.Join(repoRoot, filepath.FromSlash(mutation.Path))
+		if err := contractutil.AtomicWriteFile(filename, mutation.Original); err != nil {
+			return fmt.Errorf("restore renamed file %q: %w", mutation.Path, err)
+		}
+	}
+	return nil
+}
+
+func mutationPaths(mutations []fileMutation) []string {
+	paths := make([]string, 0, len(mutations))
+	for _, mutation := range mutations {
+		paths = append(paths, mutation.Path)
+	}
+	sort.Strings(paths)
+	return paths
 }
