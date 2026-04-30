@@ -666,6 +666,24 @@ func TestHyardPlumbingHarnessFrameworkDetectUsesAgentDetector(t *testing.T) {
 	})
 }
 
+func TestHyardAgentUseAcceptsDetectorFacingClaudeCodeID(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	_, err := harnesspkg.BootstrapRuntimeControlPlane(repo.Root, time.Date(2026, time.April, 30, 9, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "agent", "use", "claudecode")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+	require.Contains(t, stdout, "selected framework claude")
+
+	selection, err := harnesspkg.LoadFrameworkSelection(repo.GitDir(t))
+	require.NoError(t, err)
+	require.Equal(t, "claude", selection.SelectedFramework)
+	require.Equal(t, harnesspkg.FrameworkSelectionSourceExplicitLocal, selection.SelectionSource)
+}
+
 func TestHyardOrbitHelpShowsCanonicalAuthoringSubcommands(t *testing.T) {
 	t.Parallel()
 
@@ -3925,6 +3943,324 @@ func TestHyardReadyTreatsBundleOwnedOrbitsWithoutStandaloneGuidanceAsReady(t *te
 	require.NotContains(t, stdout, "agents_not_composed")
 	require.NotContains(t, stdout, "root AGENTS.md has not been composed")
 	require.NotContains(t, stdout, "suggested_command: harness agents compose")
+}
+
+func TestHyardPrepareYesAddsRepoLevelBlocksWhenBootstrapExists(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	_, err := harnesspkg.BootstrapRuntimeControlPlane(repo.Root, time.Date(2026, time.April, 30, 9, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	repo.WriteFile(t, "BOOTSTRAP.md", "Existing bootstrap instructions.\n")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "prepare", "--yes")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+	require.Contains(t, stdout, "prepared harness runtime")
+
+	bootstrapData, err := os.ReadFile(filepath.Join(repo.Root, "BOOTSTRAP.md"))
+	require.NoError(t, err)
+	require.Contains(t, string(bootstrapData), "<!-- hyard:repo-bootstrap:begin -->")
+	require.Contains(t, string(bootstrapData), "<!-- hyard:repo-bootstrap:end -->")
+	require.Contains(t, string(bootstrapData), "Existing bootstrap instructions.\n")
+
+	agentsData, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoError(t, err)
+	require.Contains(t, string(agentsData), "<!-- hyard:repo-agents:begin -->")
+	require.Contains(t, string(agentsData), "<!-- hyard:repo-agents:end -->")
+}
+
+func TestHyardPrepareYesSkipsRepoLevelBlocksWhenBootstrapMissing(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	_, err := harnesspkg.BootstrapRuntimeControlPlane(repo.Root, time.Date(2026, time.April, 30, 9, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "prepare", "--yes")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+	require.Contains(t, stdout, "prepared harness runtime")
+
+	require.NoFileExists(t, filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "BOOTSTRAP.md"))
+}
+
+func TestHyardPrepareYesSkipsRepoLevelBlocksWhenBootstrapEmpty(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	_, err := harnesspkg.BootstrapRuntimeControlPlane(repo.Root, time.Date(2026, time.April, 30, 9, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	repo.WriteFile(t, "BOOTSTRAP.md", " \n\t\n")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "prepare", "--yes")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+	require.Contains(t, stdout, "prepared harness runtime")
+
+	bootstrapData, err := os.ReadFile(filepath.Join(repo.Root, "BOOTSTRAP.md"))
+	require.NoError(t, err)
+	require.Equal(t, " \n\t\n", string(bootstrapData))
+	require.NoFileExists(t, filepath.Join(repo.Root, "AGENTS.md"))
+}
+
+func TestHyardPrepareYesPreservesEditedRepoLevelBlocks(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	_, err := harnesspkg.BootstrapRuntimeControlPlane(repo.Root, time.Date(2026, time.April, 30, 9, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	bootstrap := "Existing bootstrap instructions.\n\n<!-- hyard:repo-bootstrap:begin -->\nCustom bootstrap prep.\n<!-- hyard:repo-bootstrap:end -->\n"
+	agents := "Existing agent instructions.\n\n<!-- hyard:repo-agents:begin -->\nCustom agent prep.\n<!-- hyard:repo-agents:end -->\n"
+	repo.WriteFile(t, "BOOTSTRAP.md", bootstrap)
+	repo.WriteFile(t, "AGENTS.md", agents)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "prepare", "--yes")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+	require.Contains(t, stdout, "prepared harness runtime")
+
+	bootstrapData, err := os.ReadFile(filepath.Join(repo.Root, "BOOTSTRAP.md"))
+	require.NoError(t, err)
+	require.Equal(t, bootstrap, string(bootstrapData))
+	agentsData, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoError(t, err)
+	require.Equal(t, agents, string(agentsData))
+}
+
+func TestHyardPrepareYesRejectsMalformedRepoLevelBlockMarkers(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	_, err := harnesspkg.BootstrapRuntimeControlPlane(repo.Root, time.Date(2026, time.April, 30, 9, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	bootstrap := "Existing bootstrap instructions.\n<!-- hyard:repo-bootstrap:begin -->\nUnclosed custom prep.\n"
+	repo.WriteFile(t, "BOOTSTRAP.md", bootstrap)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "prepare", "--yes")
+	require.Error(t, err)
+	require.Empty(t, stdout)
+	require.Empty(t, stderr)
+	require.Contains(t, err.Error(), "malformed hyard repo-level guidance block markers")
+	require.NoFileExists(t, filepath.Join(repo.Root, "AGENTS.md"))
+
+	bootstrapData, err := os.ReadFile(filepath.Join(repo.Root, "BOOTSTRAP.md"))
+	require.NoError(t, err)
+	require.Equal(t, bootstrap, string(bootstrapData))
+}
+
+func TestHyardPrepareCheckJSONPreviewsWithoutWritingRepoLevelBlocks(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	_, err := harnesspkg.BootstrapRuntimeControlPlane(repo.Root, time.Date(2026, time.April, 30, 9, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	bootstrap := "Existing bootstrap instructions.\n"
+	repo.WriteFile(t, "BOOTSTRAP.md", bootstrap)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "prepare", "--check", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		RepoRoot     string `json:"repo_root"`
+		Check        bool   `json:"check"`
+		RepoGuidance struct {
+			BootstrapPresent bool `json:"bootstrap_present"`
+			Files            []struct {
+				Path   string `json:"path"`
+				Action string `json:"action"`
+			} `json:"files"`
+		} `json:"repo_guidance"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, repo.Root, payload.RepoRoot)
+	require.True(t, payload.Check)
+	require.True(t, payload.RepoGuidance.BootstrapPresent)
+	require.Equal(t, []struct {
+		Path   string `json:"path"`
+		Action string `json:"action"`
+	}{
+		{Path: "BOOTSTRAP.md", Action: "update"},
+		{Path: "AGENTS.md", Action: "create"},
+	}, payload.RepoGuidance.Files)
+
+	bootstrapData, err := os.ReadFile(filepath.Join(repo.Root, "BOOTSTRAP.md"))
+	require.NoError(t, err)
+	require.Equal(t, bootstrap, string(bootstrapData))
+	require.NoFileExists(t, filepath.Join(repo.Root, "AGENTS.md"))
+}
+
+func TestHyardPrepareYesSelectsOnlyReadyAgent(t *testing.T) {
+	lockHyardProcessEnv(t)
+
+	repo := testutil.NewRepo(t)
+	_, err := harnesspkg.BootstrapRuntimeControlPlane(repo.Root, time.Date(2026, time.April, 30, 9, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+
+	gitExecutable, err := exec.LookPath("git")
+	require.NoError(t, err)
+	binDir := t.TempDir()
+	codexPath := filepath.Join(binDir, "codex")
+	require.NoError(t, os.WriteFile(codexPath, []byte("#!/bin/sh\necho 'codex 0.125.0'\n"), 0o700))
+	require.NoError(t, os.Chmod(codexPath, 0o700))
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+filepath.Dir(gitExecutable))
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CODEX_HOME", filepath.Join(t.TempDir(), ".codex"))
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(t.TempDir(), ".claude"))
+	t.Setenv("OPENCLAW_STATE_DIR", filepath.Join(t.TempDir(), ".openclaw"))
+
+	stdout, stderr, err := executeHyardCLIUnlocked(t, repo.Root, "prepare", "--yes", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		AgentSelection struct {
+			Action           string   `json:"action"`
+			ReadyAgents      []string `json:"ready_agents"`
+			SelectedAgent    string   `json:"selected_agent"`
+			SelectionSource  string   `json:"selection_source"`
+			SuggestedCommand string   `json:"suggested_command"`
+		} `json:"agent_selection"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "selected", payload.AgentSelection.Action)
+	require.Equal(t, []string{"codex"}, payload.AgentSelection.ReadyAgents)
+	require.Equal(t, "codex", payload.AgentSelection.SelectedAgent)
+	require.Equal(t, "project_detection", payload.AgentSelection.SelectionSource)
+	require.Equal(t, "hyard agent use codex", payload.AgentSelection.SuggestedCommand)
+
+	selection, err := harnesspkg.LoadFrameworkSelection(repo.GitDir(t))
+	require.NoError(t, err)
+	require.Equal(t, "codex", selection.SelectedFramework)
+	require.Equal(t, harnesspkg.FrameworkSelectionSourceProjectDetection, selection.SelectionSource)
+}
+
+func TestHyardPrepareYesSelectsRecommendedAgentWhenMultipleReady(t *testing.T) {
+	lockHyardProcessEnv(t)
+
+	repo := testutil.NewRepo(t)
+	_, err := harnesspkg.BootstrapRuntimeControlPlane(repo.Root, time.Date(2026, time.April, 30, 9, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	_, err = harnesspkg.WriteFrameworksFile(repo.Root, harnesspkg.FrameworksFile{
+		SchemaVersion:        1,
+		RecommendedFramework: "codex",
+	})
+	require.NoError(t, err)
+
+	gitExecutable, err := exec.LookPath("git")
+	require.NoError(t, err)
+	binDir := t.TempDir()
+	codexPath := filepath.Join(binDir, "codex")
+	require.NoError(t, os.WriteFile(codexPath, []byte("#!/bin/sh\necho 'codex 0.125.0'\n"), 0o700))
+	require.NoError(t, os.Chmod(codexPath, 0o700))
+	openClawPath := filepath.Join(binDir, "openclaw")
+	require.NoError(t, os.WriteFile(openClawPath, []byte("#!/bin/sh\necho 'openclaw 0.9.0'\n"), 0o700))
+	require.NoError(t, os.Chmod(openClawPath, 0o700))
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+filepath.Dir(gitExecutable))
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CODEX_HOME", filepath.Join(t.TempDir(), ".codex"))
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(t.TempDir(), ".claude"))
+	t.Setenv("OPENCLAW_STATE_DIR", filepath.Join(t.TempDir(), ".openclaw"))
+
+	stdout, stderr, err := executeHyardCLIUnlocked(t, repo.Root, "prepare", "--yes", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		AgentSelection struct {
+			Action           string   `json:"action"`
+			RecommendedAgent string   `json:"recommended_agent"`
+			ReadyAgents      []string `json:"ready_agents"`
+			SelectedAgent    string   `json:"selected_agent"`
+			SelectionSource  string   `json:"selection_source"`
+			SuggestedCommand string   `json:"suggested_command"`
+		} `json:"agent_selection"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "selected", payload.AgentSelection.Action)
+	require.Equal(t, "codex", payload.AgentSelection.RecommendedAgent)
+	require.Equal(t, []string{"codex", "openclaw"}, payload.AgentSelection.ReadyAgents)
+	require.Equal(t, "codex", payload.AgentSelection.SelectedAgent)
+	require.Equal(t, "recommended_default", payload.AgentSelection.SelectionSource)
+	require.Equal(t, "hyard agent use codex", payload.AgentSelection.SuggestedCommand)
+
+	selection, err := harnesspkg.LoadFrameworkSelection(repo.GitDir(t))
+	require.NoError(t, err)
+	require.Equal(t, "codex", selection.SelectedFramework)
+	require.Equal(t, harnesspkg.FrameworkSelectionSourceRecommendedDefault, selection.SelectionSource)
+}
+
+func TestHyardPreparePromptsBeforeSelectingOnlyReadyAgent(t *testing.T) {
+	lockHyardProcessEnv(t)
+
+	repo := testutil.NewRepo(t)
+	_, err := harnesspkg.BootstrapRuntimeControlPlane(repo.Root, time.Date(2026, time.April, 30, 9, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+
+	gitExecutable, err := exec.LookPath("git")
+	require.NoError(t, err)
+	binDir := t.TempDir()
+	codexPath := filepath.Join(binDir, "codex")
+	require.NoError(t, os.WriteFile(codexPath, []byte("#!/bin/sh\necho 'codex 0.125.0'\n"), 0o700))
+	require.NoError(t, os.Chmod(codexPath, 0o700))
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+filepath.Dir(gitExecutable))
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CODEX_HOME", filepath.Join(t.TempDir(), ".codex"))
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(t.TempDir(), ".claude"))
+	t.Setenv("OPENCLAW_STATE_DIR", filepath.Join(t.TempDir(), ".openclaw"))
+
+	stdout, stderr, err := executeHyardCLIWithInputUnlocked(t, repo.Root, "n\n", "prepare")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+	require.Contains(t, stdout, "Use detected agent codex now?")
+	require.Contains(t, stdout, "suggested_command: hyard agent use codex")
+
+	_, err = harnesspkg.LoadFrameworkSelection(repo.GitDir(t))
+	require.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestHyardPrepareYesKeepsExistingSelectedAgent(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	_, err := harnesspkg.BootstrapRuntimeControlPlane(repo.Root, time.Date(2026, time.April, 30, 9, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	_, err = harnesspkg.WriteFrameworkSelection(repo.GitDir(t), harnesspkg.FrameworkSelection{
+		SelectedFramework: "codex",
+		SelectionSource:   harnesspkg.FrameworkSelectionSourceExplicitLocal,
+		UpdatedAt:         time.Date(2026, time.April, 30, 9, 0, 0, 0, time.UTC),
+	})
+	require.NoError(t, err)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "prepare", "--yes", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		AgentSelection struct {
+			Action            string   `json:"action"`
+			LocalSelection    string   `json:"local_selection"`
+			ReadyAgents       []string `json:"ready_agents"`
+			SelectedAgent     string   `json:"selected_agent"`
+			SelectedFramework string   `json:"selected_framework"`
+			SelectionSource   string   `json:"selection_source"`
+		} `json:"agent_selection"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "already_selected", payload.AgentSelection.Action)
+	require.Equal(t, "codex", payload.AgentSelection.LocalSelection)
+	require.Empty(t, payload.AgentSelection.ReadyAgents)
+	require.Equal(t, "codex", payload.AgentSelection.SelectedAgent)
+	require.Equal(t, "codex", payload.AgentSelection.SelectedFramework)
+	require.Equal(t, "explicit_local", payload.AgentSelection.SelectionSource)
+
+	selection, err := harnesspkg.LoadFrameworkSelection(repo.GitDir(t))
+	require.NoError(t, err)
+	require.Equal(t, "codex", selection.SelectedFramework)
+	require.Equal(t, harnesspkg.FrameworkSelectionSourceExplicitLocal, selection.SelectionSource)
+	require.Equal(t, time.Date(2026, time.April, 30, 9, 0, 0, 0, time.UTC), selection.UpdatedAt)
 }
 
 func TestHyardCloneFromLocalHarnessTemplateSourceCreatesRuntime(t *testing.T) {

@@ -39,9 +39,9 @@ func NewFrameworkUseCommand() *cobra.Command {
 				return fmt.Errorf("resolve harness root: %w", err)
 			}
 
-			frameworkID := args[0]
-			if _, ok := harnesspkg.LookupFrameworkAdapter(frameworkID); !ok {
-				return fmt.Errorf("framework %q is not supported by this build", frameworkID)
+			frameworkID, ok := harnesspkg.NormalizeFrameworkID(args[0])
+			if !ok {
+				return fmt.Errorf("framework %q is not supported by this build", args[0])
 			}
 
 			selection := harnesspkg.FrameworkSelection{

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 type frameworkDetectionMode string
@@ -69,6 +70,20 @@ func LookupFrameworkAdapter(frameworkID string) (FrameworkAdapter, bool) {
 	}
 
 	return FrameworkAdapter{}, false
+}
+
+// NormalizeFrameworkID maps supported framework and detector-facing agent aliases to framework adapter ids.
+func NormalizeFrameworkID(frameworkID string) (string, bool) {
+	normalized := strings.ToLower(strings.TrimSpace(frameworkID))
+	switch normalized {
+	case "claude_code", "claude-code", "claudecode":
+		normalized = "claude"
+	}
+	if _, ok := LookupFrameworkAdapter(normalized); !ok {
+		return "", false
+	}
+
+	return normalized, true
 }
 
 func detectFrameworkLevel(repoRoot string, adapters []FrameworkAdapter, mode frameworkDetectionMode) ([]string, error) {

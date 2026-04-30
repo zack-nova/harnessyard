@@ -49,6 +49,7 @@ func NewRootCommand() *cobra.Command {
 		newInstallCommand(),
 		newRemoveCommand(),
 		newPublishCommand(),
+		newPrepareCommand(),
 		newOrbitCommand(),
 		newAssignCommand(),
 		newUnassignCommand(),
