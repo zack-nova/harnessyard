@@ -143,7 +143,7 @@ func WriteTemplateBranch(ctx context.Context, repoRoot string, input WriteTempla
 	}
 	indexPath := indexFile.Name()
 	if err := indexFile.Close(); err != nil {
-		//nolint:gosec // The temp index path comes from os.CreateTemp in this function.
+		//nolint:gosec,nolintlint // The temp index path comes from os.CreateTemp in this function; newer gosec releases no longer flag it.
 		_ = os.Remove(indexPath)
 		return WriteTemplateBranchResult{}, fmt.Errorf("close template temp index: %w", err)
 	}

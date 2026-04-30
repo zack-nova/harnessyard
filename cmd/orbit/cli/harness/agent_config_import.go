@@ -93,14 +93,14 @@ func ImportAgentConfig(ctx context.Context, input AgentConfigImportInput) (Agent
 	merged := map[string]any{}
 	sourcesByKey := map[string]string{}
 	var sidecarCandidate *agentConfigImportSidecarCandidate
-	sidecarPath, _, hasSidecar := agentConfigSidecarRepoPath(frameworkID)
+	sidecarPath, hasSidecar := agentConfigSidecarRepoPath(frameworkID)
 	blockUnifiedImport := false
 	for _, source := range agentConfigImportSources(frameworkID) {
 		result.Sources = append(result.Sources, AgentConfigImportSource{
 			Scope: source.scope,
 			Path:  source.displayPath,
 		})
-		data, err := os.ReadFile(frameworkRouteAbsolutePath(input.RepoRoot, homeDir, source.displayPath)) //nolint:gosec // Paths are fixed by the supported framework adapter matrix.
+		data, err := os.ReadFile(frameworkRouteAbsolutePath(input.RepoRoot, homeDir, source.displayPath))
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				continue

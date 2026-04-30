@@ -1275,7 +1275,7 @@ func editMissingTemplateInstallBindings(
 	}
 	defer func() { _ = os.Remove(tempName) }()
 
-	//nolint:gosec // tempName comes from os.CreateTemp in this function and stays confined to the local temp dir.
+	//nolint:gosec,nolintlint // tempName comes from os.CreateTemp in this function; newer gosec releases no longer flag it.
 	if err := os.WriteFile(tempName, data, 0o600); err != nil {
 		return nil, fmt.Errorf("write editor bindings skeleton: %w", err)
 	}
