@@ -535,6 +535,29 @@ func TestHyardAgentDetectReportsFakeCodexCLI(t *testing.T) {
 	})
 }
 
+func TestHyardAgentUseNormalizesClaudeCodeToClaudecode(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	_, stderr, err := executeHyardCLI(t, repo.Root, "init", "runtime")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "agent", "use", "claude-code", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Framework string `json:"framework"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "claudecode", payload.Framework)
+
+	selection, err := harnesspkg.LoadFrameworkSelection(filepath.Join(repo.Root, ".git"))
+	require.NoError(t, err)
+	require.Equal(t, "claudecode", selection.SelectedFramework)
+}
+
 func TestHyardAgentDetectDeepReportsNPMPackage(t *testing.T) {
 	lockHyardProcessEnv(t)
 

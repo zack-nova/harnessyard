@@ -18,6 +18,7 @@ type FrameworkApplyInput struct {
 	RepoRoot            string
 	GitDir              string
 	HarnessID           string
+	FrameworkOverride   string
 	RouteChoice         FrameworkApplyRouteChoice
 	AllowGlobalFallback bool
 	EnableHooks         bool
@@ -101,7 +102,7 @@ type FrameworkRemoveResult struct {
 
 // ApplyFramework materializes framework-managed side effects and records repo-local ownership.
 func ApplyFramework(ctx context.Context, input FrameworkApplyInput) (FrameworkApplyResult, error) {
-	state, err := loadFrameworkDesiredState(ctx, input.RepoRoot, input.GitDir)
+	state, err := loadFrameworkDesiredStateForFramework(ctx, input.RepoRoot, input.GitDir, input.FrameworkOverride)
 	if err != nil {
 		return FrameworkApplyResult{}, err
 	}
@@ -225,6 +226,10 @@ func ApplyFramework(ctx context.Context, input FrameworkApplyInput) (FrameworkAp
 		return FrameworkApplyResult{}, fmt.Errorf("write framework activation ledger: %w", err)
 	}
 
+	warnings := append([]string(nil), state.Summary.Warnings...)
+	warnings = append(warnings, frameworkApplyGlobalConfigWarnings(activation.Framework, artifactResults)...)
+	sort.Strings(warnings)
+
 	return FrameworkApplyResult{
 		Framework:          activation.Framework,
 		ResolutionSource:   activation.ResolutionSource,
@@ -233,8 +238,33 @@ func ApplyFramework(ctx context.Context, input FrameworkApplyInput) (FrameworkAp
 		ProjectOutputCount: len(activation.ProjectOutputs),
 		GlobalOutputCount:  len(activation.GlobalOutputs),
 		ArtifactResults:    artifactResults,
-		Warnings:           append([]string(nil), state.Summary.Warnings...),
+		Warnings:           warnings,
 	}, nil
+}
+
+func frameworkApplyGlobalConfigWarnings(frameworkID string, artifactResults []FrameworkApplyArtifactResult) []string {
+	warnings := []string{}
+	seen := map[string]struct{}{}
+	for _, result := range artifactResults {
+		if result.ArtifactType != "agent-config" {
+			continue
+		}
+		if result.EffectiveScope != "global" && result.EffectiveScope != "hybrid" {
+			continue
+		}
+		if result.Status != "global_applied" {
+			continue
+		}
+		message := fmt.Sprintf("applying global agent config for %s: %s", frameworkID, result.Path)
+		if _, ok := seen[message]; ok {
+			continue
+		}
+		seen[message] = struct{}{}
+		warnings = append(warnings, message)
+	}
+	sort.Strings(warnings)
+
+	return warnings
 }
 
 // CheckFramework inspects current framework activation health for the runtime.
@@ -390,6 +420,9 @@ func RemoveFrameworkActivations(ctx context.Context, repoRoot string, gitDir str
 				continue
 			}
 			if isFrameworkConfigOutput(output) {
+				if frameworkOutputRequiresGlobalWarning(output) {
+					result.Warnings = append(result.Warnings, fmt.Sprintf("removing global agent config for %s: %s", activation.Framework, output.Path))
+				}
 				removed, err := removeFrameworkConfigOutput(output)
 				if err != nil {
 					return FrameworkRemoveResult{}, fmt.Errorf("remove framework config output %s: %w", output.Path, err)
@@ -426,6 +459,10 @@ func RemoveFrameworkActivations(ctx context.Context, repoRoot string, gitDir str
 
 	sort.Strings(result.Warnings)
 	return result, nil
+}
+
+func frameworkOutputRequiresGlobalWarning(output FrameworkActivationOutput) bool {
+	return output.EffectiveScope == "global" || output.EffectiveScope == "hybrid" || strings.HasPrefix(output.Path, "~/")
 }
 
 func frameworkOutputCheckFindings(repoRoot string, output FrameworkActivationOutput) ([]FrameworkCheckFinding, error) {

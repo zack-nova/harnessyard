@@ -583,7 +583,7 @@ func buildAgentHookRouteOutputs(frameworkID string, summary FrameworkInspectSumm
 			agentHookRoute("codex-hooks", "global_hooks", "~/.codex/config.toml", "merge-config", "merge-config", "global", sourceFiles),
 			agentHookRoute("codex-hooks", "global_hooks", "~/.codex/hooks.json", "generate", "generate", "global", sourceFiles),
 		)
-	case "claude":
+	case "claudecode":
 		routeSet.ProjectOutputs = append(routeSet.ProjectOutputs,
 			agentHookRoute("claude-hooks", "project_hooks", ".claude/settings.json", "merge-config", "merge-config", "project", sourceFiles),
 		)
@@ -708,7 +708,7 @@ func nativeHookEventName(frameworkID string, kind string) (string, bool) {
 		default:
 			return "", false
 		}
-	case "claude":
+	case "claudecode":
 		switch kind {
 		case "session.start":
 			return "SessionStart", true
@@ -812,7 +812,7 @@ func compileAgentNativeHookConfig(repoRoot string, gitDir string, frameworkID st
 	case frameworkID == "codex" && strings.HasSuffix(routeOutput.Path, "config.toml"):
 		format = nativeConfigFormatTOML
 		config = map[string]any{"features": map[string]any{"codex_hooks": true}}
-	case frameworkID == "claude" && strings.HasSuffix(routeOutput.Path, "settings.json"):
+	case frameworkID == "claudecode" && strings.HasSuffix(routeOutput.Path, "settings.json"):
 		format = nativeConfigFormatJSON
 		config = map[string]any{"hooks": buildClaudeNativeHooks(supported)}
 	case frameworkID == "openclaw" && strings.HasSuffix(routeOutput.Path, "openclaw.json"):
@@ -918,7 +918,7 @@ func buildClaudeNativeHooks(entries []supportedAgentHookEntry) map[string]any {
 			"hooks": []any{
 				map[string]any{
 					"type":    "command",
-					"command": agentHookRunnerCommand("claude", entry.Entry.ID),
+					"command": agentHookRunnerCommand("claudecode", entry.Entry.ID),
 				},
 			},
 		})

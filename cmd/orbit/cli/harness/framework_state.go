@@ -51,6 +51,10 @@ type frameworkDesiredState struct {
 }
 
 func loadFrameworkDesiredState(ctx context.Context, repoRoot string, gitDir string) (frameworkDesiredState, error) {
+	return loadFrameworkDesiredStateForFramework(ctx, repoRoot, gitDir, "")
+}
+
+func loadFrameworkDesiredStateForFramework(ctx context.Context, repoRoot string, gitDir string, frameworkOverride string) (frameworkDesiredState, error) {
 	runtimeFile, err := LoadRuntimeFile(repoRoot)
 	if err != nil {
 		return frameworkDesiredState{}, fmt.Errorf("load runtime file: %w", err)
@@ -73,8 +77,9 @@ func loadFrameworkDesiredState(ctx context.Context, repoRoot string, gitDir stri
 	}
 
 	resolution, err := ResolveFramework(ctx, FrameworkResolutionInput{
-		RepoRoot: repoRoot,
-		GitDir:   gitDir,
+		RepoRoot:          repoRoot,
+		GitDir:            gitDir,
+		FrameworkOverride: frameworkOverride,
 	})
 	if err != nil {
 		return frameworkDesiredState{}, err

@@ -2,8 +2,11 @@ package commands
 
 import (
 	"bufio"
+	"context"
+	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -16,6 +19,14 @@ type frameworkApplyOutput struct {
 	HarnessID   string `json:"harness_id"`
 	harnesspkg.FrameworkApplyResult
 	Readiness harnesspkg.ReadinessReport `json:"readiness"`
+}
+
+type frameworkApplyMultiOutput struct {
+	HarnessRoot string                            `json:"harness_root"`
+	HarnessID   string                            `json:"harness_id"`
+	Frameworks  []string                          `json:"frameworks"`
+	Results     []harnesspkg.FrameworkApplyResult `json:"results"`
+	Readiness   harnesspkg.ReadinessReport        `json:"readiness"`
 }
 
 // NewFrameworkApplyCommand creates the harness framework apply command.
@@ -53,6 +64,10 @@ func NewFrameworkApplyCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			selectedFrameworks, err := selectedFrameworksForApply(resolved.Repo.GitDir)
+			if err != nil {
+				return err
+			}
 			routeChoice, err := frameworkApplyRouteChoiceFromCommand(cmd, frameworkApplyRouteChoiceInput{
 				Yes:                 yes,
 				ProjectOnly:         projectOnly,
@@ -62,19 +77,69 @@ func NewFrameworkApplyCommand() *cobra.Command {
 				RepoRoot:            resolved.Repo.Root,
 				GitDir:              resolved.Repo.GitDir,
 				HarnessID:           resolved.Manifest.Runtime.ID,
+				Frameworks:          selectedFrameworks,
 			})
 			if err != nil {
 				return err
 			}
 			if err := confirmFrameworkHookPreviewFromCommand(cmd, frameworkHookPreviewInput{
-				Enabled:   hooks,
-				Yes:       yes,
-				JSON:      jsonOutput,
-				RepoRoot:  resolved.Repo.Root,
-				GitDir:    resolved.Repo.GitDir,
-				HarnessID: resolved.Manifest.Runtime.ID,
+				Enabled:    hooks,
+				Yes:        yes,
+				JSON:       jsonOutput,
+				RepoRoot:   resolved.Repo.Root,
+				GitDir:     resolved.Repo.GitDir,
+				HarnessID:  resolved.Manifest.Runtime.ID,
+				Frameworks: selectedFrameworks,
 			}); err != nil {
 				return err
+			}
+
+			if len(selectedFrameworks) > 1 {
+				results := make([]harnesspkg.FrameworkApplyResult, 0, len(selectedFrameworks))
+				for _, frameworkID := range selectedFrameworks {
+					result, err := harnesspkg.ApplyFramework(cmd.Context(), harnesspkg.FrameworkApplyInput{
+						RepoRoot:            resolved.Repo.Root,
+						GitDir:              resolved.Repo.GitDir,
+						HarnessID:           resolved.Manifest.Runtime.ID,
+						FrameworkOverride:   frameworkID,
+						RouteChoice:         routeChoice,
+						AllowGlobalFallback: allowGlobalFallback,
+						EnableHooks:         hooks,
+					})
+					if err != nil {
+						return fmt.Errorf("apply framework activation for %s: %w", frameworkID, err)
+					}
+					if err := emitFrameworkApplyWarnings(cmd, result.Warnings); err != nil {
+						return err
+					}
+					results = append(results, result)
+				}
+				readiness, err := evaluateCommandReadiness(cmd.Context(), resolved.Repo.Root)
+				if err != nil {
+					return err
+				}
+				output := frameworkApplyMultiOutput{
+					HarnessRoot: resolved.Repo.Root,
+					HarnessID:   resolved.Manifest.Runtime.ID,
+					Frameworks:  selectedFrameworks,
+					Results:     results,
+					Readiness:   readiness,
+				}
+				if jsonOutput {
+					return emitJSON(cmd.OutOrStdout(), output)
+				}
+				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "harness_root: %s\n", output.HarnessRoot); err != nil {
+					return fmt.Errorf("write command output: %w", err)
+				}
+				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "harness_id: %s\n", output.HarnessID); err != nil {
+					return fmt.Errorf("write command output: %w", err)
+				}
+				for _, result := range output.Results {
+					if _, err := fmt.Fprintf(cmd.OutOrStdout(), "framework: %s status=%s\n", result.Framework, result.Status); err != nil {
+						return fmt.Errorf("write command output: %w", err)
+					}
+				}
+				return emitPostActionReadinessText(cmd.OutOrStdout(), output.Readiness)
 			}
 
 			result, err := harnesspkg.ApplyFramework(cmd.Context(), harnesspkg.FrameworkApplyInput{
@@ -87,6 +152,9 @@ func NewFrameworkApplyCommand() *cobra.Command {
 			})
 			if err != nil {
 				return fmt.Errorf("apply framework activation: %w", err)
+			}
+			if err := emitFrameworkApplyWarnings(cmd, result.Warnings); err != nil {
+				return err
 			}
 			readiness, err := evaluateCommandReadiness(cmd.Context(), resolved.Repo.Root)
 			if err != nil {
@@ -139,6 +207,48 @@ func NewFrameworkApplyCommand() *cobra.Command {
 	return cmd
 }
 
+func emitFrameworkApplyWarnings(cmd *cobra.Command, warnings []string) error {
+	for _, warning := range warnings {
+		if !strings.Contains(warning, "global agent config") {
+			continue
+		}
+		if _, err := fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", warning); err != nil {
+			return fmt.Errorf("write command warning: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func selectedFrameworksForApply(gitDir string) ([]string, error) {
+	selection, err := harnesspkg.LoadFrameworkSelection(gitDir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("load framework selection: %w", err)
+	}
+	frameworks := harnesspkg.FrameworkSelectionIDs(selection)
+	if len(frameworks) <= 1 {
+		return frameworks, nil
+	}
+	normalized := make([]string, 0, len(frameworks))
+	seen := map[string]struct{}{}
+	for _, frameworkID := range frameworks {
+		adapter, ok := harnesspkg.LookupFrameworkAdapter(frameworkID)
+		if !ok {
+			return nil, fmt.Errorf("framework %q is not supported by this build", frameworkID)
+		}
+		if _, ok := seen[adapter.ID]; ok {
+			continue
+		}
+		seen[adapter.ID] = struct{}{}
+		normalized = append(normalized, adapter.ID)
+	}
+
+	return normalized, nil
+}
+
 type frameworkApplyRouteChoiceInput struct {
 	Yes                 bool
 	ProjectOnly         bool
@@ -148,26 +258,32 @@ type frameworkApplyRouteChoiceInput struct {
 	RepoRoot            string
 	GitDir              string
 	HarnessID           string
+	Frameworks          []string
 }
 
 type frameworkHookPreviewInput struct {
-	Enabled   bool
-	Yes       bool
-	JSON      bool
-	RepoRoot  string
-	GitDir    string
-	HarnessID string
+	Enabled    bool
+	Yes        bool
+	JSON       bool
+	RepoRoot   string
+	GitDir     string
+	HarnessID  string
+	Frameworks []string
 }
 
 func confirmFrameworkHookPreviewFromCommand(cmd *cobra.Command, input frameworkHookPreviewInput) error {
 	if !input.Enabled {
 		return nil
 	}
-	plan, err := harnesspkg.BuildFrameworkPlan(cmd.Context(), input.RepoRoot, input.GitDir, input.HarnessID)
+	plans, err := frameworkApplyPlansForSelection(cmd.Context(), input.RepoRoot, input.GitDir, input.HarnessID, input.Frameworks)
 	if err != nil {
 		return fmt.Errorf("build hook activation preview: %w", err)
 	}
-	if err := writeFrameworkHookPreview(cmd.ErrOrStderr(), plan.HookPreview); err != nil {
+	outputs := []harnesspkg.FrameworkRoutePlanOutput{}
+	for _, plan := range plans {
+		outputs = append(outputs, plan.HookPreview...)
+	}
+	if err := writeFrameworkHookPreview(cmd.ErrOrStderr(), outputs); err != nil {
 		return err
 	}
 	if input.Yes {
@@ -270,11 +386,18 @@ func frameworkApplyRouteChoiceFromCommand(cmd *cobra.Command, input frameworkApp
 		return harnesspkg.FrameworkApplyRouteProject, nil
 	}
 
-	plan, err := harnesspkg.BuildFrameworkPlan(cmd.Context(), input.RepoRoot, input.GitDir, input.HarnessID)
+	plans, err := frameworkApplyPlansForSelection(cmd.Context(), input.RepoRoot, input.GitDir, input.HarnessID, input.Frameworks)
 	if err != nil {
 		return harnesspkg.FrameworkApplyRouteAuto, fmt.Errorf("build framework activation prompt plan: %w", err)
 	}
-	if len(plan.RecommendedProjectOutputs) == 0 || len(plan.OptionalGlobalOutputs) == 0 {
+	hasRouteChoice := false
+	for _, plan := range plans {
+		if len(plan.RecommendedProjectOutputs) > 0 && len(plan.OptionalGlobalOutputs) > 0 {
+			hasRouteChoice = true
+			break
+		}
+	}
+	if !hasRouteChoice {
 		return harnesspkg.FrameworkApplyRouteProject, nil
 	}
 
@@ -287,6 +410,27 @@ func frameworkApplyRouteChoiceFromCommand(cmd *cobra.Command, input frameworkApp
 	}
 
 	return harnesspkg.FrameworkApplyRouteGlobal, nil
+}
+
+func frameworkApplyPlansForSelection(ctx context.Context, repoRoot string, gitDir string, harnessID string, frameworks []string) ([]harnesspkg.FrameworkPlan, error) {
+	if len(frameworks) == 0 {
+		plan, err := harnesspkg.BuildFrameworkPlan(ctx, repoRoot, gitDir, harnessID)
+		if err != nil {
+			return nil, fmt.Errorf("build framework activation prompt plan: %w", err)
+		}
+		return []harnesspkg.FrameworkPlan{plan}, nil
+	}
+
+	plans := make([]harnesspkg.FrameworkPlan, 0, len(frameworks))
+	for _, frameworkID := range frameworks {
+		plan, err := harnesspkg.BuildFrameworkPlanForFramework(ctx, repoRoot, gitDir, harnessID, frameworkID)
+		if err != nil {
+			return nil, fmt.Errorf("build framework activation prompt plan for %s: %w", frameworkID, err)
+		}
+		plans = append(plans, plan)
+	}
+
+	return plans, nil
 }
 
 func confirmDefaultYes(reader io.Reader, writer io.Writer, prompt string) (bool, error) {

@@ -178,6 +178,21 @@ func BuildFrameworkPlan(ctx context.Context, repoRoot string, gitDir string, har
 	if err != nil {
 		return FrameworkPlan{}, err
 	}
+
+	return buildFrameworkPlan(repoRoot, harnessID, state)
+}
+
+// BuildFrameworkPlanForFramework builds one framework activation preview with an explicit framework override.
+func BuildFrameworkPlanForFramework(ctx context.Context, repoRoot string, gitDir string, harnessID string, frameworkID string) (FrameworkPlan, error) {
+	state, err := loadFrameworkDesiredStateForFramework(ctx, repoRoot, gitDir, frameworkID)
+	if err != nil {
+		return FrameworkPlan{}, err
+	}
+
+	return buildFrameworkPlan(repoRoot, harnessID, state)
+}
+
+func buildFrameworkPlan(repoRoot string, harnessID string, state frameworkDesiredState) (FrameworkPlan, error) {
 	summary := state.Summary
 
 	plan := FrameworkPlan{
@@ -255,7 +270,7 @@ func BuildFrameworkPlan(ctx context.Context, repoRoot string, gitDir string, har
 	if adapter.CommandsGlobal {
 		for _, command := range summary.Commands {
 			plan.GlobalOutputs = append(plan.GlobalOutputs, FrameworkPlanOutput{
-				Path:   fmt.Sprintf("~/.%s/commands/%s__%s__%s.md", adapter.ID, harnessID, command.OrbitID, command.ID),
+				Path:   fmt.Sprintf("~/.%s/commands/%s__%s__%s.md", frameworkGlobalDirName(adapter.ID), harnessID, command.OrbitID, command.ID),
 				Action: "symlink",
 				Kind:   "command",
 			})
@@ -267,7 +282,7 @@ func BuildFrameworkPlan(ctx context.Context, repoRoot string, gitDir string, har
 	if adapter.SkillsGlobal {
 		for _, skill := range summary.Skills {
 			plan.GlobalOutputs = append(plan.GlobalOutputs, FrameworkPlanOutput{
-				Path:   fmt.Sprintf("~/.%s/skills/%s__%s__%s", adapter.ID, harnessID, skill.OrbitID, skill.ID),
+				Path:   fmt.Sprintf("~/.%s/skills/%s__%s__%s", frameworkGlobalDirName(adapter.ID), harnessID, skill.OrbitID, skill.ID),
 				Action: "symlink",
 				Kind:   "skill",
 			})
@@ -302,6 +317,14 @@ func BuildFrameworkPlan(ctx context.Context, repoRoot string, gitDir string, har
 	sort.Strings(plan.Warnings)
 
 	return plan, nil
+}
+
+func frameworkGlobalDirName(frameworkID string) string {
+	if frameworkID == "claudecode" {
+		return "claude"
+	}
+
+	return frameworkID
 }
 
 func buildRecommendedProjectRouteOutputs(frameworkID string, summary FrameworkInspectSummary) []FrameworkRoutePlanOutput {
@@ -453,7 +476,7 @@ func projectCommandSkillTarget(frameworkID string, name string) (string, []strin
 	switch frameworkID {
 	case "codex":
 		return fmt.Sprintf(".codex/skills/%s", name), []string{"$" + name}, true
-	case "claude":
+	case "claudecode":
 		return fmt.Sprintf(".claude/skills/%s", name), []string{"/" + name}, true
 	case "openclaw":
 		return fmt.Sprintf("skills/%s", name), []string{"/skill " + name}, true
@@ -466,7 +489,7 @@ func projectLocalSkillTarget(frameworkID string, name string) (string, []string,
 	switch frameworkID {
 	case "codex":
 		return fmt.Sprintf(".codex/skills/%s", name), []string{"$" + name}, true
-	case "claude":
+	case "claudecode":
 		return fmt.Sprintf(".claude/skills/%s", name), []string{"/" + name}, true
 	case "openclaw":
 		return fmt.Sprintf("skills/%s", name), []string{"/skill " + name}, true
@@ -488,7 +511,7 @@ func globalCommandTarget(frameworkID string, harnessID string, command Framework
 	switch frameworkID {
 	case "codex":
 		return fmt.Sprintf("~/.codex/prompts/%s.md", name), "command_prompt", []string{"/prompts:" + name}, true
-	case "claude":
+	case "claudecode":
 		return fmt.Sprintf("~/.claude/skills/%s", name), "command_as_skill", []string{"/" + name}, true
 	case "openclaw":
 		return fmt.Sprintf("~/.agents/skills/%s", name), "command_as_skill", []string{"/skill " + name}, true
@@ -502,7 +525,7 @@ func globalLocalSkillTarget(frameworkID string, harnessID string, skill Framewor
 	switch frameworkID {
 	case "codex":
 		return fmt.Sprintf("~/.codex/skills/%s", name), []string{"$" + name}, true
-	case "claude":
+	case "claudecode":
 		return fmt.Sprintf("~/.claude/skills/%s", name), []string{"/" + name}, true
 	case "openclaw":
 		return fmt.Sprintf("~/.agents/skills/%s", name), []string{"/skill " + name}, true

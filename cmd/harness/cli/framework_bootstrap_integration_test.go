@@ -61,7 +61,7 @@ func TestHarnessFrameworkApplyMaterializesPendingBootstrapWithoutRevivingComplet
 	}
 	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
 	require.Equal(t, repo.Root, payload.HarnessRoot)
-	require.Equal(t, "claude", payload.Framework)
+	require.Equal(t, "claudecode", payload.Framework)
 
 	bootstrapData, err := os.ReadFile(filepath.Join(repo.Root, "BOOTSTRAP.md"))
 	require.NoError(t, err)

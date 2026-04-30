@@ -174,7 +174,7 @@ func TestResolveFrameworkUsesProjectDetectionBeforeRecommendedDefault(t *testing
 		GitDir:   filepath.Join(repo.Root, ".git"),
 	})
 	require.NoError(t, err)
-	require.Equal(t, "claude", resolution.Framework)
+	require.Equal(t, "claudecode", resolution.Framework)
 	require.Equal(t, FrameworkSelectionSourceProjectDetection, resolution.Source)
 }
 
@@ -210,7 +210,7 @@ func TestResolveFrameworkReturnsRecommendedDefaultWhenNoHigherPrioritySignalExis
 		GitDir:   filepath.Join(repo.Root, ".git"),
 	})
 	require.NoError(t, err)
-	require.Equal(t, "claude", resolution.Framework)
+	require.Equal(t, "claudecode", resolution.Framework)
 	require.Equal(t, FrameworkSelectionSourceRecommendedDefault, resolution.Source)
 }
 
@@ -284,12 +284,12 @@ func TestResolveFrameworkUsesUniqueBundleRecommendationWhenRuntimeRootRecommenda
 		GitDir:   filepath.Join(repo.Root, ".git"),
 	})
 	require.NoError(t, err)
-	require.Equal(t, "claude", resolution.Framework)
+	require.Equal(t, "claudecode", resolution.Framework)
 	require.Equal(t, FrameworkSelectionSourcePackageRecommendation, resolution.Source)
 	require.Len(t, resolution.PackageRecommendations, 2)
 	require.Equal(t, []FrameworkPackageRecommendation{
-		{HarnessID: "cmd_stack", RecommendedFramework: "claude"},
-		{HarnessID: "docs_stack", RecommendedFramework: "claude"},
+		{HarnessID: "cmd_stack", RecommendedFramework: "claudecode"},
+		{HarnessID: "docs_stack", RecommendedFramework: "claudecode"},
 	}, resolution.PackageRecommendations)
 }
 
@@ -338,10 +338,10 @@ func TestResolveFrameworkUsesOwnerBasedAssignedRecommendationWithoutBundleBacked
 		GitDir:   filepath.Join(repo.Root, ".git"),
 	})
 	require.NoError(t, err)
-	require.Equal(t, "claude", resolution.Framework)
+	require.Equal(t, "claudecode", resolution.Framework)
 	require.Equal(t, FrameworkSelectionSourcePackageRecommendation, resolution.Source)
 	require.Equal(t, []FrameworkPackageRecommendation{
-		{HarnessID: "writing_stack", RecommendedFramework: "claude"},
+		{HarnessID: "writing_stack", RecommendedFramework: "claudecode"},
 	}, resolution.PackageRecommendations)
 }
 
@@ -405,9 +405,9 @@ func TestResolveFrameworkReturnsUnresolvedConflictForConflictingBundleRecommenda
 	require.Equal(t, FrameworkSelectionSourceUnresolvedConflict, resolution.Source)
 	require.Equal(t, []FrameworkPackageRecommendation{
 		{HarnessID: "cmd_stack", RecommendedFramework: "codex"},
-		{HarnessID: "docs_stack", RecommendedFramework: "claude"},
+		{HarnessID: "docs_stack", RecommendedFramework: "claudecode"},
 	}, resolution.PackageRecommendations)
-	require.Contains(t, resolution.Warnings, `conflicting package framework recommendations detected: cmd_stack=codex, docs_stack=claude`)
+	require.Contains(t, resolution.Warnings, `conflicting package framework recommendations detected: cmd_stack=codex, docs_stack=claudecode`)
 }
 
 func TestResolveFrameworkSkipsUnsupportedExplicitSelectionAndWarns(t *testing.T) {
@@ -429,7 +429,7 @@ func TestResolveFrameworkSkipsUnsupportedExplicitSelectionAndWarns(t *testing.T)
 		GitDir:   filepath.Join(repo.Root, ".git"),
 	})
 	require.NoError(t, err)
-	require.Equal(t, "claude", resolution.Framework)
+	require.Equal(t, "claudecode", resolution.Framework)
 	require.Equal(t, FrameworkSelectionSourceRecommendedDefault, resolution.Source)
 	require.Contains(t, resolution.Warnings, `ignore unsupported explicit local framework selection "unknown"`)
 }

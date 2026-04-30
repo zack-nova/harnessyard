@@ -27,7 +27,7 @@ func TestParseAgentUnifiedConfigFileDataValidatesTargetsAndConfig(t *testing.T) 
 	require.NoError(t, err)
 	require.Equal(t, 1, file.Version)
 	require.Equal(t, AgentUnifiedConfigTarget{Enabled: true, Scope: "project"}, file.Targets["codex"])
-	require.Equal(t, AgentUnifiedConfigTarget{Enabled: true}, file.Targets["claude"])
+	require.Equal(t, AgentUnifiedConfigTarget{Enabled: true}, file.Targets["claudecode"])
 	require.Equal(t, "gpt-5.4", file.Config["model"])
 	require.Equal(t, map[string]any{"web_search": true}, file.Config["features"])
 }

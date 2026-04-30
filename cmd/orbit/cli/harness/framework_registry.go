@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 type frameworkDetectionMode string
@@ -31,7 +32,7 @@ type FrameworkAdapter struct {
 func RegisteredFrameworkAdapters() []FrameworkAdapter {
 	adapters := []FrameworkAdapter{
 		{
-			ID:                    "claude",
+			ID:                    "claudecode",
 			ProjectAliasPath:      "CLAUDE.md",
 			ProjectDetectionPaths: []string{"CLAUDE.md"},
 			CommandsGlobal:        true,
@@ -60,10 +61,30 @@ func RegisteredFrameworkAdapters() []FrameworkAdapter {
 	return adapters
 }
 
+// NormalizeFrameworkID maps supported user aliases to canonical framework ids.
+func NormalizeFrameworkID(frameworkID string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(frameworkID)) {
+	case "claude", "claude_code", "claude-code", "claudecode":
+		return "claudecode", true
+	case "codex":
+		return "codex", true
+	case "gitagent":
+		return "gitagent", true
+	case "openclaw":
+		return "openclaw", true
+	default:
+		return "", false
+	}
+}
+
 // LookupFrameworkAdapter returns one built-in adapter by id.
 func LookupFrameworkAdapter(frameworkID string) (FrameworkAdapter, bool) {
+	normalizedFrameworkID, ok := NormalizeFrameworkID(frameworkID)
+	if !ok {
+		return FrameworkAdapter{}, false
+	}
 	for _, adapter := range RegisteredFrameworkAdapters() {
-		if adapter.ID == frameworkID {
+		if adapter.ID == normalizedFrameworkID {
 			return adapter, true
 		}
 	}
