@@ -233,6 +233,7 @@ func ApplyFramework(ctx context.Context, input FrameworkApplyInput) (FrameworkAp
 		ProjectOutputCount: len(activation.ProjectOutputs),
 		GlobalOutputCount:  len(activation.GlobalOutputs),
 		ArtifactResults:    artifactResults,
+		Warnings:           append([]string(nil), state.Summary.Warnings...),
 	}, nil
 }
 
@@ -256,6 +257,7 @@ func CheckFramework(ctx context.Context, repoRoot string, gitDir string) (Framew
 		ResolutionSource: state.Summary.ResolutionSource,
 		ActivationIDs:    activationIDs,
 		Findings:         []FrameworkCheckFinding{},
+		Warnings:         append([]string(nil), state.Summary.Warnings...),
 	}
 
 	if state.Summary.ResolvedFramework == "" {

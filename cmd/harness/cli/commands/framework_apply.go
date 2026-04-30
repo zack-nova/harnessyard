@@ -116,6 +116,11 @@ func NewFrameworkApplyCommand() *cobra.Command {
 			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "activation_path: %s\n", output.ActivationPath); err != nil {
 				return fmt.Errorf("write command output: %w", err)
 			}
+			for _, warning := range output.Warnings {
+				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "warning: %s\n", warning); err != nil {
+					return fmt.Errorf("write command output: %w", err)
+				}
+			}
 			if err := emitPostActionReadinessText(cmd.OutOrStdout(), output.Readiness); err != nil {
 				return err
 			}

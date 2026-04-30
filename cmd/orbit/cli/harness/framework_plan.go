@@ -14,6 +14,7 @@ type FrameworkCommandSummary struct {
 	ID          string `json:"id"`
 	Path        string `json:"path"`
 	Description string `json:"description,omitempty"`
+	Untracked   bool   `json:"untracked,omitempty"`
 }
 
 // FrameworkSkillSummary captures one runtime skill capability.
@@ -22,6 +23,7 @@ type FrameworkSkillSummary struct {
 	ID          string `json:"id"`
 	Path        string `json:"path"`
 	Description string `json:"description,omitempty"`
+	Untracked   bool   `json:"untracked,omitempty"`
 }
 
 // FrameworkRemoteSkillSummary captures one runtime remote skill capability.
@@ -51,6 +53,7 @@ type FrameworkPackageAgentHookSummary struct {
 	UnsupportedBehavior string          `json:"unsupported_behavior,omitempty"`
 	Source              string          `json:"source,omitempty"`
 	Activation          string          `json:"activation"`
+	Untracked           bool            `json:"untracked,omitempty"`
 }
 
 // FrameworkAgentConfigSummary captures runtime-level unified agent config truth.
@@ -73,6 +76,9 @@ type FrameworkInspectSummary struct {
 	CommandCount                int                                `json:"command_count"`
 	SkillCount                  int                                `json:"skill_count"`
 	RemoteSkillCount            int                                `json:"remote_skill_count"`
+	UntrackedCommandCount       int                                `json:"untracked_command_count,omitempty"`
+	UntrackedSkillCount         int                                `json:"untracked_skill_count,omitempty"`
+	UntrackedPackageHookCount   int                                `json:"untracked_package_agent_hook_count,omitempty"`
 	HasAgentGuidance            bool                               `json:"has_agent_guidance"`
 	HasHumanGuidance            bool                               `json:"has_human_guidance"`
 	HasPendingBootstrapGuidance bool                               `json:"has_pending_bootstrap_guidance"`
@@ -126,6 +132,9 @@ type FrameworkDesiredTruth struct {
 	CommandCount          int    `json:"command_count"`
 	SkillCount            int    `json:"skill_count"`
 	RemoteSkillCount      int    `json:"remote_skill_count"`
+	UntrackedCommandCount int    `json:"untracked_command_count,omitempty"`
+	UntrackedSkillCount   int    `json:"untracked_skill_count,omitempty"`
+	UntrackedHookCount    int    `json:"untracked_package_agent_hook_count,omitempty"`
 	HasAgentGuidance      bool   `json:"has_agent_guidance"`
 	HasHumanGuidance      bool   `json:"has_human_guidance"`
 	HasPendingBootstrap   bool   `json:"has_pending_bootstrap_guidance"`
@@ -181,6 +190,9 @@ func BuildFrameworkPlan(ctx context.Context, repoRoot string, gitDir string, har
 			CommandCount:          summary.CommandCount,
 			SkillCount:            summary.SkillCount,
 			RemoteSkillCount:      summary.RemoteSkillCount,
+			UntrackedCommandCount: summary.UntrackedCommandCount,
+			UntrackedSkillCount:   summary.UntrackedSkillCount,
+			UntrackedHookCount:    summary.UntrackedPackageHookCount,
 			HasAgentGuidance:      summary.HasAgentGuidance,
 			HasHumanGuidance:      summary.HasHumanGuidance,
 			HasPendingBootstrap:   summary.HasPendingBootstrapGuidance,

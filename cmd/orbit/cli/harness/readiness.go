@@ -106,6 +106,7 @@ type ReadinessAgentReport struct {
 	ResolutionSource FrameworkSelectionSource `json:"resolution_source,omitempty"`
 	ActivationStatus string                   `json:"activation_status"`
 	Reasons          []ReadinessReason        `json:"reasons,omitempty"`
+	Warnings         []string                 `json:"warnings,omitempty"`
 }
 
 // ReadinessReport captures one derived readiness view of the current runtime.
@@ -452,6 +453,7 @@ func evaluateAgentReadiness(ctx context.Context, repoRoot string) (ReadinessAgen
 		}
 		appendRuntimeReadinessReason(&reasons, reason)
 	}
+	report.Warnings = append([]string(nil), check.Warnings...)
 
 	report.Status = deriveRuntimeReadinessStatus(reasons)
 	report.ActivationStatus = agentReadinessActivationStatus(reasons)

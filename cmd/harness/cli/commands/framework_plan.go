@@ -83,6 +83,11 @@ func NewFrameworkPlanCommand() *cobra.Command {
 					return fmt.Errorf("write command output: %w", err)
 				}
 			}
+			for _, warning := range output.Warnings {
+				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "warning: %s\n", warning); err != nil {
+					return fmt.Errorf("write command output: %w", err)
+				}
+			}
 
 			return nil
 		},

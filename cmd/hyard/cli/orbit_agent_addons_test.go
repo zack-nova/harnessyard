@@ -114,6 +114,156 @@ func TestHyardAgentPlanReportsPackageHookAddonsWithoutApplying(t *testing.T) {
 	require.ErrorIs(t, err, os.ErrNotExist)
 }
 
+func TestHyardAgentPlanIncludesUntrackedLocalSkillsFromWorktree(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardRuntimeWithUntrackedLocalSkill(t)
+	selectHyardAgentAddonFramework(t, repo)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "agent", "plan", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		DesiredTruth struct {
+			SkillCount          int `json:"skill_count"`
+			UntrackedSkillCount int `json:"untracked_skill_count"`
+		} `json:"desired_truth"`
+		RecommendedProjectOutputs []struct {
+			Artifact       string `json:"artifact"`
+			ArtifactType   string `json:"artifact_type"`
+			Source         string `json:"source"`
+			Path           string `json:"path"`
+			EffectiveScope string `json:"effective_scope"`
+		} `json:"recommended_project_outputs"`
+		Warnings []string `json:"warnings"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, 1, payload.DesiredTruth.SkillCount)
+	require.Equal(t, 1, payload.DesiredTruth.UntrackedSkillCount)
+	require.Contains(t, payload.RecommendedProjectOutputs, struct {
+		Artifact       string `json:"artifact"`
+		ArtifactType   string `json:"artifact_type"`
+		Source         string `json:"source"`
+		Path           string `json:"path"`
+		EffectiveScope string `json:"effective_scope"`
+	}{
+		Artifact:       "docs-style",
+		ArtifactType:   "local-skill",
+		Source:         "skills/docs/docs-style",
+		Path:           ".codex/skills/docs-style",
+		EffectiveScope: "project",
+	})
+	require.Contains(t, payload.Warnings, "activation depends on 1 untracked local skill; commit or track these files to make this activation reproducible")
+}
+
+func TestHyardAgentApplyMaterializesUntrackedLocalSkillFromWorktree(t *testing.T) {
+	repo := seedHyardRuntimeWithUntrackedLocalSkill(t)
+	selectHyardAgentAddonFramework(t, repo)
+
+	lockHyardProcessEnv(t)
+	stubCodexExecutableOnPath(t)
+
+	stdout, stderr, err := executeHyardCLIUnlocked(t, repo.Root, "agent", "apply", "--yes", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Status             string   `json:"status"`
+		ProjectOutputCount int      `json:"project_output_count"`
+		Warnings           []string `json:"warnings"`
+		ArtifactResults    []struct {
+			Artifact       string `json:"artifact"`
+			ArtifactType   string `json:"artifact_type"`
+			Path           string `json:"path"`
+			EffectiveScope string `json:"effective_scope"`
+			Status         string `json:"status"`
+		} `json:"artifact_results"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "ok", payload.Status)
+	require.Equal(t, 1, payload.ProjectOutputCount)
+	require.Contains(t, payload.Warnings, "activation depends on 1 untracked local skill; commit or track these files to make this activation reproducible")
+	require.Contains(t, payload.ArtifactResults, struct {
+		Artifact       string `json:"artifact"`
+		ArtifactType   string `json:"artifact_type"`
+		Path           string `json:"path"`
+		EffectiveScope string `json:"effective_scope"`
+		Status         string `json:"status"`
+	}{
+		Artifact:       "docs-style",
+		ArtifactType:   "local-skill",
+		Path:           ".codex/skills/docs-style",
+		EffectiveScope: "project",
+		Status:         "project_applied",
+	})
+
+	target, err := os.Readlink(filepath.Join(repo.Root, ".codex", "skills", "docs-style"))
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(repo.Root, "skills", "docs", "docs-style"), target)
+
+	activation, err := harnesspkg.LoadFrameworkActivation(filepath.Join(repo.Root, ".git"), "codex")
+	require.NoError(t, err)
+	require.Len(t, activation.ProjectOutputs, 1)
+	require.Equal(t, ".codex/skills/docs-style", activation.ProjectOutputs[0].Path)
+}
+
+func TestHyardReadyWarnsWhenAgentActivationDependsOnUntrackedLocalSkill(t *testing.T) {
+	repo := seedHyardRuntimeWithUntrackedLocalSkill(t)
+	selectHyardAgentAddonFramework(t, repo)
+
+	lockHyardProcessEnv(t)
+	stubCodexExecutableOnPath(t)
+
+	_, stderr, err := executeHyardCLIUnlocked(t, repo.Root, "agent", "apply", "--yes", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	stdout, stderr, err := executeHyardCLIUnlocked(t, repo.Root, "ready", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Agent struct {
+			Status           string   `json:"status"`
+			ActivationStatus string   `json:"activation_status"`
+			Warnings         []string `json:"warnings"`
+		} `json:"agent"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "ready", payload.Agent.Status)
+	require.Equal(t, "current", payload.Agent.ActivationStatus)
+	require.Contains(t, payload.Agent.Warnings, "activation depends on 1 untracked local skill; commit or track these files to make this activation reproducible")
+}
+
+func TestHyardAgentCheckDoesNotBecomeStaleWhenUntrackedSkillIsTrackedAfterApply(t *testing.T) {
+	repo := seedHyardRuntimeWithUntrackedLocalSkill(t)
+	selectHyardAgentAddonFramework(t, repo)
+
+	lockHyardProcessEnv(t)
+	stubCodexExecutableOnPath(t)
+
+	_, stderr, err := executeHyardCLIUnlocked(t, repo.Root, "agent", "apply", "--yes", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	repo.Run(t, "add", "skills")
+
+	stdout, stderr, err := executeHyardCLIUnlocked(t, repo.Root, "agent", "check", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		OK       bool     `json:"ok"`
+		Stale    bool     `json:"stale"`
+		Warnings []string `json:"warnings"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.True(t, payload.OK)
+	require.False(t, payload.Stale)
+	require.Empty(t, payload.Warnings)
+}
+
 func TestHyardAgentPlanHooksGroupsPackageHookNativePreview(t *testing.T) {
 	repo := seedHyardRuntimeWithAgentAddonHook(t)
 	selectHyardAgentAddonFramework(t, repo)
@@ -450,6 +600,55 @@ func selectHyardAgentAddonFramework(t *testing.T, repo *testutil.Repo) {
 		UpdatedAt:         time.Date(2026, time.April, 26, 13, 0, 0, 0, time.UTC),
 	})
 	require.NoError(t, err)
+}
+
+func seedHyardRuntimeWithUntrackedLocalSkill(t *testing.T) *testutil.Repo {
+	t.Helper()
+
+	repo := testutil.NewRepo(t)
+	_, _, err := executeHyardCLI(t, repo.Root, "init", "runtime")
+	require.NoError(t, err)
+	repo.WriteFile(t, ".harness/orbits/docs.yaml", ""+
+		"package:\n"+
+		"  type: orbit\n"+
+		"  name: docs\n"+
+		"name: Docs\n"+
+		"meta:\n"+
+		"  file: .harness/orbits/docs.yaml\n"+
+		"  agents_template: |\n"+
+		"    # Docs\n"+
+		"  include_in_projection: true\n"+
+		"  include_in_write: true\n"+
+		"  include_in_export: true\n"+
+		"  include_description_in_orchestration: true\n"+
+		"capabilities:\n"+
+		"  skills:\n"+
+		"    local:\n"+
+		"      paths:\n"+
+		"        include:\n"+
+		"          - skills/docs/*\n"+
+		"members:\n"+
+		"  - name: docs-content\n"+
+		"    role: subject\n"+
+		"    scopes:\n"+
+		"      export: true\n"+
+		"    paths:\n"+
+		"      include:\n"+
+		"        - docs/**\n")
+	repo.WriteFile(t, "docs/guide.md", "Orbit guide\n")
+	repo.WriteFile(t, "skills/docs/docs-style/SKILL.md", ""+
+		"---\n"+
+		"name: docs-style\n"+
+		"description: Docs style references.\n"+
+		"---\n"+
+		"# Docs Style\n")
+	repo.WriteFile(t, "skills/docs/docs-style/checklist.md", "Use docs style guide.\n")
+	repo.Run(t, "add", ".harness", "docs")
+	_, err = harnesspkg.AddManualMember(context.Background(), repo.Root, "docs", time.Date(2026, time.April, 26, 12, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	repo.Run(t, "add", ".harness")
+
+	return repo
 }
 
 func makeHyardAgentAddonHandlerExecutable(t *testing.T, repo *testutil.Repo) {

@@ -63,6 +63,14 @@ func loadFrameworkDesiredState(ctx context.Context, repoRoot string, gitDir stri
 	if err != nil {
 		return frameworkDesiredState{}, fmt.Errorf("load tracked files: %w", err)
 	}
+	worktreeFiles, err := gitpkg.WorktreeFiles(ctx, repoRoot)
+	if err != nil {
+		return frameworkDesiredState{}, fmt.Errorf("load worktree files: %w", err)
+	}
+	trackedSet := make(map[string]struct{}, len(trackedFiles))
+	for _, path := range trackedFiles {
+		trackedSet[path] = struct{}{}
+	}
 
 	resolution, err := ResolveFramework(ctx, FrameworkResolutionInput{
 		RepoRoot: repoRoot,
@@ -147,7 +155,7 @@ func loadFrameworkDesiredState(ctx context.Context, repoRoot string, gitDir stri
 		if spec.Capabilities == nil && spec.AgentAddons == nil {
 			continue
 		}
-		plan, err := orbitpkg.ResolveProjectionPlan(repoConfig, spec, trackedFiles)
+		plan, err := orbitpkg.ResolveProjectionPlan(repoConfig, spec, worktreeFiles)
 		if err != nil {
 			return frameworkDesiredState{}, fmt.Errorf("resolve projection plan for orbit %q: %w", member.OrbitID, err)
 		}
@@ -163,12 +171,13 @@ func loadFrameworkDesiredState(ctx context.Context, repoRoot string, gitDir stri
 			repoRoot,
 			member.OrbitID,
 			capabilitySpec,
-			trackedFiles,
+			worktreeFiles,
 			plan.ExportPaths,
 		)
 		if hasAgentAddonsSnapshot {
 			packageAgentHooks = frameworkPackageAgentHooksFromSnapshot(member, agentAddonsSnapshot)
 		}
+		markUntrackedFrameworkCapabilities(commands, localSkills, packageAgentHooks, trackedSet, worktreeFiles)
 		state.Summary.Commands = append(state.Summary.Commands, commands...)
 		state.Summary.Skills = append(state.Summary.Skills, localSkills...)
 		state.Summary.RemoteSkills = append(state.Summary.RemoteSkills, remoteSkills...)
@@ -208,9 +217,111 @@ func loadFrameworkDesiredState(ctx context.Context, repoRoot string, gitDir stri
 	state.Summary.SkillCount = len(state.Summary.Skills)
 	state.Summary.RemoteSkillCount = len(state.Summary.RemoteSkills)
 	state.Summary.PackageAgentHookCount = len(state.Summary.PackageAgentHooks)
+	state.Summary.UntrackedCommandCount = countUntrackedCommands(state.Summary.Commands)
+	state.Summary.UntrackedSkillCount = countUntrackedSkills(state.Summary.Skills)
+	state.Summary.UntrackedPackageHookCount = countUntrackedPackageHooks(state.Summary.PackageAgentHooks)
+	state.Summary.Warnings = append(state.Summary.Warnings, untrackedFrameworkCapabilityWarnings(state.Summary)...)
+	sort.Strings(state.Summary.Warnings)
 	state.CapabilityFindings = appendFrameworkCapabilityFindings(state.Summary, state.CapabilityFindings)
 
 	return state, nil
+}
+
+func markUntrackedFrameworkCapabilities(
+	commands []FrameworkCommandSummary,
+	skills []FrameworkSkillSummary,
+	packageHooks []FrameworkPackageAgentHookSummary,
+	trackedSet map[string]struct{},
+	worktreeFiles []string,
+) {
+	for index := range commands {
+		commands[index].Untracked = pathUntracked(commands[index].Path, trackedSet)
+	}
+	for index := range skills {
+		skills[index].Untracked = treeHasUntrackedPath(skills[index].Path, trackedSet, worktreeFiles)
+	}
+	for index := range packageHooks {
+		packageHooks[index].Untracked = pathUntracked(packageHooks[index].HandlerPath, trackedSet)
+	}
+}
+
+func pathUntracked(path string, trackedSet map[string]struct{}) bool {
+	if strings.TrimSpace(path) == "" {
+		return false
+	}
+	_, tracked := trackedSet[path]
+	return !tracked
+}
+
+func treeHasUntrackedPath(rootPath string, trackedSet map[string]struct{}, worktreeFiles []string) bool {
+	rootPath = strings.TrimSuffix(strings.TrimSpace(rootPath), "/")
+	if rootPath == "" {
+		return false
+	}
+	prefix := rootPath + "/"
+	for _, path := range worktreeFiles {
+		if path != rootPath && !strings.HasPrefix(path, prefix) {
+			continue
+		}
+		if pathUntracked(path, trackedSet) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func countUntrackedCommands(commands []FrameworkCommandSummary) int {
+	count := 0
+	for _, command := range commands {
+		if command.Untracked {
+			count++
+		}
+	}
+	return count
+}
+
+func countUntrackedSkills(skills []FrameworkSkillSummary) int {
+	count := 0
+	for _, skill := range skills {
+		if skill.Untracked {
+			count++
+		}
+	}
+	return count
+}
+
+func countUntrackedPackageHooks(hooks []FrameworkPackageAgentHookSummary) int {
+	count := 0
+	for _, hook := range hooks {
+		if hook.Untracked {
+			count++
+		}
+	}
+	return count
+}
+
+func untrackedFrameworkCapabilityWarnings(summary FrameworkInspectSummary) []string {
+	warnings := []string{}
+	if summary.UntrackedCommandCount > 0 {
+		warnings = append(warnings, untrackedFrameworkCapabilityWarning(summary.UntrackedCommandCount, "prompt command", "prompt commands"))
+	}
+	if summary.UntrackedSkillCount > 0 {
+		warnings = append(warnings, untrackedFrameworkCapabilityWarning(summary.UntrackedSkillCount, "local skill", "local skills"))
+	}
+	if summary.UntrackedPackageHookCount > 0 {
+		warnings = append(warnings, untrackedFrameworkCapabilityWarning(summary.UntrackedPackageHookCount, "package hook", "package hooks"))
+	}
+
+	return warnings
+}
+
+func untrackedFrameworkCapabilityWarning(count int, singular string, plural string) string {
+	label := plural
+	if count == 1 {
+		label = singular
+	}
+	return fmt.Sprintf("activation depends on %d untracked %s; commit or track these files to make this activation reproducible", count, label)
 }
 
 func loadMemberAgentAddonsSnapshot(repoRoot string, member RuntimeMember) (*orbittemplate.AgentAddonsSnapshot, bool, error) {
@@ -354,10 +465,10 @@ func computeFrameworkDesiredHashes(repoRoot string, state frameworkDesiredState)
 		RemoteSkills      []FrameworkRemoteSkillSummary      `json:"remote_skills,omitempty"`
 		PackageAgentHooks []FrameworkPackageAgentHookSummary `json:"package_agent_hooks,omitempty"`
 	}{
-		Commands:          state.Summary.Commands,
-		Skills:            state.Summary.Skills,
+		Commands:          frameworkCommandsForActivationHash(state.Summary.Commands),
+		Skills:            frameworkSkillsForActivationHash(state.Summary.Skills),
 		RemoteSkills:      state.Summary.RemoteSkills,
-		PackageAgentHooks: state.Summary.PackageAgentHooks,
+		PackageAgentHooks: frameworkPackageHooksForActivationHash(state.Summary.PackageAgentHooks),
 	})
 	if err != nil {
 		return "", "", "", "", fmt.Errorf("hash framework capabilities snapshot: %w", err)
@@ -380,6 +491,33 @@ func computeFrameworkDesiredHashes(repoRoot string, state frameworkDesiredState)
 	}
 
 	return guidanceHash, capabilitiesHash, selectionHash, runtimeAgentTruthHash, nil
+}
+
+func frameworkCommandsForActivationHash(commands []FrameworkCommandSummary) []FrameworkCommandSummary {
+	snapshot := append([]FrameworkCommandSummary(nil), commands...)
+	for index := range snapshot {
+		snapshot[index].Untracked = false
+	}
+
+	return snapshot
+}
+
+func frameworkSkillsForActivationHash(skills []FrameworkSkillSummary) []FrameworkSkillSummary {
+	snapshot := append([]FrameworkSkillSummary(nil), skills...)
+	for index := range snapshot {
+		snapshot[index].Untracked = false
+	}
+
+	return snapshot
+}
+
+func frameworkPackageHooksForActivationHash(hooks []FrameworkPackageAgentHookSummary) []FrameworkPackageAgentHookSummary {
+	snapshot := append([]FrameworkPackageAgentHookSummary(nil), hooks...)
+	for index := range snapshot {
+		snapshot[index].Untracked = false
+	}
+
+	return snapshot
 }
 
 func hashFrameworkSnapshot(value any) (string, error) {

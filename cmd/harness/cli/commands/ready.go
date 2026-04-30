@@ -121,6 +121,11 @@ func NewReadyCommand() *cobra.Command {
 					return fmt.Errorf("write command output: %w", err)
 				}
 			}
+			for _, warning := range output.Agent.Warnings {
+				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "warning: %s\n", warning); err != nil {
+					return fmt.Errorf("write command output: %w", err)
+				}
+			}
 			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "orbit_count: %d\n", output.Summary.OrbitCount); err != nil {
 				return fmt.Errorf("write command output: %w", err)
 			}
