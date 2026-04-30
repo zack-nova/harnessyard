@@ -19,8 +19,8 @@ const (
 	repoPrepareAgentsBegin    = "<!-- hyard:repo-agents:begin -->"
 	repoPrepareAgentsEnd      = "<!-- hyard:repo-agents:end -->"
 
-	repoPrepareBootstrapBody = "Review and update these repository-level preparation notes before follow-up work starts.\nKeep this block focused on setup that belongs to the repository, not to any specific harness or orbit."
-	repoPrepareAgentsBody    = "Review BOOTSTRAP.md before starting work in this repository.\nFollow the repository-level preparation notes in the hyard repo bootstrap block when they apply."
+	repoPrepareBootstrapBody = "Complete the repository bootstrap tasks before normal work starts.\nRun `hyard bootstrap complete --check --json` to preview the closeout.\nRun `hyard bootstrap complete --yes` after confirming the preview only removes bootstrap guidance and bootstrap-lane runtime files."
+	repoPrepareAgentsBody    = "Before starting normal work, read `BOOTSTRAP.md` if it exists.\nIf it contains hyard bootstrap instructions, complete that initialization flow first."
 )
 
 // RepoPrepareGuidancePlan captures the repo-level guidance work hyard prepare can perform.
@@ -37,6 +37,22 @@ type RepoPrepareGuidanceFilePlan struct {
 	absolutePath string
 	content      []byte
 	mode         os.FileMode
+}
+
+// RepoBootstrapCloseoutPlan captures repo-level bootstrap guidance cleanup.
+type RepoBootstrapCloseoutPlan struct {
+	RemovedBlocks        []string `json:"removed_blocks,omitempty"`
+	RemovedPaths         []string `json:"removed_paths,omitempty"`
+	DeletedBootstrapFile bool     `json:"deleted_bootstrap_file"`
+	DeletedAgentsFile    bool     `json:"deleted_agents_file"`
+}
+
+// RepoBootstrapReopenPlan captures repo-level bootstrap guidance restoration.
+type RepoBootstrapReopenPlan struct {
+	RestoredBlocks       []string `json:"restored_blocks,omitempty"`
+	RestoredPaths        []string `json:"restored_paths,omitempty"`
+	CreatedBootstrapFile bool     `json:"created_bootstrap_file"`
+	CreatedAgentsFile    bool     `json:"created_agents_file"`
 }
 
 // PlanRepoPrepareGuidance previews repo-level guidance blocks without writing files.
@@ -85,6 +101,137 @@ func ApplyRepoPrepareGuidance(repoRoot string) (RepoPrepareGuidancePlan, error) 
 	}
 
 	return plan, nil
+}
+
+// PlanRepoBootstrapCloseout previews cleanup of repo-level bootstrap guidance.
+func PlanRepoBootstrapCloseout(repoRoot string) (RepoBootstrapCloseoutPlan, error) {
+	var plan RepoBootstrapCloseoutPlan
+
+	bootstrapPath := filepath.Join(repoRoot, repoPrepareBootstrapPath)
+	bootstrapData, err := os.ReadFile(bootstrapPath) //nolint:gosec // Path is repo-local and fixed by the preparation contract.
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return RepoBootstrapCloseoutPlan{}, fmt.Errorf("read %s: %w", repoPrepareBootstrapPath, err)
+	}
+	if err == nil {
+		if hasRepoPrepareGuidanceBlock(bootstrapData, repoPrepareBootstrapBegin, repoPrepareBootstrapEnd) {
+			plan.RemovedBlocks = append(plan.RemovedBlocks, "bootstrap")
+		}
+		plan.RemovedPaths = append(plan.RemovedPaths, repoPrepareBootstrapPath)
+		plan.DeletedBootstrapFile = true
+	}
+
+	agentsPath := filepath.Join(repoRoot, repoPrepareAgentsPath)
+	agentsData, err := os.ReadFile(agentsPath) //nolint:gosec // Path is repo-local and fixed by the preparation contract.
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return RepoBootstrapCloseoutPlan{}, fmt.Errorf("read %s: %w", repoPrepareAgentsPath, err)
+	}
+	if err == nil {
+		nextData, removed, err := removeRepoPrepareGuidanceBlock(agentsData, repoPrepareAgentsBegin, repoPrepareAgentsEnd)
+		if err != nil {
+			return RepoBootstrapCloseoutPlan{}, fmt.Errorf("%s: %w", repoPrepareAgentsPath, err)
+		}
+		if removed {
+			plan.RemovedBlocks = append(plan.RemovedBlocks, "agents")
+			plan.RemovedPaths = append(plan.RemovedPaths, repoPrepareAgentsPath)
+			plan.DeletedAgentsFile = strings.TrimSpace(string(nextData)) == ""
+		}
+	}
+
+	return plan, nil
+}
+
+// ApplyRepoBootstrapCloseout removes repo-level bootstrap guidance according to
+// the repository bootstrap lifecycle contract.
+func ApplyRepoBootstrapCloseout(repoRoot string) (RepoBootstrapCloseoutPlan, error) {
+	plan, err := PlanRepoBootstrapCloseout(repoRoot)
+	if err != nil {
+		return RepoBootstrapCloseoutPlan{}, err
+	}
+
+	if plan.DeletedBootstrapFile {
+		bootstrapPath := filepath.Join(repoRoot, repoPrepareBootstrapPath)
+		if err := os.Remove(bootstrapPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return RepoBootstrapCloseoutPlan{}, fmt.Errorf("delete %s: %w", repoPrepareBootstrapPath, err)
+		}
+	}
+
+	agentsPath := filepath.Join(repoRoot, repoPrepareAgentsPath)
+	agentsData, mode, exists, err := readRepoPrepareGuidanceFile(agentsPath)
+	if err != nil {
+		return RepoBootstrapCloseoutPlan{}, fmt.Errorf("read %s: %w", repoPrepareAgentsPath, err)
+	}
+	if exists {
+		nextData, removed, err := removeRepoPrepareGuidanceBlock(agentsData, repoPrepareAgentsBegin, repoPrepareAgentsEnd)
+		if err != nil {
+			return RepoBootstrapCloseoutPlan{}, fmt.Errorf("%s: %w", repoPrepareAgentsPath, err)
+		}
+		if removed {
+			if strings.TrimSpace(string(nextData)) == "" {
+				if err := os.Remove(agentsPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+					return RepoBootstrapCloseoutPlan{}, fmt.Errorf("delete %s: %w", repoPrepareAgentsPath, err)
+				}
+			} else if err := contractutil.AtomicWriteFileMode(agentsPath, nextData, mode); err != nil {
+				return RepoBootstrapCloseoutPlan{}, fmt.Errorf("write %s: %w", repoPrepareAgentsPath, err)
+			}
+		}
+	}
+
+	return plan, nil
+}
+
+// PlanRepoBootstrapReopen previews restoration of repo-level bootstrap guidance blocks.
+func PlanRepoBootstrapReopen(repoRoot string) (RepoBootstrapReopenPlan, error) {
+	_, result, err := planRepoBootstrapReopenFiles(repoRoot)
+	return result, err
+}
+
+// ApplyRepoBootstrapReopen restores repo-level bootstrap guidance blocks.
+func ApplyRepoBootstrapReopen(repoRoot string) (RepoBootstrapReopenPlan, error) {
+	filePlans, result, err := planRepoBootstrapReopenFiles(repoRoot)
+	if err != nil {
+		return RepoBootstrapReopenPlan{}, err
+	}
+
+	for _, filePlan := range filePlans {
+		if filePlan.Action != "create" && filePlan.Action != "update" {
+			continue
+		}
+		if err := contractutil.AtomicWriteFileMode(filePlan.absolutePath, filePlan.content, filePlan.mode); err != nil {
+			return RepoBootstrapReopenPlan{}, fmt.Errorf("write %s: %w", filePlan.Path, err)
+		}
+	}
+
+	return result, nil
+}
+
+func planRepoBootstrapReopenFiles(repoRoot string) ([]RepoPrepareGuidanceFilePlan, RepoBootstrapReopenPlan, error) {
+	bootstrapPlan, err := planRepoPrepareGuidanceFile(repoRoot, repoPrepareBootstrapPath, repoPrepareBootstrapBegin, repoPrepareBootstrapEnd, repoPrepareBootstrapBody)
+	if err != nil {
+		return nil, RepoBootstrapReopenPlan{}, err
+	}
+	agentsPlan, err := planRepoPrepareGuidanceFile(repoRoot, repoPrepareAgentsPath, repoPrepareAgentsBegin, repoPrepareAgentsEnd, repoPrepareAgentsBody)
+	if err != nil {
+		return nil, RepoBootstrapReopenPlan{}, err
+	}
+
+	filePlans := []RepoPrepareGuidanceFilePlan{bootstrapPlan, agentsPlan}
+	result := RepoBootstrapReopenPlan{}
+	for _, filePlan := range filePlans {
+		if filePlan.Action != "create" && filePlan.Action != "update" {
+			continue
+		}
+		result.RestoredPaths = append(result.RestoredPaths, filePlan.Path)
+		switch filePlan.Path {
+		case repoPrepareBootstrapPath:
+			result.RestoredBlocks = append(result.RestoredBlocks, "bootstrap")
+			result.CreatedBootstrapFile = filePlan.Action == "create"
+		case repoPrepareAgentsPath:
+			result.RestoredBlocks = append(result.RestoredBlocks, "agents")
+			result.CreatedAgentsFile = filePlan.Action == "create"
+		}
+	}
+
+	return filePlans, result, nil
 }
 
 func planRepoPrepareGuidanceFile(repoRoot, repoPath, beginMarker, endMarker, body string) (RepoPrepareGuidanceFilePlan, error) {
@@ -165,4 +312,42 @@ func ensureRepoPrepareGuidanceBlock(data []byte, beginMarker, endMarker, body st
 
 func repoPrepareGuidanceBlock(beginMarker, endMarker, body string) string {
 	return beginMarker + "\n" + strings.TrimSpace(body) + "\n" + endMarker
+}
+
+func hasRepoPrepareGuidanceBlock(data []byte, beginMarker, endMarker string) bool {
+	content := string(data)
+	return strings.Count(content, beginMarker) == 1 && strings.Count(content, endMarker) == 1
+}
+
+func removeRepoPrepareGuidanceBlock(data []byte, beginMarker, endMarker string) ([]byte, bool, error) {
+	content := string(data)
+	beginCount := strings.Count(content, beginMarker)
+	endCount := strings.Count(content, endMarker)
+	if beginCount == 0 && endCount == 0 {
+		return data, false, nil
+	}
+	if beginCount != 1 || endCount != 1 {
+		return nil, false, fmt.Errorf("malformed hyard repo-level guidance block markers")
+	}
+
+	beginIndex := strings.Index(content, beginMarker)
+	endIndex := strings.Index(content, endMarker)
+	if beginIndex > endIndex {
+		return nil, false, fmt.Errorf("end marker appears before begin marker")
+	}
+	endIndex += len(endMarker)
+
+	before := strings.TrimRight(content[:beginIndex], "\n")
+	after := strings.TrimLeft(content[endIndex:], "\n")
+	switch {
+	case before == "":
+		if after == "" {
+			return []byte{}, true, nil
+		}
+		return []byte(after), true, nil
+	case after == "":
+		return []byte(before + "\n"), true, nil
+	default:
+		return []byte(before + "\n\n" + after), true, nil
+	}
 }

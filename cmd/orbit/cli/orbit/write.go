@@ -312,6 +312,7 @@ func atomicWriteFile(filename string, data []byte) error {
 	if err := tempFile.Close(); err != nil {
 		return fmt.Errorf("close temp file for %s: %w", filename, err)
 	}
+	//nolint:gosec,nolintlint // The destination path is repo-local and derived from validated Orbit config paths; newer gosec releases no longer flag it.
 	if err := os.Rename(tempName, filename); err != nil {
 		return fmt.Errorf("rename temp file for %s: %w", filename, err)
 	}

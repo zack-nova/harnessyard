@@ -133,18 +133,22 @@ hyard plumbing harness template save --to harness-template/workspace
 
 ## Bootstrap Completion
 
-If an orbit bootstrap has been completed and its initialization surface should be closed:
+If the repository bootstrap has been completed and its initialization surface should be closed:
 
 ```bash
-hyard plumbing harness bootstrap complete --orbit <orbit-id>
+hyard bootstrap complete --check --json
+hyard bootstrap complete --yes
 ```
 
 If completion was accidental or the bootstrap lane needs to reopen:
 
 ```bash
-hyard plumbing harness bootstrap reopen --orbit <orbit-id>
-hyard plumbing harness bootstrap reopen --orbit <orbit-id> --restore-surface
+hyard bootstrap reopen
+hyard bootstrap reopen --restore-surface
 ```
+
+The lower-level per-orbit compatibility commands remain available under
+`hyard plumbing harness bootstrap` when maintainers need targeted recovery.
 
 ## Acceptance Smoke Contract
 

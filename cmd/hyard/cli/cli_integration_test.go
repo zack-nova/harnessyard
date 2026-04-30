@@ -22,6 +22,7 @@ import (
 	gitpkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/git"
 	harnesspkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/harness"
 	orbitpkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/orbit"
+	statepkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/state"
 	orbittemplate "github.com/zack-nova/harnessyard/cmd/orbit/cli/template"
 	"github.com/zack-nova/harnessyard/cmd/orbit/cli/testutil"
 )
@@ -3985,12 +3986,16 @@ func TestHyardPrepareYesAddsRepoLevelBlocksWhenBootstrapExists(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(bootstrapData), "<!-- hyard:repo-bootstrap:begin -->")
 	require.Contains(t, string(bootstrapData), "<!-- hyard:repo-bootstrap:end -->")
+	require.Contains(t, string(bootstrapData), "Run `hyard bootstrap complete --check --json` to preview the closeout.")
+	require.Contains(t, string(bootstrapData), "Run `hyard bootstrap complete --yes` after confirming the preview only removes bootstrap guidance and bootstrap-lane runtime files.")
 	require.Contains(t, string(bootstrapData), "Existing bootstrap instructions.\n")
 
 	agentsData, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
 	require.NoError(t, err)
 	require.Contains(t, string(agentsData), "<!-- hyard:repo-agents:begin -->")
 	require.Contains(t, string(agentsData), "<!-- hyard:repo-agents:end -->")
+	require.Contains(t, string(agentsData), "Before starting normal work, read `BOOTSTRAP.md` if it exists.")
+	require.Contains(t, string(agentsData), "If it contains hyard bootstrap instructions, complete that initialization flow first.")
 }
 
 func TestHyardPrepareYesSkipsRepoLevelBlocksWhenBootstrapMissing(t *testing.T) {
@@ -4113,6 +4118,289 @@ func TestHyardPrepareCheckJSONPreviewsWithoutWritingRepoLevelBlocks(t *testing.T
 	require.NoError(t, err)
 	require.Equal(t, bootstrap, string(bootstrapData))
 	require.NoFileExists(t, filepath.Join(repo.Root, "AGENTS.md"))
+}
+
+func TestHyardBootstrapCompleteCheckPreviewsRepositoryBootstrapCloseout(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardBootstrapCompletionRepo(t)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "bootstrap", "complete", "--check", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		RepoRoot             string   `json:"repo_root"`
+		Check                bool     `json:"check"`
+		Completed            bool     `json:"completed"`
+		CompletedOrbits      []string `json:"completed_orbits"`
+		RemovedPaths         []string `json:"removed_paths"`
+		RemovedRepoBlocks    []string `json:"removed_repo_blocks"`
+		DeletedBootstrapFile bool     `json:"deleted_bootstrap_file"`
+		DeletedAgentsFile    bool     `json:"deleted_agents_file"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, repo.Root, payload.RepoRoot)
+	require.True(t, payload.Check)
+	require.False(t, payload.Completed)
+	require.Equal(t, []string{"docs", "ops"}, payload.CompletedOrbits)
+	require.ElementsMatch(t, []string{"agents", "bootstrap"}, payload.RemovedRepoBlocks)
+	require.Contains(t, payload.RemovedPaths, "AGENTS.md")
+	require.Contains(t, payload.RemovedPaths, "BOOTSTRAP.md")
+	require.Contains(t, payload.RemovedPaths, "bootstrap/docs/setup.md")
+	require.Contains(t, payload.RemovedPaths, "bootstrap/ops/setup.md")
+	require.True(t, payload.DeletedBootstrapFile)
+	require.True(t, payload.DeletedAgentsFile)
+
+	require.FileExists(t, filepath.Join(repo.Root, "AGENTS.md"))
+	require.FileExists(t, filepath.Join(repo.Root, "BOOTSTRAP.md"))
+	require.FileExists(t, filepath.Join(repo.Root, "bootstrap", "docs", "setup.md"))
+	require.FileExists(t, filepath.Join(repo.Root, "bootstrap", "ops", "setup.md"))
+}
+
+func TestHyardBootstrapCompleteYesClosesRepositoryBootstrap(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardBootstrapCompletionRepo(t)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "bootstrap", "complete", "--yes", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		RepoRoot             string   `json:"repo_root"`
+		Check                bool     `json:"check"`
+		Completed            bool     `json:"completed"`
+		CompletedOrbits      []string `json:"completed_orbits"`
+		RemovedPaths         []string `json:"removed_paths"`
+		RemovedRepoBlocks    []string `json:"removed_repo_blocks"`
+		DeletedBootstrapFile bool     `json:"deleted_bootstrap_file"`
+		DeletedAgentsFile    bool     `json:"deleted_agents_file"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, repo.Root, payload.RepoRoot)
+	require.False(t, payload.Check)
+	require.True(t, payload.Completed)
+	require.Equal(t, []string{"docs", "ops"}, payload.CompletedOrbits)
+	require.ElementsMatch(t, []string{"agents", "bootstrap"}, payload.RemovedRepoBlocks)
+	require.Contains(t, payload.RemovedPaths, "AGENTS.md")
+	require.Contains(t, payload.RemovedPaths, "BOOTSTRAP.md")
+	require.Contains(t, payload.RemovedPaths, "bootstrap/docs/setup.md")
+	require.Contains(t, payload.RemovedPaths, "bootstrap/ops/setup.md")
+	require.True(t, payload.DeletedBootstrapFile)
+	require.True(t, payload.DeletedAgentsFile)
+
+	require.NoFileExists(t, filepath.Join(repo.Root, "BOOTSTRAP.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "bootstrap", "docs", "setup.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "bootstrap", "ops", "setup.md"))
+
+	store, err := statepkg.NewFSStore(repo.GitDir(t))
+	require.NoError(t, err)
+	for _, orbitID := range []string{"docs", "ops"} {
+		snapshot, err := store.ReadRuntimeStateSnapshot(orbitID)
+		require.NoError(t, err)
+		require.NotNil(t, snapshot.Bootstrap)
+		require.True(t, snapshot.Bootstrap.Completed)
+	}
+}
+
+func TestHyardBootstrapReopenRestoresRepositoryBootstrapBlocks(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardBootstrapCompletionRepo(t)
+
+	_, _, err := executeHyardCLI(t, repo.Root, "bootstrap", "complete", "--yes", "--json")
+	require.NoError(t, err)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "bootstrap", "reopen", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		RepoRoot           string   `json:"repo_root"`
+		ReopenedOrbits     []string `json:"reopened_orbits"`
+		RestoredPaths      []string `json:"restored_paths"`
+		RestoredRepoBlocks []string `json:"restored_repo_blocks"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, repo.Root, payload.RepoRoot)
+	require.Equal(t, []string{"docs", "ops"}, payload.ReopenedOrbits)
+	require.ElementsMatch(t, []string{"agents", "bootstrap"}, payload.RestoredRepoBlocks)
+	require.Contains(t, payload.RestoredPaths, "AGENTS.md")
+	require.Contains(t, payload.RestoredPaths, "BOOTSTRAP.md")
+
+	bootstrapData, err := os.ReadFile(filepath.Join(repo.Root, "BOOTSTRAP.md"))
+	require.NoError(t, err)
+	require.Contains(t, string(bootstrapData), "<!-- hyard:repo-bootstrap:begin -->")
+	require.Contains(t, string(bootstrapData), "hyard bootstrap complete --check --json")
+
+	agentsData, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoError(t, err)
+	require.Contains(t, string(agentsData), "<!-- hyard:repo-agents:begin -->")
+	require.Contains(t, string(agentsData), "read `BOOTSTRAP.md`")
+
+	require.NoFileExists(t, filepath.Join(repo.Root, "bootstrap", "docs", "setup.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "bootstrap", "ops", "setup.md"))
+
+	store, err := statepkg.NewFSStore(repo.GitDir(t))
+	require.NoError(t, err)
+	for _, orbitID := range []string{"docs", "ops"} {
+		snapshot, err := store.ReadRuntimeStateSnapshot(orbitID)
+		require.NoError(t, err)
+		require.Nil(t, snapshot.Bootstrap)
+	}
+}
+
+func TestHyardBootstrapReopenRejectsMalformedBootstrapBlockBeforeRuntimeMutation(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardBootstrapCompletionRepo(t)
+
+	_, _, err := executeHyardCLI(t, repo.Root, "bootstrap", "complete", "--yes", "--json")
+	require.NoError(t, err)
+	repo.WriteFile(t, "BOOTSTRAP.md", "<!-- hyard:repo-bootstrap:begin -->\nUnclosed bootstrap guidance.\n")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "bootstrap", "reopen", "--json")
+	require.Error(t, err)
+	require.Empty(t, stdout)
+	require.Empty(t, stderr)
+	require.ErrorContains(t, err, "malformed hyard repo-level guidance block markers")
+
+	store, err := statepkg.NewFSStore(repo.GitDir(t))
+	require.NoError(t, err)
+	for _, orbitID := range []string{"docs", "ops"} {
+		snapshot, err := store.ReadRuntimeStateSnapshot(orbitID)
+		require.NoError(t, err)
+		require.NotNil(t, snapshot.Bootstrap)
+		require.True(t, snapshot.Bootstrap.Completed)
+	}
+}
+
+func TestHyardBootstrapCompleteYesAcceptsUncommittedPrepareGuidance(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardBootstrapCompletionRepoWithoutRepoGuidance(t)
+
+	_, _, err := executeHyardCLI(t, repo.Root, "prepare", "--yes")
+	require.NoError(t, err)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "bootstrap", "complete", "--yes", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		CompletedOrbits      []string `json:"completed_orbits"`
+		DeletedBootstrapFile bool     `json:"deleted_bootstrap_file"`
+		DeletedAgentsFile    bool     `json:"deleted_agents_file"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, []string{"docs", "ops"}, payload.CompletedOrbits)
+	require.True(t, payload.DeletedBootstrapFile)
+	require.True(t, payload.DeletedAgentsFile)
+	require.NoFileExists(t, filepath.Join(repo.Root, "BOOTSTRAP.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "AGENTS.md"))
+}
+
+func TestHyardBootstrapCompleteYesRejectsMalformedAgentsBlockBeforeRuntimeMutation(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardBootstrapCompletionRepo(t)
+	repo.WriteFile(t, "AGENTS.md", "<!-- hyard:repo-agents:begin -->\nUnclosed agent bootstrap guidance.\n")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "bootstrap", "complete", "--yes", "--json")
+	require.Error(t, err)
+	require.Empty(t, stdout)
+	require.Empty(t, stderr)
+	require.ErrorContains(t, err, "malformed hyard repo-level guidance block markers")
+
+	require.FileExists(t, filepath.Join(repo.Root, "BOOTSTRAP.md"))
+	require.FileExists(t, filepath.Join(repo.Root, "bootstrap", "docs", "setup.md"))
+	require.FileExists(t, filepath.Join(repo.Root, "bootstrap", "ops", "setup.md"))
+
+	store, err := statepkg.NewFSStore(repo.GitDir(t))
+	require.NoError(t, err)
+	for _, orbitID := range []string{"docs", "ops"} {
+		_, err := store.ReadRuntimeStateSnapshot(orbitID)
+		require.ErrorIs(t, err, statepkg.ErrRuntimeStateSnapshotNotFound)
+	}
+}
+
+func seedHyardBootstrapCompletionRepo(t *testing.T) *testutil.Repo {
+	t.Helper()
+
+	return seedHyardBootstrapCompletionRepoWithRepoGuidance(t, true)
+}
+
+func seedHyardBootstrapCompletionRepoWithoutRepoGuidance(t *testing.T) *testutil.Repo {
+	t.Helper()
+
+	return seedHyardBootstrapCompletionRepoWithRepoGuidance(t, false)
+}
+
+func seedHyardBootstrapCompletionRepoWithRepoGuidance(t *testing.T, includeRepoGuidance bool) *testutil.Repo {
+	t.Helper()
+
+	repo := testutil.NewRepo(t)
+	now := time.Date(2026, time.April, 30, 10, 0, 0, 0, time.UTC)
+	members := make([]harnesspkg.ManifestMember, 0, 2)
+	var bootstrapData []byte
+
+	for _, orbitID := range []string{"docs", "ops"} {
+		displayName := map[string]string{"docs": "Docs", "ops": "Ops"}[orbitID]
+		repo.WriteFile(t, filepath.Join(orbitID, "guide.md"), displayName+" guide\n")
+		repo.WriteFile(t, filepath.Join("bootstrap", orbitID, "setup.md"), displayName+" bootstrap setup\n")
+
+		spec, err := orbitpkg.DefaultHostedMemberSchemaSpec(orbitID)
+		require.NoError(t, err)
+		require.NotNil(t, spec.Meta)
+		spec.Description = displayName + " orbit"
+		spec.Meta.BootstrapTemplate = fmt.Sprintf("Bootstrap the %s orbit.\n", orbitID)
+		spec.Members = append(spec.Members, orbitpkg.OrbitMember{
+			Key:  orbitID + "-bootstrap",
+			Role: orbitpkg.OrbitMemberRule,
+			Lane: orbitpkg.OrbitMemberLaneBootstrap,
+			Paths: orbitpkg.OrbitMemberPaths{
+				Include: []string{fmt.Sprintf("bootstrap/%s/**", orbitID)},
+			},
+		})
+		_, err = orbitpkg.WriteHostedOrbitSpec(repo.Root, spec)
+		require.NoError(t, err)
+
+		members = append(members, harnesspkg.ManifestMember{
+			OrbitID: orbitID,
+			Source:  harnesspkg.MemberSourceManual,
+			AddedAt: now,
+		})
+
+		block, err := orbittemplate.WrapRuntimeAgentsBlock(orbitID, []byte(fmt.Sprintf("Bootstrap the %s orbit.\n", orbitID)))
+		require.NoError(t, err)
+		if len(bootstrapData) > 0 {
+			bootstrapData = append(bootstrapData, '\n')
+		}
+		bootstrapData = append(bootstrapData, block...)
+	}
+
+	_, err := harnesspkg.WriteManifestFile(repo.Root, harnesspkg.ManifestFile{
+		SchemaVersion: 1,
+		Kind:          harnesspkg.ManifestKindRuntime,
+		Runtime: &harnesspkg.ManifestRuntimeMetadata{
+			ID:        "workspace",
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+		Members: members,
+	})
+	require.NoError(t, err)
+
+	repo.WriteFile(t, "BOOTSTRAP.md", "Workspace bootstrap notes.\n\n"+string(bootstrapData)+"\n")
+	if includeRepoGuidance {
+		repo.WriteFile(t, "BOOTSTRAP.md", "Workspace bootstrap notes.\n\n"+string(bootstrapData)+"\n\n<!-- hyard:repo-bootstrap:begin -->\nComplete the repository bootstrap tasks before normal work starts.\nRun `hyard bootstrap complete --check --json` to preview the closeout.\nRun `hyard bootstrap complete --yes` after confirming the preview only removes bootstrap guidance and bootstrap-lane runtime files.\n<!-- hyard:repo-bootstrap:end -->\n")
+		repo.WriteFile(t, "AGENTS.md", "<!-- hyard:repo-agents:begin -->\nBefore starting normal work, read `BOOTSTRAP.md` if it exists.\nIf it contains hyard bootstrap instructions, complete that initialization flow first.\n<!-- hyard:repo-agents:end -->\n")
+	}
+	repo.AddAndCommit(t, "seed hyard bootstrap completion repo")
+
+	return repo
 }
 
 func TestHyardPrepareYesSelectsOnlyReadyAgent(t *testing.T) {

@@ -485,7 +485,7 @@ func agentConfigSidecarRepoPath(frameworkID string) (string, bool) {
 	switch frameworkID {
 	case "codex":
 		return ".harness/agents/codex.config.toml", true
-	case "claudecode":
+	case "claudecode", "claude":
 		return ".harness/agents/claude-code.settings.json", true
 	case "openclaw":
 		return ".harness/agents/openclaw.openclaw.json5", true
