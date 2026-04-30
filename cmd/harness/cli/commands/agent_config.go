@@ -6,11 +6,12 @@ import "github.com/spf13/cobra"
 func NewAgentConfigCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
-		Short: "Import local agent configuration into harness truth",
+		Short: "Manage versioned agent configuration truth",
 		Args:  cobra.NoArgs,
 	}
 
 	cmd.AddCommand(NewAgentConfigImportCommand())
+	cmd.AddCommand(NewAgentConfigClearCommand())
 
 	return cmd
 }

@@ -31,15 +31,17 @@ const (
 
 // FrameworkSelection stores repo-local selected framework state.
 type FrameworkSelection struct {
-	SelectedFramework string                   `json:"selected_framework"`
-	SelectionSource   FrameworkSelectionSource `json:"selection_source"`
-	UpdatedAt         time.Time                `json:"updated_at"`
+	SelectedFramework  string                   `json:"selected_framework"`
+	SelectedFrameworks []string                 `json:"selected_frameworks,omitempty"`
+	SelectionSource    FrameworkSelectionSource `json:"selection_source"`
+	UpdatedAt          time.Time                `json:"updated_at"`
 }
 
 // FrameworkResolutionInput captures one resolution request.
 type FrameworkResolutionInput struct {
-	RepoRoot string
-	GitDir   string
+	RepoRoot          string
+	GitDir            string
+	FrameworkOverride string
 }
 
 // FrameworkPackageRecommendation captures one active installed harness package recommendation.
@@ -105,6 +107,16 @@ func ValidateFrameworkSelection(selection FrameworkSelection) error {
 	if err := ids.ValidateOrbitID(selection.SelectedFramework); err != nil {
 		return fmt.Errorf("selected_framework: %w", err)
 	}
+	seenFrameworks := map[string]struct{}{selection.SelectedFramework: {}}
+	for index, frameworkID := range selection.SelectedFrameworks {
+		if err := ids.ValidateOrbitID(frameworkID); err != nil {
+			return fmt.Errorf("selected_frameworks[%d]: %w", index, err)
+		}
+		if _, ok := seenFrameworks[frameworkID]; ok && frameworkID != selection.SelectedFramework {
+			return fmt.Errorf("selected_frameworks[%d] duplicates %q", index, frameworkID)
+		}
+		seenFrameworks[frameworkID] = struct{}{}
+	}
 	switch selection.SelectionSource {
 	case FrameworkSelectionSourceExplicitLocal,
 		FrameworkSelectionSourceLocalHint,
@@ -125,6 +137,18 @@ func ValidateFrameworkSelection(selection FrameworkSelection) error {
 	}
 
 	return nil
+}
+
+// FrameworkSelectionIDs returns the selected framework set in command-visible order.
+func FrameworkSelectionIDs(selection FrameworkSelection) []string {
+	if len(selection.SelectedFrameworks) > 0 {
+		return append([]string(nil), selection.SelectedFrameworks...)
+	}
+	if strings.TrimSpace(selection.SelectedFramework) == "" {
+		return []string{}
+	}
+
+	return []string{selection.SelectedFramework}
 }
 
 // WriteFrameworkSelection validates and writes one repo-local framework selection file.
@@ -166,19 +190,57 @@ func ResolveFramework(ctx context.Context, input FrameworkResolutionInput) (Fram
 		return FrameworkResolution{}, fmt.Errorf("load harness frameworks file: %w", err)
 	}
 
+	recommendedFramework := frameworksFile.RecommendedFramework
+	if normalized, ok := NormalizeFrameworkID(frameworksFile.RecommendedFramework); ok {
+		recommendedFramework = normalized
+	}
 	resolution := FrameworkResolution{
 		Source:               FrameworkSelectionSourceUnresolved,
-		RecommendedFramework: frameworksFile.RecommendedFramework,
+		RecommendedFramework: recommendedFramework,
 		SupportedFrameworks:  supportedFrameworks,
 	}
 
-	if selection, err := LoadFrameworkSelection(input.GitDir); err == nil {
-		if _, ok := supportedSet[selection.SelectedFramework]; ok {
-			resolution.Framework = selection.SelectedFramework
+	if input.FrameworkOverride != "" {
+		frameworkID, ok := NormalizeFrameworkID(input.FrameworkOverride)
+		if !ok {
+			resolution.Warnings = append(resolution.Warnings, fmt.Sprintf(`ignore unsupported explicit framework override %q`, input.FrameworkOverride))
+			return resolution, nil
+		}
+		if _, ok := supportedSet[frameworkID]; ok {
+			resolution.Framework = frameworkID
 			resolution.Source = FrameworkSelectionSourceExplicitLocal
 			return resolution, nil
 		}
-		resolution.Warnings = append(resolution.Warnings, fmt.Sprintf(`ignore unsupported explicit local framework selection %q`, selection.SelectedFramework))
+		resolution.Warnings = append(resolution.Warnings, fmt.Sprintf(`ignore unsupported explicit framework override %q`, input.FrameworkOverride))
+		return resolution, nil
+	}
+
+	if selection, err := LoadFrameworkSelection(input.GitDir); err == nil {
+		selectedFrameworks := FrameworkSelectionIDs(selection)
+		supportedSelections := make([]string, 0, len(selectedFrameworks))
+		for _, selectedFramework := range selectedFrameworks {
+			frameworkID, ok := NormalizeFrameworkID(selectedFramework)
+			if !ok {
+				resolution.Warnings = append(resolution.Warnings, fmt.Sprintf(`ignore unsupported explicit local framework selection %q`, selectedFramework))
+				continue
+			}
+			if _, ok := supportedSet[frameworkID]; ok {
+				supportedSelections = append(supportedSelections, frameworkID)
+				continue
+			}
+			resolution.Warnings = append(resolution.Warnings, fmt.Sprintf(`ignore unsupported explicit local framework selection %q`, selectedFramework))
+		}
+		switch len(supportedSelections) {
+		case 0:
+		case 1:
+			resolution.Framework = supportedSelections[0]
+			resolution.Source = FrameworkSelectionSourceExplicitLocal
+			return resolution, nil
+		default:
+			resolution.Source = FrameworkSelectionSourceUnresolvedConflict
+			resolution.Warnings = append(resolution.Warnings, fmt.Sprintf("multiple explicit local framework selections require multi-agent apply: %v", supportedSelections))
+			return resolution, nil
+		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return FrameworkResolution{}, fmt.Errorf("load framework selection: %w", err)
 	}
@@ -212,10 +274,13 @@ func ResolveFramework(ctx context.Context, input FrameworkResolutionInput) (Fram
 	}
 
 	if frameworksFile.RecommendedFramework != "" {
-		if _, ok := supportedSet[frameworksFile.RecommendedFramework]; !ok {
+		frameworkID, ok := NormalizeFrameworkID(frameworksFile.RecommendedFramework)
+		if !ok {
+			resolution.Warnings = append(resolution.Warnings, fmt.Sprintf("ignore unsupported recommended framework %q", frameworksFile.RecommendedFramework))
+		} else if _, ok := supportedSet[frameworkID]; !ok {
 			resolution.Warnings = append(resolution.Warnings, fmt.Sprintf("ignore unsupported recommended framework %q", frameworksFile.RecommendedFramework))
 		} else {
-			resolution.Framework = frameworksFile.RecommendedFramework
+			resolution.Framework = frameworkID
 			resolution.Source = FrameworkSelectionSourceRecommendedDefault
 			return resolution, nil
 		}
@@ -230,7 +295,8 @@ func ResolveFramework(ctx context.Context, input FrameworkResolutionInput) (Fram
 
 	uniqueRecommendations := make(map[string]struct{}, len(packageRecommendations))
 	for _, recommendation := range packageRecommendations {
-		if _, ok := supportedSet[recommendation.RecommendedFramework]; !ok {
+		frameworkID, ok := NormalizeFrameworkID(recommendation.RecommendedFramework)
+		if !ok {
 			resolution.Warnings = append(resolution.Warnings, fmt.Sprintf(
 				`ignore unsupported package framework recommendation %q from harness %q`,
 				recommendation.RecommendedFramework,
@@ -238,7 +304,15 @@ func ResolveFramework(ctx context.Context, input FrameworkResolutionInput) (Fram
 			))
 			continue
 		}
-		uniqueRecommendations[recommendation.RecommendedFramework] = struct{}{}
+		if _, ok := supportedSet[frameworkID]; !ok {
+			resolution.Warnings = append(resolution.Warnings, fmt.Sprintf(
+				`ignore unsupported package framework recommendation %q from harness %q`,
+				recommendation.RecommendedFramework,
+				recommendation.HarnessID,
+			))
+			continue
+		}
+		uniqueRecommendations[frameworkID] = struct{}{}
 	}
 	switch len(uniqueRecommendations) {
 	case 0:
@@ -267,9 +341,13 @@ func loadFrameworkPackageRecommendations(repoRoot string) ([]FrameworkPackageRec
 		if record.RecommendedFramework == "" {
 			continue
 		}
+		recommendedFramework := record.RecommendedFramework
+		if normalized, ok := NormalizeFrameworkID(record.RecommendedFramework); ok {
+			recommendedFramework = normalized
+		}
 		recommendations = append(recommendations, FrameworkPackageRecommendation{
 			HarnessID:            record.HarnessID,
-			RecommendedFramework: record.RecommendedFramework,
+			RecommendedFramework: recommendedFramework,
 		})
 	}
 

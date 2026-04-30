@@ -46,7 +46,6 @@ func editMissingBindings(
 		_ = os.Remove(tempName)
 	}()
 
-	//nolint:gosec // tempName comes from os.CreateTemp in this function and stays confined to the local temp dir.
 	if err := os.WriteFile(tempName, data, 0o600); err != nil {
 		return nil, fmt.Errorf("write editor bindings skeleton: %w", err)
 	}

@@ -412,9 +412,9 @@ func TestHarnessFrameworkListReportsSupportedRecommendedAndResolvedFrameworks(t 
 	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
 	require.Equal(t, repo.Root, payload.HarnessRoot)
 	require.Equal(t, harnesspkg.DefaultHarnessIDForPath(repo.Root), payload.HarnessID)
-	require.Equal(t, []string{"claude", "codex", "gitagent", "openclaw"}, payload.SupportedFrameworks)
-	require.Equal(t, "claude", payload.RecommendedFramework)
-	require.Equal(t, "claude", payload.ResolvedFramework)
+	require.Equal(t, []string{"claudecode", "codex", "gitagent", "openclaw"}, payload.SupportedFrameworks)
+	require.Equal(t, "claudecode", payload.RecommendedFramework)
+	require.Equal(t, "claudecode", payload.ResolvedFramework)
 	require.Equal(t, "recommended_default", payload.ResolutionSource)
 	require.Empty(t, payload.Warnings)
 }
@@ -512,7 +512,7 @@ func TestHarnessFrameworkRecommendSetAndShowDoNotMutateLocalSelection(t *testing
 	}
 	require.NoError(t, json.Unmarshal([]byte(stdout), &inspectPayload))
 	require.Equal(t, "codex", inspectPayload.RecommendedFramework)
-	require.Equal(t, "claude", inspectPayload.ResolvedFramework)
+	require.Equal(t, "claudecode", inspectPayload.ResolvedFramework)
 	require.Equal(t, "explicit_local", inspectPayload.ResolutionSource)
 }
 
@@ -541,8 +541,8 @@ func TestHarnessFrameworkInspectSummarizesRuntimeGuidanceAndCapabilities(t *test
 	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
 	require.Equal(t, repo.Root, payload.HarnessRoot)
 	require.Equal(t, harnesspkg.DefaultHarnessIDForPath(repo.Root), payload.HarnessID)
-	require.Equal(t, "claude", payload.RecommendedFramework)
-	require.Equal(t, "claude", payload.ResolvedFramework)
+	require.Equal(t, "claudecode", payload.RecommendedFramework)
+	require.Equal(t, "claudecode", payload.ResolvedFramework)
 	require.Equal(t, "recommended_default", payload.ResolutionSource)
 	require.Equal(t, 1, payload.OrbitCount)
 	require.Equal(t, 1, payload.CommandCount)
@@ -580,12 +580,12 @@ func TestHarnessAgentRecommendSetAndUseWriteAgentHosts(t *testing.T) {
 		SelectionPath string `json:"selection_path"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(stdout), &usePayload))
-	require.Equal(t, "claude", usePayload.Framework)
+	require.Equal(t, "claudecode", usePayload.Framework)
 	require.Equal(t, filepath.Join(repo.Root, ".git", "orbit", "state", "agents", "selection.json"), usePayload.SelectionPath)
 
 	selection, err := harnesspkg.LoadFrameworkSelection(filepath.Join(repo.Root, ".git"))
 	require.NoError(t, err)
-	require.Equal(t, "claude", selection.SelectedFramework)
+	require.Equal(t, "claudecode", selection.SelectedFramework)
 }
 
 func TestHarnessAgentDeriveWritesRuntimeTruthFromInstalledBundleSnapshot(t *testing.T) {
@@ -779,10 +779,10 @@ func TestHarnessFrameworkInspectReportsPackageRecommendationConflict(t *testing.
 		HarnessID            string `json:"harness_id"`
 		RecommendedFramework string `json:"recommended_framework"`
 	}{
-		{HarnessID: "docs_stack", RecommendedFramework: "claude"},
+		{HarnessID: "docs_stack", RecommendedFramework: "claudecode"},
 		{HarnessID: "ops_stack", RecommendedFramework: "codex"},
 	}, payload.PackageRecommendations)
-	require.Contains(t, payload.Warnings, `conflicting package framework recommendations detected: docs_stack=claude, ops_stack=codex`)
+	require.Contains(t, payload.Warnings, `conflicting package framework recommendations detected: docs_stack=claudecode, ops_stack=codex`)
 }
 
 func TestHarnessFrameworkCommandsFailClosedOnPackageRecommendationConflict(t *testing.T) {
@@ -871,9 +871,9 @@ func TestHarnessFrameworkPlanSeparatesDesiredProjectAndGlobalOutputs(t *testing.
 	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
 	require.Equal(t, repo.Root, payload.HarnessRoot)
 	require.Equal(t, harnesspkg.DefaultHarnessIDForPath(repo.Root), payload.HarnessID)
-	require.Equal(t, "claude", payload.Framework)
+	require.Equal(t, "claudecode", payload.Framework)
 	require.Equal(t, "recommended_default", payload.ResolutionSource)
-	require.Equal(t, "claude", payload.DesiredTruth.RecommendedFramework)
+	require.Equal(t, "claudecode", payload.DesiredTruth.RecommendedFramework)
 	require.Equal(t, 1, payload.DesiredTruth.OrbitCount)
 	require.Equal(t, 1, payload.DesiredTruth.CommandCount)
 	require.Equal(t, 1, payload.DesiredTruth.SkillCount)
@@ -904,8 +904,8 @@ func TestHarnessFrameworkPlanSeparatesDesiredProjectAndGlobalOutputs(t *testing.
 		Action string `json:"action"`
 		Kind   string `json:"kind"`
 	}{Path: "~/.claude/skills/" + harnesspkg.DefaultHarnessIDForPath(repo.Root) + "__docs__docs-style", Action: "symlink", Kind: "skill"})
-	require.Contains(t, payload.Warnings, "framework claude requires global command registration")
-	require.Contains(t, payload.Warnings, "framework claude requires global skill registration")
+	require.Contains(t, payload.Warnings, "framework claudecode requires global command registration")
+	require.Contains(t, payload.Warnings, "framework claudecode requires global skill registration")
 }
 
 func TestHarnessFrameworkPlanExposesAgentActivationRouteGroups(t *testing.T) {
@@ -1144,12 +1144,12 @@ func TestHarnessFrameworkPlanAndApplyFailClosedOnUnsupportedRemoteSkills(t *test
 	_, stderr, err := executeHarnessCLI(t, repo.Root, "framework", "plan", "--json")
 	require.Error(t, err)
 	require.Empty(t, stderr)
-	require.ErrorContains(t, err, `framework "claude" does not support remote skill URI`)
+	require.ErrorContains(t, err, `framework "claudecode" does not support remote skill URI`)
 
 	_, stderr, err = executeHarnessCLI(t, repo.Root, "framework", "apply", "--json")
 	require.Error(t, err)
 	require.Empty(t, stderr)
-	require.ErrorContains(t, err, `framework "claude" does not support remote skill URI`)
+	require.ErrorContains(t, err, `framework "claudecode" does not support remote skill URI`)
 }
 
 func TestHarnessFrameworkPlanAllowsRecommendedUnsupportedRemoteSkills(t *testing.T) {
@@ -1265,10 +1265,10 @@ func TestHarnessFrameworkApplyYesUsesProjectRoutesWithoutGlobalWrites(t *testing
 	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
 	require.Equal(t, repo.Root, payload.HarnessRoot)
 	require.Equal(t, harnesspkg.DefaultHarnessIDForPath(repo.Root), payload.HarnessID)
-	require.Equal(t, "claude", payload.Framework)
+	require.Equal(t, "claudecode", payload.Framework)
 	require.Equal(t, "recommended_default", payload.ResolutionSource)
 	require.Equal(t, "ok", payload.Status)
-	require.Equal(t, filepath.Join(repo.Root, ".git", "orbit", "state", "agents", "activations", "claude.json"), payload.ActivationPath)
+	require.Equal(t, filepath.Join(repo.Root, ".git", "orbit", "state", "agents", "activations", "claudecode.json"), payload.ActivationPath)
 	require.Equal(t, 3, payload.ProjectOutputCount)
 	require.Zero(t, payload.GlobalOutputCount)
 	require.Contains(t, payload.ArtifactResults, struct {
@@ -1327,7 +1327,7 @@ func TestHarnessFrameworkApplyYesUsesProjectRoutesWithoutGlobalWrites(t *testing
 	projectCommandPath := filepath.Join(repo.Root, ".claude", "skills", "review")
 	commandTarget, err := os.Readlink(projectCommandPath)
 	require.NoError(t, err)
-	require.Equal(t, filepath.Join(repo.Root, ".git", "orbit", "state", "agents", "compiled", "claude", "commands", "docs", "review"), commandTarget)
+	require.Equal(t, filepath.Join(repo.Root, ".git", "orbit", "state", "agents", "compiled", "claudecode", "commands", "docs", "review"), commandTarget)
 
 	projectSkillPath := filepath.Join(repo.Root, ".claude", "skills", "docs-style")
 	skillTarget, err := os.Readlink(projectSkillPath)
@@ -1336,9 +1336,9 @@ func TestHarnessFrameworkApplyYesUsesProjectRoutesWithoutGlobalWrites(t *testing
 	require.NoFileExists(t, filepath.Join(homeDir, ".claude", "skills", harnesspkg.DefaultHarnessIDForPath(repo.Root)+"__docs__review"))
 	require.NoFileExists(t, filepath.Join(homeDir, ".claude", "skills", harnesspkg.DefaultHarnessIDForPath(repo.Root)+"__docs__docs-style"))
 
-	activation, err := harnesspkg.LoadFrameworkActivation(filepath.Join(repo.Root, ".git"), "claude")
+	activation, err := harnesspkg.LoadFrameworkActivation(filepath.Join(repo.Root, ".git"), "claudecode")
 	require.NoError(t, err)
-	require.Equal(t, "claude", activation.Framework)
+	require.Equal(t, "claudecode", activation.Framework)
 	require.Equal(t, repo.Root, activation.RepoRoot)
 	require.Equal(t, "recommended_default", string(activation.ResolutionSource))
 	require.Len(t, activation.ProjectOutputs, 3)
@@ -1348,7 +1348,7 @@ func TestHarnessFrameworkApplyYesUsesProjectRoutesWithoutGlobalWrites(t *testing
 		AbsolutePath:   filepath.Join(repo.Root, ".claude", "skills", "review"),
 		Kind:           "command_as_skill",
 		Action:         "symlink",
-		Target:         filepath.Join(repo.Root, ".git", "orbit", "state", "agents", "compiled", "claude", "commands", "docs", "review"),
+		Target:         filepath.Join(repo.Root, ".git", "orbit", "state", "agents", "compiled", "claudecode", "commands", "docs", "review"),
 		OrbitID:        "docs",
 		Artifact:       "review",
 		ArtifactType:   "prompt-command",
@@ -1399,13 +1399,13 @@ func TestHarnessFrameworkApplyCompilesCommandsIntoProjectSkills(t *testing.T) {
 	}{
 		Artifact: "review",
 		Path:     ".claude/skills/review",
-		Target:   filepath.Join(repo.Root, ".git", "orbit", "state", "agents", "compiled", "claude", "commands", "docs", "review"),
+		Target:   filepath.Join(repo.Root, ".git", "orbit", "state", "agents", "compiled", "claudecode", "commands", "docs", "review"),
 		Status:   "project_applied",
 	})
 
 	reviewTarget, err := os.Readlink(filepath.Join(repo.Root, ".claude", "skills", "review"))
 	require.NoError(t, err)
-	require.Equal(t, filepath.Join(repo.Root, ".git", "orbit", "state", "agents", "compiled", "claude", "commands", "docs", "review"), reviewTarget)
+	require.Equal(t, filepath.Join(repo.Root, ".git", "orbit", "state", "agents", "compiled", "claudecode", "commands", "docs", "review"), reviewTarget)
 	reviewSkill := mustReadString(t, filepath.Join(reviewTarget, "SKILL.md"))
 	require.Contains(t, reviewSkill, "name: review\n")
 	require.Contains(t, reviewSkill, "description: Review current docs diff.\n")
@@ -1414,7 +1414,7 @@ func TestHarnessFrameworkApplyCompilesCommandsIntoProjectSkills(t *testing.T) {
 
 	outlineTarget, err := os.Readlink(filepath.Join(repo.Root, ".claude", "skills", "outline"))
 	require.NoError(t, err)
-	require.Equal(t, filepath.Join(repo.Root, ".git", "orbit", "state", "agents", "compiled", "claude", "commands", "docs", "outline"), outlineTarget)
+	require.Equal(t, filepath.Join(repo.Root, ".git", "orbit", "state", "agents", "compiled", "claudecode", "commands", "docs", "outline"), outlineTarget)
 	outlineSkill := mustReadString(t, filepath.Join(outlineTarget, "SKILL.md"))
 	require.Contains(t, outlineSkill, "name: outline\n")
 	require.Contains(t, outlineSkill, "description: Outline release notes and note risks.\n")
@@ -1758,7 +1758,7 @@ func TestHarnessFrameworkApplyClaudeConfigMergesJsonSidecar(t *testing.T) {
 		Status   string   `json:"status"`
 		Keys     []string `json:"generated_keys"`
 	}{
-		Artifact: "claude-config",
+		Artifact: "claudecode-config",
 		Path:     ".claude/settings.json",
 		Status:   "project_applied",
 		Keys:     []string{"includeCoAuthoredBy", "model"},
@@ -1768,6 +1768,238 @@ func TestHarnessFrameworkApplyClaudeConfigMergesJsonSidecar(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(mustReadString(t, filepath.Join(repo.Root, ".claude", "settings.json"))), &settings))
 	require.Equal(t, "claude-sonnet-4-5", settings["model"])
 	require.Equal(t, false, settings["includeCoAuthoredBy"])
+}
+
+func TestHarnessAgentUseAndApplyMultipleAgentsAdditively(t *testing.T) {
+	repo := seedHarnessFrameworkRepo(t)
+	t.Setenv("HOME", t.TempDir())
+	repo.WriteFile(t, ".harness/agents/config.yaml", ""+
+		"version: 1\n"+
+		"targets:\n"+
+		"  codex:\n"+
+		"    enabled: true\n"+
+		"    scope: project\n"+
+		"  claudecode:\n"+
+		"    enabled: true\n"+
+		"    scope: project\n")
+	repo.WriteFile(t, ".harness/agents/codex.config.toml", "sandbox_mode = \"workspace-write\"\n")
+	repo.WriteFile(t, ".harness/agents/claude-code.settings.json", "{\n  \"includeCoAuthoredBy\": false\n}\n")
+	repo.AddAndCommit(t, "add multi-agent config")
+
+	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "agent", "use", "codex", "claude-code", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var usePayload struct {
+		Frameworks []string `json:"frameworks"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &usePayload))
+	require.Equal(t, []string{"codex", "claudecode"}, usePayload.Frameworks)
+
+	stdout, stderr, err = executeHarnessCLI(t, repo.Root, "agent", "apply", "--yes", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var applyPayload struct {
+		Frameworks []string `json:"frameworks"`
+		Results    []struct {
+			Framework string `json:"framework"`
+			Status    string `json:"status"`
+		} `json:"results"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &applyPayload))
+	require.Equal(t, []string{"codex", "claudecode"}, applyPayload.Frameworks)
+	require.Contains(t, applyPayload.Results, struct {
+		Framework string `json:"framework"`
+		Status    string `json:"status"`
+	}{Framework: "codex", Status: "ok"})
+	require.Contains(t, applyPayload.Results, struct {
+		Framework string `json:"framework"`
+		Status    string `json:"status"`
+	}{Framework: "claudecode", Status: "ok"})
+
+	require.Contains(t, mustReadString(t, filepath.Join(repo.Root, ".codex", "config.toml")), "sandbox_mode = \"workspace-write\"\n")
+	var settings map[string]any
+	require.NoError(t, json.Unmarshal([]byte(mustReadString(t, filepath.Join(repo.Root, ".claude", "settings.json"))), &settings))
+	require.Equal(t, false, settings["includeCoAuthoredBy"])
+	_, err = harnesspkg.LoadFrameworkActivation(filepath.Join(repo.Root, ".git"), "codex")
+	require.NoError(t, err)
+	_, err = harnesspkg.LoadFrameworkActivation(filepath.Join(repo.Root, ".git"), "claudecode")
+	require.NoError(t, err)
+}
+
+func TestHarnessAgentApplyMultipleAgentsPromptsWithFrameworkOverrides(t *testing.T) {
+	repo := seedHarnessFrameworkRepo(t)
+	t.Setenv("HOME", t.TempDir())
+	repo.WriteFile(t, ".harness/agents/config.yaml", ""+
+		"version: 1\n"+
+		"targets:\n"+
+		"  codex:\n"+
+		"    enabled: true\n"+
+		"    scope: project\n"+
+		"  claudecode:\n"+
+		"    enabled: true\n"+
+		"    scope: project\n")
+	repo.WriteFile(t, ".harness/agents/codex.config.toml", "sandbox_mode = \"workspace-write\"\n")
+	repo.WriteFile(t, ".harness/agents/claude-code.settings.json", "{\n  \"includeCoAuthoredBy\": false\n}\n")
+	repo.AddAndCommit(t, "add multi-agent config")
+
+	_, stderr, err := executeHarnessCLI(t, repo.Root, "agent", "use", "codex", "claude-code", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	stdout, stderr, err := executeHarnessCLIWithInput(t, repo.Root, "\n", "agent", "apply")
+	require.NoError(t, err)
+	require.Contains(t, stderr, "Apply command and skill artifacts as project skills? [Y/n] ")
+	require.Contains(t, stdout, "framework: codex status=ok\n")
+	require.Contains(t, stdout, "framework: claudecode status=ok\n")
+}
+
+func TestHarnessAgentApplyMultipleAgentsHooksPreviewUsesFrameworkOverrides(t *testing.T) {
+	repo := seedHarnessFrameworkRepo(t)
+	t.Setenv("HOME", t.TempDir())
+	repo.WriteFile(t, ".harness/agents/config.yaml", ""+
+		"version: 1\n"+
+		"targets:\n"+
+		"  codex:\n"+
+		"    enabled: true\n"+
+		"    scope: project\n"+
+		"  claudecode:\n"+
+		"    enabled: true\n"+
+		"    scope: project\n")
+	repo.AddAndCommit(t, "add multi-agent config")
+
+	_, stderr, err := executeHarnessCLI(t, repo.Root, "agent", "use", "codex", "claude-code", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "agent", "apply", "--hooks", "--yes", "--json")
+	require.NoError(t, err)
+	require.Contains(t, stderr, "Hook activation may execute project scripts when the agent runs.")
+	require.Contains(t, stdout, `"frameworks": [`)
+	require.Contains(t, stdout, `"claudecode"`)
+}
+
+func TestHarnessAgentConfigClearTargetKeepsSidecarAndWarnsForGlobalTarget(t *testing.T) {
+	repo := seedHarnessFrameworkRepo(t)
+	repo.WriteFile(t, ".harness/agents/config.yaml", ""+
+		"version: 1\n"+
+		"targets:\n"+
+		"  codex:\n"+
+		"    enabled: true\n"+
+		"    scope: global\n"+
+		"  claudecode:\n"+
+		"    enabled: true\n"+
+		"    scope: project\n"+
+		"config:\n"+
+		"  approval_mode: ask\n")
+	repo.WriteFile(t, ".harness/agents/codex.config.toml", "model = \"gpt-5.4\"\n")
+	repo.WriteFile(t, ".harness/agents/claude-code.settings.json", "{\n  \"model\": \"claude-sonnet-4-5\"\n}\n")
+	repo.AddAndCommit(t, "add agent config truth")
+
+	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "agent", "config", "clear", "--target", "codex", "--json")
+	require.NoError(t, err)
+	require.Contains(t, stderr, "warning: clearing global agent config target codex")
+
+	var payload struct {
+		ConfigPath      string   `json:"config_path"`
+		ClearedTargets  []string `json:"cleared_targets"`
+		RemovedSidecars []string `json:"removed_sidecars"`
+		Warnings        []string `json:"warnings"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, filepath.Join(repo.Root, ".harness", "agents", "config.yaml"), payload.ConfigPath)
+	require.Equal(t, []string{"codex"}, payload.ClearedTargets)
+	require.Empty(t, payload.RemovedSidecars)
+	require.Contains(t, payload.Warnings, "clearing global agent config target codex")
+
+	config := mustReadString(t, filepath.Join(repo.Root, ".harness", "agents", "config.yaml"))
+	require.NotContains(t, config, "  codex:")
+	require.Contains(t, config, "  claudecode:")
+	require.FileExists(t, filepath.Join(repo.Root, ".harness", "agents", "codex.config.toml"))
+	require.FileExists(t, filepath.Join(repo.Root, ".harness", "agents", "claude-code.settings.json"))
+}
+
+func TestHarnessAgentConfigClearTargetRemovesSidecarWhenRequested(t *testing.T) {
+	repo := seedHarnessFrameworkRepo(t)
+	repo.WriteFile(t, ".harness/agents/config.yaml", ""+
+		"version: 1\n"+
+		"targets:\n"+
+		"  codex:\n"+
+		"    enabled: true\n"+
+		"    scope: project\n"+
+		"  claudecode:\n"+
+		"    enabled: true\n"+
+		"    scope: project\n")
+	repo.WriteFile(t, ".harness/agents/codex.config.toml", "model = \"gpt-5.4\"\n")
+	repo.WriteFile(t, ".harness/agents/claude-code.settings.json", "{\n  \"model\": \"claude-sonnet-4-5\"\n}\n")
+	repo.AddAndCommit(t, "add agent sidecars")
+
+	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "agent", "config", "clear", "--target", "codex", "--sidecars", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		ClearedTargets  []string `json:"cleared_targets"`
+		RemovedSidecars []string `json:"removed_sidecars"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, []string{"codex"}, payload.ClearedTargets)
+	require.Equal(t, []string{".harness/agents/codex.config.toml"}, payload.RemovedSidecars)
+	require.NoFileExists(t, filepath.Join(repo.Root, ".harness", "agents", "codex.config.toml"))
+	require.FileExists(t, filepath.Join(repo.Root, ".harness", "agents", "claude-code.settings.json"))
+}
+
+func TestHarnessAgentApplyGlobalConfigWarns(t *testing.T) {
+	repo := seedHarnessFrameworkRepo(t)
+	t.Setenv("HOME", t.TempDir())
+	repo.WriteFile(t, ".harness/agents/config.yaml", ""+
+		"version: 1\n"+
+		"targets:\n"+
+		"  codex:\n"+
+		"    enabled: true\n"+
+		"    scope: global\n")
+	repo.WriteFile(t, ".harness/agents/codex.config.toml", "sandbox_mode = \"workspace-write\"\n")
+	repo.AddAndCommit(t, "add global codex config")
+	_, _, err := executeHarnessCLI(t, repo.Root, "agent", "use", "codex", "--json")
+	require.NoError(t, err)
+
+	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "agent", "apply", "--global", "--json")
+	require.NoError(t, err)
+	require.Contains(t, stderr, "warning: applying global agent config for codex: ~/.codex/config.toml")
+
+	var payload struct {
+		Warnings []string `json:"warnings"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Contains(t, payload.Warnings, "applying global agent config for codex: ~/.codex/config.toml")
+}
+
+func TestHarnessAgentRemoveGlobalConfigWarns(t *testing.T) {
+	repo := seedHarnessFrameworkRepo(t)
+	t.Setenv("HOME", t.TempDir())
+	repo.WriteFile(t, ".harness/agents/config.yaml", ""+
+		"version: 1\n"+
+		"targets:\n"+
+		"  codex:\n"+
+		"    enabled: true\n"+
+		"    scope: global\n")
+	repo.WriteFile(t, ".harness/agents/codex.config.toml", "sandbox_mode = \"workspace-write\"\n")
+	repo.AddAndCommit(t, "add global codex config")
+	_, _, err := executeHarnessCLI(t, repo.Root, "agent", "use", "codex", "--json")
+	require.NoError(t, err)
+	_, _, err = executeHarnessCLI(t, repo.Root, "agent", "apply", "--global", "--json")
+	require.NoError(t, err)
+
+	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "agent", "remove", "--json")
+	require.NoError(t, err)
+	require.Contains(t, stderr, "warning: removing global agent config for codex: ~/.codex/config.toml")
+
+	var payload struct {
+		Warnings []string `json:"warnings"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Contains(t, payload.Warnings, "removing global agent config for codex: ~/.codex/config.toml")
 }
 
 func TestHarnessFrameworkApplyConfigSidecarCannotOverrideUnifiedTruth(t *testing.T) {
@@ -1872,7 +2104,7 @@ func TestHarnessFrameworkApplyOpenClawGlobalConfigPatchesIsolatedHome(t *testing
 
 	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "framework", "apply", "--global", "--json")
 	require.NoError(t, err)
-	require.Empty(t, stderr)
+	require.Contains(t, stderr, "warning: applying global agent config for openclaw: ~/.openclaw/openclaw.json")
 
 	var payload struct {
 		Status            string `json:"status"`
@@ -2317,12 +2549,12 @@ func TestHarnessFrameworkCheckReportsHealthyActivationAndExecutablePresence(t *t
 	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
 	require.Equal(t, repo.Root, payload.HarnessRoot)
 	require.Equal(t, harnesspkg.DefaultHarnessIDForPath(repo.Root), payload.HarnessID)
-	require.Equal(t, "claude", payload.Framework)
+	require.Equal(t, "claudecode", payload.Framework)
 	require.True(t, payload.Configured)
 	require.False(t, payload.Stale)
 	require.True(t, payload.OK)
 	require.Zero(t, payload.FindingCount)
-	require.Equal(t, []string{"claude"}, payload.ActivationIDs)
+	require.Equal(t, []string{"claudecode"}, payload.ActivationIDs)
 }
 
 func TestHarnessFrameworkCheckDetectsStaleActivationWhenRuntimeAgentTruthChanges(t *testing.T) {
@@ -2337,7 +2569,7 @@ func TestHarnessFrameworkCheckDetectsStaleActivationWhenRuntimeAgentTruthChanges
 	_, _, err := executeHarnessCLI(t, repo.Root, "framework", "apply", "--json")
 	require.NoError(t, err)
 
-	activation, err := harnesspkg.LoadFrameworkActivation(filepath.Join(repo.Root, ".git"), "claude")
+	activation, err := harnesspkg.LoadFrameworkActivation(filepath.Join(repo.Root, ".git"), "claudecode")
 	require.NoError(t, err)
 	require.NotEmpty(t, activation.RuntimeAgentTruthHash)
 
@@ -2363,7 +2595,7 @@ func TestHarnessFrameworkCheckDetectsStaleActivationWhenRuntimeAgentTruthChanges
 		} `json:"findings"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
-	require.Equal(t, "claude", payload.Framework)
+	require.Equal(t, "claudecode", payload.Framework)
 	require.True(t, payload.Configured)
 	require.True(t, payload.Stale)
 	require.False(t, payload.OK)
@@ -2411,7 +2643,7 @@ func TestHarnessAgentCheckReportsCompiledSkillAndConfigDrift(t *testing.T) {
 		} `json:"findings"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
-	require.Equal(t, "claude", payload.Framework)
+	require.Equal(t, "claudecode", payload.Framework)
 	require.True(t, payload.Configured)
 	require.False(t, payload.OK)
 	require.GreaterOrEqual(t, payload.FindingCount, 2)
@@ -2581,7 +2813,7 @@ func TestHarnessFrameworkCheckDetectsStaleActivationAndMissingExecutable(t *test
 		} `json:"findings"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
-	require.Equal(t, "claude", payload.Framework)
+	require.Equal(t, "claudecode", payload.Framework)
 	require.True(t, payload.Configured)
 	require.True(t, payload.Stale)
 	require.False(t, payload.OK)
@@ -2655,7 +2887,7 @@ func TestHarnessFrameworkCheckReportsCapabilityFindingsBeforeActivation(t *testi
 		Kind:    "skill_remote_uri_unsupported",
 		OrbitID: "docs",
 		Path:    "https://example.com/skills/docs-style",
-		Message: "framework \"claude\" does not support remote skill URI \"https://example.com/skills/docs-style\"",
+		Message: "framework \"claudecode\" does not support remote skill URI \"https://example.com/skills/docs-style\"",
 	})
 }
 
@@ -2733,7 +2965,7 @@ func TestHarnessAgentRemovePrunesGlobalConfigPatchKeysAndPreservesUserSettings(t
 
 	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "agent", "remove", "--json")
 	require.NoError(t, err)
-	require.Empty(t, stderr)
+	require.Contains(t, stderr, "warning: removing global agent config for openclaw: ~/.openclaw/openclaw.json")
 	require.Contains(t, stdout, `"removed_activation_count": 1`)
 
 	var remaining map[string]any
@@ -4207,6 +4439,23 @@ func executeHarnessCLI(t *testing.T, workingDir string, args ...string) (string,
 
 	rootCmd := harnesscli.NewCompatibilityRootCommand()
 	rootCmd.SetArgs(args)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	rootCmd.SetOut(&stdout)
+	rootCmd.SetErr(&stderr)
+
+	err := rootCmd.ExecuteContext(harnesscommands.WithWorkingDir(context.Background(), workingDir))
+
+	return stdout.String(), stderr.String(), err
+}
+
+func executeHarnessCLIWithInput(t *testing.T, workingDir string, input string, args ...string) (string, string, error) {
+	t.Helper()
+
+	rootCmd := harnesscli.NewCompatibilityRootCommand()
+	rootCmd.SetArgs(args)
+	rootCmd.SetIn(strings.NewReader(input))
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

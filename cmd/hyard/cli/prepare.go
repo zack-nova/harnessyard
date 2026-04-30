@@ -32,7 +32,7 @@ func newPrepareCommand() *cobra.Command {
 			}
 			resolved, err := harnesspkg.ResolveRoot(cmd.Context(), workingDir)
 			if err != nil {
-				return err
+				return fmt.Errorf("resolve harness root: %w", err)
 			}
 
 			jsonOutput, err := wantHyardJSON(cmd)

@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -39,6 +40,14 @@ func NewFrameworkRemoveCommand() *cobra.Command {
 			result, err := harnesspkg.RemoveFrameworkActivations(cmd.Context(), resolved.Repo.Root, resolved.Repo.GitDir)
 			if err != nil {
 				return fmt.Errorf("remove framework activations: %w", err)
+			}
+			for _, warning := range result.Warnings {
+				if !strings.Contains(warning, "global agent config") {
+					continue
+				}
+				if _, err := fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", warning); err != nil {
+					return fmt.Errorf("write command warning: %w", err)
+				}
 			}
 
 			output := frameworkRemoveOutput{

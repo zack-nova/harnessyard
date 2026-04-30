@@ -135,7 +135,12 @@ func MarshalAgentUnifiedConfigFile(file AgentUnifiedConfigFile) ([]byte, error) 
 		contractutil.AppendMapping(root, "hooks", agentUnifiedHooksNode(file.Hooks))
 	}
 
-	return contractutil.EncodeYAMLDocument(root)
+	data, err := contractutil.EncodeYAMLDocument(root)
+	if err != nil {
+		return nil, fmt.Errorf("encode agent unified config: %w", err)
+	}
+
+	return data, nil
 }
 
 func ParseAgentUnifiedConfigFileData(data []byte) (AgentUnifiedConfigFile, error) {
@@ -377,8 +382,8 @@ func normalizeAgentConfigTargetID(value string) (string, bool) {
 	switch strings.TrimSpace(value) {
 	case "codex":
 		return "codex", true
-	case "claude", "claudeCode", "claude-code":
-		return "claude", true
+	case "claude", "claudeCode", "claude-code", "claudecode":
+		return "claudecode", true
 	case "openclaw":
 		return "openclaw", true
 	default:
@@ -476,16 +481,16 @@ func yamlNodeInt(node *yaml.Node, path string) (int, error) {
 	return value, nil
 }
 
-func agentConfigSidecarRepoPath(frameworkID string) (string, nativeConfigFormat, bool) {
+func agentConfigSidecarRepoPath(frameworkID string) (string, bool) {
 	switch frameworkID {
 	case "codex":
-		return ".harness/agents/codex.config.toml", nativeConfigFormatTOML, true
-	case "claude":
-		return ".harness/agents/claude-code.settings.json", nativeConfigFormatJSON, true
+		return ".harness/agents/codex.config.toml", true
+	case "claudecode":
+		return ".harness/agents/claude-code.settings.json", true
 	case "openclaw":
-		return ".harness/agents/openclaw.openclaw.json5", nativeConfigFormatJSON, true
+		return ".harness/agents/openclaw.openclaw.json5", true
 	default:
-		return "", "", false
+		return "", false
 	}
 }
 
@@ -496,7 +501,7 @@ func agentConfigTargetPaths(frameworkID string, global bool) (string, nativeConf
 			return "~/.codex/config.toml", nativeConfigFormatTOML, "merge-config", true
 		}
 		return ".codex/config.toml", nativeConfigFormatTOML, "merge-config", true
-	case "claude":
+	case "claudecode":
 		if global {
 			return "~/.claude/settings.json", nativeConfigFormatJSON, "merge-config", true
 		}
@@ -530,7 +535,7 @@ func frameworkAgentConfigEnabled(summary FrameworkInspectSummary, frameworkID st
 func frameworkAgentConfigSidecars(repoRoot string) (map[string]string, error) {
 	sidecars := map[string]string{}
 	for _, adapter := range RegisteredFrameworkAdapters() {
-		repoPath, _, ok := agentConfigSidecarRepoPath(adapter.ID)
+		repoPath, ok := agentConfigSidecarRepoPath(adapter.ID)
 		if !ok {
 			continue
 		}

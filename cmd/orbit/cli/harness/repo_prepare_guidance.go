@@ -121,11 +121,11 @@ func readRepoPrepareGuidanceFile(filename string) ([]byte, os.FileMode, bool, er
 		return nil, 0o644, false, nil
 	}
 	if err != nil {
-		return nil, 0, false, err
+		return nil, 0, false, fmt.Errorf("read repo prepare guidance file %s: %w", filename, err)
 	}
 	stat, err := os.Stat(filename)
 	if err != nil {
-		return nil, 0, false, err
+		return nil, 0, false, fmt.Errorf("stat repo prepare guidance file %s: %w", filename, err)
 	}
 
 	return data, stat.Mode().Perm(), true, nil
