@@ -21,9 +21,10 @@ import (
 
 // BootstrapCompleteInput describes one explicit runtime bootstrap completion request.
 type BootstrapCompleteInput struct {
-	OrbitID string
-	All     bool
-	Now     time.Time
+	OrbitID                     string
+	All                         bool
+	Now                         time.Time
+	AllowDirtyBootstrapArtifact bool
 }
 
 // BootstrapCompleteResult reports one successful runtime bootstrap completion pass.
@@ -46,6 +47,86 @@ type runtimeBootstrapMutation struct {
 	RemovedBlocks []string
 	DeleteFile    bool
 	UpdatedData   []byte
+}
+
+// PlanRuntimeBootstrapCompletion previews runtime bootstrap completion without
+// mutating runtime files or repo-local state.
+func PlanRuntimeBootstrapCompletion(
+	ctx context.Context,
+	repo gitpkg.Repo,
+	input BootstrapCompleteInput,
+) (BootstrapCompleteResult, error) {
+	if input.All && strings.TrimSpace(input.OrbitID) != "" {
+		return BootstrapCompleteResult{}, fmt.Errorf("--orbit and --all cannot be used together")
+	}
+	if !input.All && strings.TrimSpace(input.OrbitID) == "" {
+		return BootstrapCompleteResult{}, fmt.Errorf("either --orbit or --all must be provided")
+	}
+
+	runtimeFile, err := LoadRuntimeFile(repo.Root)
+	if err != nil {
+		return BootstrapCompleteResult{}, fmt.Errorf("load harness runtime: %w", err)
+	}
+	store, err := statepkg.NewFSStore(repo.GitDir)
+	if err != nil {
+		return BootstrapCompleteResult{}, fmt.Errorf("create state store: %w", err)
+	}
+
+	statuses, err := resolveBootstrapCompletionStatuses(ctx, repo.Root, repo.GitDir, runtimeFile, input)
+	if err != nil {
+		return BootstrapCompleteResult{}, err
+	}
+	if len(statuses) == 0 {
+		return BootstrapCompleteResult{}, fmt.Errorf("current runtime does not contain bootstrap-enabled orbits")
+	}
+
+	plansByOrbitID, err := loadRuntimeRemovePlans(ctx, repo.Root, runtimeFile)
+	if err != nil {
+		return BootstrapCompleteResult{}, err
+	}
+	pendingPlans, alreadyCompleted, err := buildRuntimeBootstrapCompletionPlans(ctx, repo.Root, statuses, plansByOrbitID)
+	if err != nil {
+		return BootstrapCompleteResult{}, err
+	}
+
+	mutation, err := analyzeRuntimeBootstrapMutation(repo.Root, orbitIDsFromCompletionPlans(pendingPlans))
+	if err != nil {
+		return BootstrapCompleteResult{}, err
+	}
+	touchedPaths := touchedBootstrapCompletionPaths(pendingPlans, mutation)
+	if err := ensureBootstrapCompletionPathsClean(ctx, repo.Root, statusesToOrbitIDs(statuses), bootstrapCompletionCleanCheckPaths(touchedPaths, input)); err != nil {
+		return BootstrapCompleteResult{}, err
+	}
+
+	currentOrbitID, currentExists, err := currentRuntimeOrbitID(store)
+	if err != nil {
+		return BootstrapCompleteResult{}, err
+	}
+	autoLeft := currentExists && containsString(orbitIDsFromCompletionPlans(pendingPlans), currentOrbitID)
+
+	hiddenPaths, err := hiddenRuntimeRemovePaths(ctx, repo.Root, touchedPaths)
+	if err != nil {
+		return BootstrapCompleteResult{}, err
+	}
+	if len(hiddenPaths) > 0 {
+		return BootstrapCompleteResult{}, fmt.Errorf(
+			"cannot complete bootstrap for orbit(s) %s while the current orbit projection hides touched paths: %s; leave the current orbit first",
+			strings.Join(statusesToOrbitIDs(statuses), ", "),
+			strings.Join(hiddenPaths, ", "),
+		)
+	}
+
+	deletePaths := bootstrapDeletePathsFromPlans(pendingPlans)
+	removedPaths := sortedUniqueStrings(append(append([]string(nil), deletePaths...), touchedBootstrapArtifactPaths(mutation)...))
+
+	return BootstrapCompleteResult{
+		CompletedOrbits:        orbitIDsFromCompletionPlans(pendingPlans),
+		AlreadyCompletedOrbits: alreadyCompleted,
+		RemovedPaths:           removedPaths,
+		RemovedBootstrapBlocks: append([]string(nil), mutation.RemovedBlocks...),
+		DeletedBootstrapFile:   mutation.DeleteFile,
+		AutoLeftCurrentOrbit:   autoLeft,
+	}, nil
 }
 
 // CompleteRuntimeBootstrap marks one or more runtime orbit bootstraps as completed and
@@ -93,7 +174,7 @@ func CompleteRuntimeBootstrap(
 		return BootstrapCompleteResult{}, err
 	}
 	touchedPaths := touchedBootstrapCompletionPaths(pendingPlans, mutation)
-	if err := ensureBootstrapCompletionPathsClean(ctx, repo.Root, statusesToOrbitIDs(statuses), touchedPaths); err != nil {
+	if err := ensureBootstrapCompletionPathsClean(ctx, repo.Root, statusesToOrbitIDs(statuses), bootstrapCompletionCleanCheckPaths(touchedPaths, input)); err != nil {
 		return BootstrapCompleteResult{}, err
 	}
 
@@ -492,6 +573,21 @@ func touchedBootstrapCompletionPaths(plans []runtimeBootstrapCompletionPlan, mut
 	touchedPaths = append(touchedPaths, touchedBootstrapArtifactPaths(mutation)...)
 
 	return sortedUniqueStrings(touchedPaths)
+}
+
+func bootstrapCompletionCleanCheckPaths(paths []string, input BootstrapCompleteInput) []string {
+	if !input.AllowDirtyBootstrapArtifact {
+		return paths
+	}
+	filtered := make([]string, 0, len(paths))
+	for _, path := range paths {
+		if path == rootBootstrapPath {
+			continue
+		}
+		filtered = append(filtered, path)
+	}
+
+	return filtered
 }
 
 func orbitIDsFromCompletionPlans(plans []runtimeBootstrapCompletionPlan) []string {
