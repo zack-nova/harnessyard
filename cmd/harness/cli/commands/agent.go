@@ -11,6 +11,7 @@ func NewAgentCommand() *cobra.Command {
 	}
 
 	cmd.AddCommand(
+		NewAgentConfigCommand(),
 		NewAgentDetectCommand(),
 		NewAgentDeriveCommand(),
 		NewFrameworkApplyCommand(),

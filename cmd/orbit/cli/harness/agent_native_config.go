@@ -78,6 +78,66 @@ func LoadAgentUnifiedConfigFile(repoRoot string) (AgentUnifiedConfigFile, error)
 	return file, nil
 }
 
+// WriteAgentUnifiedConfigFile validates and writes .harness/agents/config.yaml.
+func WriteAgentUnifiedConfigFile(repoRoot string, file AgentUnifiedConfigFile) (string, error) {
+	filename := AgentUnifiedConfigPath(repoRoot)
+	data, err := MarshalAgentUnifiedConfigFile(file)
+	if err != nil {
+		return "", fmt.Errorf("marshal %s: %w", filename, err)
+	}
+	if err := contractutil.AtomicWriteFile(filename, data); err != nil {
+		return "", fmt.Errorf("write %s: %w", filename, err)
+	}
+
+	return filename, nil
+}
+
+// MarshalAgentUnifiedConfigFile validates and encodes one unified agent config file.
+func MarshalAgentUnifiedConfigFile(file AgentUnifiedConfigFile) ([]byte, error) {
+	if file.Version != agentUnifiedConfigVersion {
+		return nil, fmt.Errorf("version must be %d", agentUnifiedConfigVersion)
+	}
+
+	root := contractutil.MappingNode()
+	contractutil.AppendMapping(root, "version", contractutil.IntNode(file.Version))
+	if len(file.Targets) > 0 {
+		targetsNode := contractutil.MappingNode()
+		targetIDs := make([]string, 0, len(file.Targets))
+		for targetID, target := range file.Targets {
+			if _, ok := LookupFrameworkAdapter(targetID); !ok {
+				return nil, fmt.Errorf("targets.%s is not supported by this build", targetID)
+			}
+			if target.Scope != "" && target.Scope != "project" && target.Scope != "global" && target.Scope != "hybrid" {
+				return nil, fmt.Errorf("targets.%s.scope must be project, global, or hybrid", targetID)
+			}
+			targetIDs = append(targetIDs, targetID)
+		}
+		sort.Strings(targetIDs)
+		for _, targetID := range targetIDs {
+			target := file.Targets[targetID]
+			targetNode := contractutil.MappingNode()
+			contractutil.AppendMapping(targetNode, "enabled", contractutil.BoolNode(target.Enabled))
+			if target.Scope != "" {
+				contractutil.AppendMapping(targetNode, "scope", contractutil.StringNode(target.Scope))
+			}
+			contractutil.AppendMapping(targetsNode, targetID, targetNode)
+		}
+		contractutil.AppendMapping(root, "targets", targetsNode)
+	}
+	if len(file.Config) > 0 {
+		configNode, err := nativeConfigYAMLNode(file.Config, "config")
+		if err != nil {
+			return nil, err
+		}
+		contractutil.AppendMapping(root, "config", configNode)
+	}
+	if agentUnifiedHooksPresent(file.Hooks) {
+		contractutil.AppendMapping(root, "hooks", agentUnifiedHooksNode(file.Hooks))
+	}
+
+	return contractutil.EncodeYAMLDocument(root)
+}
+
 func ParseAgentUnifiedConfigFileData(data []byte) (AgentUnifiedConfigFile, error) {
 	var document yaml.Node
 	if err := yaml.Unmarshal(data, &document); err != nil {
@@ -132,6 +192,138 @@ func ParseAgentUnifiedConfigFileData(data []byte) (AgentUnifiedConfigFile, error
 	}
 
 	return file, nil
+}
+
+func nativeConfigYAMLNode(value any, path string) (*yaml.Node, error) {
+	switch typed := value.(type) {
+	case map[string]any:
+		node := contractutil.MappingNode()
+		keys := make([]string, 0, len(typed))
+		for key := range typed {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			child, err := nativeConfigYAMLNode(typed[key], joinNativeConfigKey(path, key))
+			if err != nil {
+				return nil, err
+			}
+			contractutil.AppendMapping(node, key, child)
+		}
+		return node, nil
+	case []any:
+		node := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
+		for index, item := range typed {
+			child, err := nativeConfigYAMLNode(item, fmt.Sprintf("%s[%d]", path, index))
+			if err != nil {
+				return nil, err
+			}
+			node.Content = append(node.Content, child)
+		}
+		return node, nil
+	case string:
+		return contractutil.StringNode(typed), nil
+	case bool:
+		return contractutil.BoolNode(typed), nil
+	case int:
+		return contractutil.IntNode(typed), nil
+	case float64:
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!float", Value: strconv.FormatFloat(typed, 'f', -1, 64)}, nil
+	default:
+		return nil, fmt.Errorf("%s uses unsupported config value type %T", path, value)
+	}
+}
+
+func agentUnifiedHooksPresent(hooks AgentUnifiedHooks) bool {
+	return hooks.Enabled ||
+		hooks.UnsupportedBehavior != "" ||
+		hooks.Defaults.TimeoutSeconds != 0 ||
+		hooks.Defaults.Runner != "" ||
+		len(hooks.Entries) > 0
+}
+
+func agentUnifiedHooksNode(hooks AgentUnifiedHooks) *yaml.Node {
+	node := contractutil.MappingNode()
+	contractutil.AppendMapping(node, "enabled", contractutil.BoolNode(hooks.Enabled))
+	if hooks.UnsupportedBehavior != "" {
+		contractutil.AppendMapping(node, "unsupported_behavior", contractutil.StringNode(hooks.UnsupportedBehavior))
+	}
+	if hooks.Defaults.TimeoutSeconds != 0 || hooks.Defaults.Runner != "" {
+		defaultsNode := contractutil.MappingNode()
+		if hooks.Defaults.TimeoutSeconds != 0 {
+			contractutil.AppendMapping(defaultsNode, "timeout_seconds", contractutil.IntNode(hooks.Defaults.TimeoutSeconds))
+		}
+		if hooks.Defaults.Runner != "" {
+			contractutil.AppendMapping(defaultsNode, "runner", contractutil.StringNode(hooks.Defaults.Runner))
+		}
+		contractutil.AppendMapping(node, "defaults", defaultsNode)
+	}
+	if len(hooks.Entries) > 0 {
+		entriesNode := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
+		for _, entry := range hooks.Entries {
+			entriesNode.Content = append(entriesNode.Content, agentUnifiedHookEntryNode(entry))
+		}
+		contractutil.AppendMapping(node, "entries", entriesNode)
+	}
+
+	return node
+}
+
+func agentUnifiedHookEntryNode(entry AgentHookEntry) *yaml.Node {
+	node := contractutil.MappingNode()
+	contractutil.AppendMapping(node, "id", contractutil.StringNode(entry.ID))
+	contractutil.AppendMapping(node, "enabled", contractutil.BoolNode(entry.Enabled))
+	if entry.Description != "" {
+		contractutil.AppendMapping(node, "description", contractutil.StringNode(entry.Description))
+	}
+	eventNode := contractutil.MappingNode()
+	contractutil.AppendMapping(eventNode, "kind", contractutil.StringNode(entry.Event.Kind))
+	contractutil.AppendMapping(node, "event", eventNode)
+	if len(entry.Match.Tools) > 0 || len(entry.Match.CommandPatterns) > 0 {
+		matchNode := contractutil.MappingNode()
+		if len(entry.Match.Tools) > 0 {
+			contractutil.AppendMapping(matchNode, "tools", stringSequenceNode(entry.Match.Tools))
+		}
+		if len(entry.Match.CommandPatterns) > 0 {
+			contractutil.AppendMapping(matchNode, "command_patterns", stringSequenceNode(entry.Match.CommandPatterns))
+		}
+		contractutil.AppendMapping(node, "match", matchNode)
+	}
+
+	handlerNode := contractutil.MappingNode()
+	contractutil.AppendMapping(handlerNode, "type", contractutil.StringNode(entry.Handler.Type))
+	contractutil.AppendMapping(handlerNode, "path", contractutil.StringNode(entry.Handler.Path))
+	if entry.Handler.TimeoutSeconds != 0 {
+		contractutil.AppendMapping(handlerNode, "timeout_seconds", contractutil.IntNode(entry.Handler.TimeoutSeconds))
+	}
+	if entry.Handler.StatusMessage != "" {
+		contractutil.AppendMapping(handlerNode, "status_message", contractutil.StringNode(entry.Handler.StatusMessage))
+	}
+	contractutil.AppendMapping(node, "handler", handlerNode)
+
+	if len(entry.Targets) > 0 {
+		targetsNode := contractutil.MappingNode()
+		targetIDs := make([]string, 0, len(entry.Targets))
+		for targetID := range entry.Targets {
+			targetIDs = append(targetIDs, targetID)
+		}
+		sort.Strings(targetIDs)
+		for _, targetID := range targetIDs {
+			contractutil.AppendMapping(targetsNode, targetID, contractutil.BoolNode(entry.Targets[targetID]))
+		}
+		contractutil.AppendMapping(node, "targets", targetsNode)
+	}
+
+	return node
+}
+
+func stringSequenceNode(values []string) *yaml.Node {
+	node := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
+	for _, value := range values {
+		node.Content = append(node.Content, contractutil.StringNode(value))
+	}
+
+	return node
 }
 
 func parseAgentUnifiedConfigTargets(node *yaml.Node) (map[string]AgentUnifiedConfigTarget, error) {
