@@ -186,6 +186,42 @@ func TestHyardAdoptWriteJSONConvertsCleanRootGuidanceSlice(t *testing.T) {
 	require.Equal(t, initialHead, strings.TrimSpace(repo.Run(t, "rev-parse", "HEAD")))
 }
 
+func TestHyardAdoptWriteJSONAuthorsCodexLocalSkillsAsCapabilityTruth(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	originalGuidance := "# Agent guidance\n\nUse local Codex skills when they apply.\n"
+	repo.WriteFile(t, "AGENTS.md", originalGuidance)
+	writeHyardAdoptSkill(t, repo, ".codex/skills/frontend-test-lab", "frontend-test-lab", "Fast frontend validation workflow")
+	repo.WriteFile(t, ".codex/skills/frontend-test-lab/checklist.md", "- run browser checks\n")
+	repo.AddAndCommit(t, "seed root guidance and codex local skill")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "adopt", "--json", "--orbit", "docs")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload hyardAdoptWritePayload
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.True(t, payload.Check.OK)
+
+	spec, err := orbitpkg.LoadHostedOrbitSpec(context.Background(), repo.Root, "docs")
+	require.NoError(t, err)
+	require.NotNil(t, spec.Capabilities)
+	require.NotNil(t, spec.Capabilities.Skills)
+	require.NotNil(t, spec.Capabilities.Skills.Local)
+	require.Equal(t, []string{".codex/skills/frontend-test-lab"}, spec.Capabilities.Skills.Local.Paths.Include)
+	require.Empty(t, spec.Members)
+
+	trackedFiles := strings.Fields(repo.Run(t, "ls-files"))
+	resolved, err := orbitpkg.ResolveLocalSkillCapabilities(repo.Root, spec, trackedFiles, trackedFiles)
+	require.NoError(t, err)
+	require.Equal(t, []orbitpkg.ResolvedLocalSkillCapability{{
+		Name:        "frontend-test-lab",
+		RootPath:    ".codex/skills/frontend-test-lab",
+		SkillMDPath: ".codex/skills/frontend-test-lab/SKILL.md",
+	}}, resolved)
+}
+
 func TestHyardAdoptWriteRefusesDirtyWorktreeBeforeWriting(t *testing.T) {
 	t.Parallel()
 
@@ -202,6 +238,33 @@ func TestHyardAdoptWriteRefusesDirtyWorktreeBeforeWriting(t *testing.T) {
 	require.ErrorContains(t, err, "adoption write mode requires a clean worktree")
 	require.ErrorContains(t, err, "README.md")
 	require.ErrorContains(t, err, "notes/todo.md")
+	require.Empty(t, stdout)
+	require.Empty(t, stderr)
+
+	agentsData, readErr := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoError(t, readErr)
+	require.Equal(t, originalGuidance, string(agentsData))
+	_, statErr := os.Stat(filepath.Join(repo.Root, ".harness"))
+	require.ErrorIs(t, statErr, os.ErrNotExist)
+}
+
+func TestHyardAdoptWriteRefusesInvalidCodexLocalSkillBeforeWriting(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	originalGuidance := "# Agent guidance\n\nDo not adopt invalid local skills.\n"
+	repo.WriteFile(t, "AGENTS.md", originalGuidance)
+	repo.WriteFile(t, ".codex/skills/frontend-test-lab/SKILL.md", ""+
+		"---\n"+
+		"name: frontend-test-lab\n"+
+		"---\n"+
+		"# Frontend Test Lab\n")
+	repo.AddAndCommit(t, "seed invalid codex local skill")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "adopt", "--json", "--orbit", "docs")
+	require.Error(t, err)
+	require.ErrorContains(t, err, "adoption has blocking diagnostics")
+	require.ErrorContains(t, err, "Codex local skill frontmatter is invalid")
 	require.Empty(t, stdout)
 	require.Empty(t, stderr)
 
@@ -402,6 +465,209 @@ func TestHyardAdoptCheckJSONReportsCodexProjectFootprintAsRecommendedFramework(t
 		},
 	})
 	require.Empty(t, payload.Frameworks.Unsupported)
+}
+
+func TestHyardAdoptCheckJSONReportsValidCodexLocalSkillCandidate(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, "README.md", "# Codex skill ordinary repository\n")
+	writeHyardAdoptSkill(t, repo, ".codex/skills/frontend-test-lab", "frontend-test-lab", "Fast frontend validation workflow")
+	repo.AddAndCommit(t, "seed codex local skill")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "adopt", "--check", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload hyardAdoptCheckPayload
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Contains(t, payload.Candidates, hyardAdoptCheckCandidate{
+		Path:  ".codex/skills/frontend-test-lab",
+		Kind:  "local_skill_capability",
+		Shape: "directory",
+		Evidence: []hyardAdoptCheckEvidence{
+			{Kind: "codex_skill_root", Path: ".codex/skills/frontend-test-lab/SKILL.md", Detail: "frontend-test-lab"},
+		},
+	})
+}
+
+func TestHyardAdoptCheckJSONWarnsWhenCodexLocalSkillUsesNonRecommendedPosition(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, "README.md", "# Codex skill ordinary repository\n")
+	writeHyardAdoptSkill(t, repo, ".codex/skills/frontend-test-lab", "frontend-test-lab", "Fast frontend validation workflow")
+	repo.AddAndCommit(t, "seed codex local skill outside recommended position")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "adopt", "--check", "--json", "--orbit", "docs")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload hyardAdoptCheckPayload
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.True(t, payload.Adoptable)
+	require.Contains(t, payload.Diagnostics, hyardAdoptCheckDiagnostic{
+		Code:     "codex_local_skill_non_recommended_path",
+		Severity: "warning",
+		Message:  "Codex local skill root is outside the recommended position; if recommended moves are declined, Adoption will keep it as a capability path",
+		Evidence: []hyardAdoptCheckEvidence{
+			{Kind: "codex_skill_root", Path: ".codex/skills/frontend-test-lab/SKILL.md", Detail: "recommended: skills/docs/frontend-test-lab"},
+		},
+	})
+}
+
+func TestHyardAdoptCheckJSONDoesNotAddCodexLocalSkillRootAsOrdinaryMemberCandidate(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, "AGENTS.md", ""+
+		"# Agent guidance\n\n"+
+		"Use .codex/skills/frontend-test-lab for frontend validation.\n")
+	writeHyardAdoptSkill(t, repo, ".codex/skills/frontend-test-lab", "frontend-test-lab", "Fast frontend validation workflow")
+	repo.AddAndCommit(t, "seed mentioned codex local skill")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "adopt", "--check", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload hyardAdoptCheckPayload
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Contains(t, payload.Candidates, hyardAdoptCheckCandidate{
+		Path:  ".codex/skills/frontend-test-lab",
+		Kind:  "local_skill_capability",
+		Shape: "directory",
+		Evidence: []hyardAdoptCheckEvidence{
+			{Kind: "codex_skill_root", Path: ".codex/skills/frontend-test-lab/SKILL.md", Detail: "frontend-test-lab"},
+		},
+	})
+	for _, candidate := range payload.Candidates {
+		require.False(t,
+			candidate.Path == ".codex/skills/frontend-test-lab" && candidate.Kind == "referenced_guidance_document",
+			"skill roots must not be ordinary member-role candidates",
+		)
+	}
+	require.Contains(t, payload.Diagnostics, hyardAdoptCheckDiagnostic{
+		Code:     "codex_local_skill_member_overlap_avoided",
+		Severity: "warning",
+		Message:  "referenced Codex local skill root is capability-owned and will not be adopted as ordinary member content",
+		Evidence: []hyardAdoptCheckEvidence{
+			{Kind: "path_mention", Path: "AGENTS.md", Detail: ".codex/skills/frontend-test-lab"},
+			{Kind: "codex_skill_root", Path: ".codex/skills/frontend-test-lab/SKILL.md"},
+		},
+	})
+}
+
+func TestHyardAdoptCheckJSONDoesNotAddCodexLocalSkillsDirectoryAsOrdinaryMemberCandidate(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, "AGENTS.md", ""+
+		"# Agent guidance\n\n"+
+		"Use .codex/skills/ for local automation.\n")
+	writeHyardAdoptSkill(t, repo, ".codex/skills/frontend-test-lab", "frontend-test-lab", "Fast frontend validation workflow")
+	repo.AddAndCommit(t, "seed mentioned codex local skills directory")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "adopt", "--check", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload hyardAdoptCheckPayload
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.NotContains(t, hyardAdoptCheckCandidatePaths(payload.Candidates), ".codex/skills")
+	require.Contains(t, payload.Diagnostics, hyardAdoptCheckDiagnostic{
+		Code:     "codex_local_skill_member_overlap_avoided",
+		Severity: "warning",
+		Message:  "referenced Codex local skill root is capability-owned and will not be adopted as ordinary member content",
+		Evidence: []hyardAdoptCheckEvidence{
+			{Kind: "path_mention", Path: "AGENTS.md", Detail: ".codex/skills"},
+			{Kind: "codex_skill_root", Path: ".codex/skills/frontend-test-lab/SKILL.md"},
+		},
+	})
+}
+
+func TestHyardAdoptCheckJSONBlocksCodexLocalSkillWithInvalidFrontmatter(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, "README.md", "# Invalid Codex skill ordinary repository\n")
+	repo.WriteFile(t, ".codex/skills/frontend-test-lab/SKILL.md", ""+
+		"---\n"+
+		"description: Fast frontend validation workflow\n"+
+		"---\n"+
+		"# Frontend Test Lab\n")
+	repo.AddAndCommit(t, "seed invalid codex local skill")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "adopt", "--check", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload hyardAdoptCheckPayload
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.False(t, payload.Adoptable)
+	require.NotContains(t, hyardAdoptCheckCandidatePaths(payload.Candidates), ".codex/skills/frontend-test-lab")
+	require.Contains(t, payload.Diagnostics, hyardAdoptCheckDiagnostic{
+		Code:     "codex_local_skill_invalid_frontmatter",
+		Severity: "error",
+		Message:  "Codex local skill frontmatter is invalid: SKILL.md frontmatter must define non-empty name",
+		Evidence: []hyardAdoptCheckEvidence{
+			{Kind: "codex_skill_root", Path: ".codex/skills/frontend-test-lab/SKILL.md"},
+		},
+	})
+}
+
+func TestHyardAdoptCheckJSONBlocksDuplicateCodexLocalSkillNames(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, "README.md", "# Duplicate Codex skill ordinary repository\n")
+	writeHyardAdoptSkill(t, repo, ".codex/skills/frontend-test-lab", "frontend-test-lab", "Fast frontend validation workflow")
+	writeHyardAdoptSkill(t, repo, ".codex/skills/frontend-test-copy", "frontend-test-lab", "Duplicate frontend validation workflow")
+	repo.AddAndCommit(t, "seed duplicate codex local skills")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "adopt", "--check", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload hyardAdoptCheckPayload
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.False(t, payload.Adoptable)
+	require.NotContains(t, hyardAdoptCheckCandidatePaths(payload.Candidates), ".codex/skills/frontend-test-lab")
+	require.NotContains(t, hyardAdoptCheckCandidatePaths(payload.Candidates), ".codex/skills/frontend-test-copy")
+	require.Contains(t, payload.Diagnostics, hyardAdoptCheckDiagnostic{
+		Code:     "codex_local_skill_duplicate_name",
+		Severity: "error",
+		Message:  `Codex local skill name "frontend-test-lab" is declared by multiple roots`,
+		Evidence: []hyardAdoptCheckEvidence{
+			{Kind: "codex_skill_root", Path: ".codex/skills/frontend-test-copy/SKILL.md", Detail: "frontend-test-lab"},
+			{Kind: "codex_skill_root", Path: ".codex/skills/frontend-test-lab/SKILL.md", Detail: "frontend-test-lab"},
+		},
+	})
+}
+
+func TestHyardAdoptCheckJSONBlocksCodexLocalSkillWithInvalidIdentity(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, "README.md", "# Invalid Codex skill identity ordinary repository\n")
+	writeHyardAdoptSkill(t, repo, ".codex/skills/frontend.test", "frontend.test", "Invalid skill identity")
+	repo.AddAndCommit(t, "seed invalid codex local skill identity")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "adopt", "--check", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload hyardAdoptCheckPayload
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.False(t, payload.Adoptable)
+	require.NotContains(t, hyardAdoptCheckCandidatePaths(payload.Candidates), ".codex/skills/frontend.test")
+	require.Contains(t, payload.Diagnostics, hyardAdoptCheckDiagnostic{
+		Code:     "codex_local_skill_invalid_identity",
+		Severity: "error",
+		Message:  "Codex local skill identity is invalid: invalid skill basename: orbit id must use lowercase letters, digits, hyphens, or underscores, and must start and end with an alphanumeric character",
+		Evidence: []hyardAdoptCheckEvidence{
+			{Kind: "codex_skill_root", Path: ".codex/skills/frontend.test/SKILL.md"},
+		},
+	})
 }
 
 func TestHyardAdoptCheckJSONReportsUnsupportedClaudeCodeAndOpenClawFootprints(t *testing.T) {
@@ -781,4 +1047,15 @@ func runGitForHyardAdopt(t *testing.T, repoRoot string, args ...string) string {
 	require.NoError(t, err, "git %v failed:\n%s", args, string(output))
 
 	return string(output)
+}
+
+func writeHyardAdoptSkill(t *testing.T, repo *testutil.Repo, rootPath string, name string, description string) {
+	t.Helper()
+
+	repo.WriteFile(t, rootPath+"/SKILL.md", ""+
+		"---\n"+
+		"name: "+name+"\n"+
+		"description: "+description+"\n"+
+		"---\n"+
+		"# "+name+"\n")
 }

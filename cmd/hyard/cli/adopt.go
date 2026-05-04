@@ -172,6 +172,12 @@ func buildAdoptWriteOutput(cmd *cobra.Command, explicitOrbitID string) (adoptWri
 			strings.Join(preflight.DirtyWorktree.Paths, ", "),
 		)
 	}
+	if blockingMessages := adoptCheckBlockingDiagnosticMessages(preflight.Diagnostics); len(blockingMessages) > 0 {
+		return adoptWriteOutput{}, fmt.Errorf(
+			"adoption has blocking diagnostics: %s",
+			strings.Join(blockingMessages, "; "),
+		)
+	}
 
 	agentsPath := filepath.Join(preflight.RepoRoot, "AGENTS.md")
 	//nolint:gosec // The root guidance path is fixed under the discovered repository root.
@@ -206,6 +212,7 @@ func buildAdoptWriteOutput(cmd *cobra.Command, explicitOrbitID string) (adoptWri
 		return adoptWriteOutput{}, fmt.Errorf("build adopted orbit spec: %w", err)
 	}
 	spec.Meta.AgentsTemplate = string(originalAgents)
+	spec = applyAdoptedCodexLocalSkillCapabilityTruth(spec, preflight.Candidates)
 	if _, err := orbitpkg.WriteHostedOrbitSpec(preflight.RepoRoot, spec); err != nil {
 		return adoptWriteOutput{}, fmt.Errorf("write adopted orbit spec: %w", err)
 	}
@@ -294,6 +301,12 @@ func buildAdoptCheckOutput(cmd *cobra.Command, explicitOrbitID string) (adoptChe
 	if err != nil {
 		return adoptCheckOutput{}, err
 	}
+	localSkillCandidates, localSkillDiagnostics, err := inspectAdoptCheckCodexLocalSkillCandidates(cmd, repo.Root, orbitID)
+	if err != nil {
+		return adoptCheckOutput{}, err
+	}
+	candidates = append(candidates, localSkillCandidates...)
+	candidateDiagnostics = append(candidateDiagnostics, localSkillDiagnostics...)
 
 	output := adoptCheckOutput{
 		SchemaVersion:          adoptionCheckSchemaVersion,
@@ -340,6 +353,9 @@ func buildAdoptCheckOutput(cmd *cobra.Command, explicitOrbitID string) (adoptChe
 		})
 	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return adoptCheckOutput{}, fmt.Errorf("inspect harness manifest: %w", err)
+	}
+	if adoptCheckHasErrorDiagnostic(output.Diagnostics) {
+		output.Adoptable = false
 	}
 
 	return output, nil
@@ -455,6 +471,15 @@ func inspectAdoptCheckGuidanceCandidates(cmd *cobra.Command, repoRoot string) ([
 			diagnostics = append(diagnostics, adoptCheckIgnoredGuidanceReferenceDiagnostic(reference))
 			continue
 		}
+		if skillRoots := adoptCheckCodexLocalSkillReferenceRoots(reference.Path, tracked); len(skillRoots) > 0 {
+			rejectedKey := "codex_local_skill:" + strings.Join(skillRoots, ",")
+			if _, rejectedAlready := rejected[rejectedKey]; rejectedAlready {
+				continue
+			}
+			rejected[rejectedKey] = struct{}{}
+			diagnostics = append(diagnostics, adoptCheckCodexLocalSkillMemberOverlapAvoidedDiagnostic(reference, skillRoots))
+			continue
+		}
 		if _, ok := seen[reference.Path]; ok {
 			continue
 		}
@@ -489,6 +514,226 @@ func inspectAdoptCheckGuidanceCandidates(cmd *cobra.Command, repoRoot string) ([
 	}
 
 	return candidates, diagnostics, nil
+}
+
+func inspectAdoptCheckCodexLocalSkillCandidates(
+	cmd *cobra.Command,
+	repoRoot string,
+	orbitID string,
+) ([]adoptCheckCandidate, []adoptCheckDiagnostic, error) {
+	trackedFiles, err := gitpkg.TrackedFiles(cmd.Context(), repoRoot)
+	if err != nil {
+		return nil, nil, fmt.Errorf("load tracked files for Codex local skill discovery: %w", err)
+	}
+
+	skillRoots := adoptCheckCodexLocalSkillRoots(trackedFiles)
+	candidates := make([]adoptCheckCandidate, 0, len(skillRoots))
+	diagnostics := []adoptCheckDiagnostic{}
+	validFrontmatter := map[string]struct{}{}
+	rootsByName := map[string][]string{}
+	for _, rootPath := range skillRoots {
+		skillMDPath := rootPath + "/SKILL.md"
+		name, err := orbitpkg.LoadSkillFrontmatterName(repoRoot, skillMDPath)
+		if err != nil {
+			diagnostics = append(diagnostics, adoptCheckCodexLocalSkillInvalidDiagnostic(rootPath, err))
+			continue
+		}
+		validFrontmatter[rootPath] = struct{}{}
+		rootsByName[name] = append(rootsByName[name], rootPath)
+	}
+
+	duplicateRoots := map[string]struct{}{}
+	for name, roots := range rootsByName {
+		if len(roots) < 2 {
+			continue
+		}
+		sort.Strings(roots)
+		for _, rootPath := range roots {
+			duplicateRoots[rootPath] = struct{}{}
+		}
+		diagnostics = append(diagnostics, adoptCheckCodexLocalSkillDuplicateNameDiagnostic(name, roots))
+	}
+
+	for _, rootPath := range skillRoots {
+		if _, ok := validFrontmatter[rootPath]; !ok {
+			continue
+		}
+		if _, duplicate := duplicateRoots[rootPath]; duplicate {
+			continue
+		}
+		skill, err := resolveAdoptCheckCodexLocalSkillRoot(repoRoot, rootPath, trackedFiles)
+		if err != nil {
+			diagnostics = append(diagnostics, adoptCheckCodexLocalSkillInvalidDiagnostic(rootPath, err))
+			continue
+		}
+		diagnostics = append(diagnostics, adoptCheckCodexLocalSkillNonRecommendedPathDiagnostic(skill, orbitID))
+		candidates = append(candidates, adoptCheckCandidate{
+			Path:  skill.RootPath,
+			Kind:  "local_skill_capability",
+			Shape: "directory",
+			Evidence: []adoptCheckEvidence{
+				{Kind: "codex_skill_root", Path: skill.SkillMDPath, Detail: skill.Name},
+			},
+		})
+	}
+
+	return candidates, diagnostics, nil
+}
+
+func adoptCheckHasErrorDiagnostic(diagnostics []adoptCheckDiagnostic) bool {
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Severity == "error" {
+			return true
+		}
+	}
+
+	return false
+}
+
+func adoptCheckBlockingDiagnosticMessages(diagnostics []adoptCheckDiagnostic) []string {
+	messages := []string{}
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Severity != "error" {
+			continue
+		}
+		messages = append(messages, diagnostic.Message)
+	}
+
+	return messages
+}
+
+func adoptCheckCodexLocalSkillRoots(trackedFiles []string) []string {
+	rootSet := map[string]struct{}{}
+	for _, trackedFile := range trackedFiles {
+		if !strings.HasPrefix(trackedFile, ".codex/skills/") || !strings.HasSuffix(trackedFile, "/SKILL.md") {
+			continue
+		}
+		remainder := strings.TrimPrefix(trackedFile, ".codex/skills/")
+		if strings.Count(remainder, "/") != 1 {
+			continue
+		}
+		rootSet[strings.TrimSuffix(trackedFile, "/SKILL.md")] = struct{}{}
+	}
+
+	roots := make([]string, 0, len(rootSet))
+	for rootPath := range rootSet {
+		roots = append(roots, rootPath)
+	}
+	sort.Strings(roots)
+
+	return roots
+}
+
+func resolveAdoptCheckCodexLocalSkillRoot(
+	repoRoot string,
+	rootPath string,
+	trackedFiles []string,
+) (orbitpkg.ResolvedLocalSkillCapability, error) {
+	spec := orbitpkg.OrbitSpec{
+		Capabilities: &orbitpkg.OrbitCapabilities{
+			Skills: &orbitpkg.OrbitSkillCapabilities{
+				Local: &orbitpkg.OrbitLocalSkillCapabilityPaths{
+					Paths: orbitpkg.OrbitMemberPaths{
+						Include: []string{rootPath},
+					},
+				},
+			},
+		},
+	}
+	resolved, err := orbitpkg.ResolveLocalSkillCapabilities(repoRoot, spec, trackedFiles, trackedFiles)
+	if err != nil {
+		return orbitpkg.ResolvedLocalSkillCapability{}, err
+	}
+	if len(resolved) == 0 {
+		return orbitpkg.ResolvedLocalSkillCapability{}, fmt.Errorf("local skill root %q: SKILL.md must exist and be tracked", rootPath)
+	}
+
+	return resolved[0], nil
+}
+
+func adoptCheckCodexLocalSkillInvalidDiagnostic(rootPath string, err error) adoptCheckDiagnostic {
+	detail := err.Error()
+	prefix := fmt.Sprintf("local skill root %q: ", rootPath)
+	detail = strings.TrimPrefix(detail, prefix)
+	code := "codex_local_skill_invalid_frontmatter"
+	message := "Codex local skill frontmatter is invalid: " + detail
+	if strings.Contains(detail, "invalid skill basename") ||
+		strings.Contains(detail, "frontmatter name") ||
+		strings.Contains(detail, "duplicate") {
+		code = "codex_local_skill_invalid_identity"
+		message = "Codex local skill identity is invalid: " + detail
+	}
+
+	return adoptCheckDiagnostic{
+		Code:     code,
+		Severity: "error",
+		Message:  message,
+		Evidence: []adoptCheckEvidence{
+			{Kind: "codex_skill_root", Path: rootPath + "/SKILL.md"},
+		},
+	}
+}
+
+func adoptCheckCodexLocalSkillDuplicateNameDiagnostic(name string, rootPaths []string) adoptCheckDiagnostic {
+	evidence := make([]adoptCheckEvidence, 0, len(rootPaths))
+	for _, rootPath := range rootPaths {
+		evidence = append(evidence, adoptCheckEvidence{
+			Kind:   "codex_skill_root",
+			Path:   rootPath + "/SKILL.md",
+			Detail: name,
+		})
+	}
+
+	return adoptCheckDiagnostic{
+		Code:     "codex_local_skill_duplicate_name",
+		Severity: "error",
+		Message:  fmt.Sprintf("Codex local skill name %q is declared by multiple roots", name),
+		Evidence: evidence,
+	}
+}
+
+func adoptCheckCodexLocalSkillNonRecommendedPathDiagnostic(
+	skill orbitpkg.ResolvedLocalSkillCapability,
+	orbitID string,
+) adoptCheckDiagnostic {
+	recommendedPath := "skills/" + orbitID + "/" + skill.Name
+
+	return adoptCheckDiagnostic{
+		Code:     "codex_local_skill_non_recommended_path",
+		Severity: "warning",
+		Message:  "Codex local skill root is outside the recommended position; if recommended moves are declined, Adoption will keep it as a capability path",
+		Evidence: []adoptCheckEvidence{
+			{Kind: "codex_skill_root", Path: skill.SkillMDPath, Detail: "recommended: " + recommendedPath},
+		},
+	}
+}
+
+func applyAdoptedCodexLocalSkillCapabilityTruth(spec orbitpkg.OrbitSpec, candidates []adoptCheckCandidate) orbitpkg.OrbitSpec {
+	skillRoots := []string{}
+	for _, candidate := range candidates {
+		if candidate.Kind != "local_skill_capability" || !strings.HasPrefix(candidate.Path, ".codex/skills/") {
+			continue
+		}
+		skillRoots = append(skillRoots, candidate.Path)
+	}
+	if len(skillRoots) == 0 {
+		return spec
+	}
+	sort.Strings(skillRoots)
+
+	if spec.Capabilities == nil {
+		spec.Capabilities = &orbitpkg.OrbitCapabilities{}
+	}
+	if spec.Capabilities.Skills == nil {
+		spec.Capabilities.Skills = &orbitpkg.OrbitSkillCapabilities{}
+	}
+	spec.Capabilities.Skills.Local = &orbitpkg.OrbitLocalSkillCapabilityPaths{
+		Paths: orbitpkg.OrbitMemberPaths{
+			Include: skillRoots,
+		},
+	}
+
+	return spec
 }
 
 var adoptCheckMarkdownLinkPattern = regexp.MustCompile(`\[[^\]]+\]\(([^)]+)\)`)
@@ -579,6 +824,70 @@ func adoptCheckIgnoredDependencyOrCachePath(repoPath string) bool {
 	}
 
 	return false
+}
+
+func adoptCheckCodexLocalSkillReferenceRoots(repoPath string, tracked map[string]struct{}) []string {
+	if !strings.HasPrefix(repoPath, ".codex/skills/") {
+		if repoPath != ".codex/skills" {
+			return nil
+		}
+	}
+
+	if repoPath == ".codex/skills" {
+		roots := []string{}
+		for trackedPath := range tracked {
+			if !strings.HasPrefix(trackedPath, ".codex/skills/") || !strings.HasSuffix(trackedPath, "/SKILL.md") {
+				continue
+			}
+			remainder := strings.TrimPrefix(trackedPath, ".codex/skills/")
+			if strings.Count(remainder, "/") != 1 {
+				continue
+			}
+			roots = append(roots, strings.TrimSuffix(trackedPath, "/SKILL.md"))
+		}
+		sort.Strings(roots)
+		return roots
+	}
+
+	remainder := strings.TrimPrefix(repoPath, ".codex/skills/")
+	if remainder == "" {
+		return nil
+	}
+	skillName := remainder
+	if slashIndex := strings.Index(skillName, "/"); slashIndex >= 0 {
+		skillName = skillName[:slashIndex]
+	}
+	if skillName == "" {
+		return nil
+	}
+	rootPath := ".codex/skills/" + skillName
+	if _, ok := tracked[rootPath+"/SKILL.md"]; !ok {
+		return nil
+	}
+
+	return []string{rootPath}
+}
+
+func adoptCheckCodexLocalSkillMemberOverlapAvoidedDiagnostic(
+	reference adoptCheckGuidanceReference,
+	skillRoots []string,
+) adoptCheckDiagnostic {
+	evidence := []adoptCheckEvidence{
+		{Kind: reference.Kind, Path: "AGENTS.md", Detail: reference.Path},
+	}
+	for _, skillRoot := range skillRoots {
+		evidence = append(evidence, adoptCheckEvidence{
+			Kind: "codex_skill_root",
+			Path: skillRoot + "/SKILL.md",
+		})
+	}
+
+	return adoptCheckDiagnostic{
+		Code:     "codex_local_skill_member_overlap_avoided",
+		Severity: "warning",
+		Message:  "referenced Codex local skill root is capability-owned and will not be adopted as ordinary member content",
+		Evidence: evidence,
+	}
 }
 
 func parseAdoptCheckMarkdownLinks(content string) []adoptCheckGuidanceReference {

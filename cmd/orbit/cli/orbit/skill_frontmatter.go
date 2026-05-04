@@ -24,6 +24,16 @@ func loadSkillFrontmatter(repoRoot string, skillMDPath string) (skillFrontmatter
 	return parseSkillFrontmatter(data)
 }
 
+// LoadSkillFrontmatterName returns the validated skill name from one repo-relative SKILL.md.
+func LoadSkillFrontmatterName(repoRoot string, skillMDPath string) (string, error) {
+	frontmatter, err := loadSkillFrontmatter(repoRoot, skillMDPath)
+	if err != nil {
+		return "", err
+	}
+
+	return frontmatter.Name, nil
+}
+
 func parseSkillFrontmatter(data []byte) (skillFrontmatter, error) {
 	content := strings.ReplaceAll(string(data), "\r\n", "\n")
 	if !strings.HasPrefix(content, "---\n") {
