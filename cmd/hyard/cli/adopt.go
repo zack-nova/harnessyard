@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -25,6 +27,7 @@ type adoptCheckOutput struct {
 	DirtyWorktree          adoptCheckDirtyWorktree `json:"dirty_worktree"`
 	AdoptedOrbit           adoptCheckAdoptedOrbit  `json:"adopted_orbit"`
 	Frameworks             adoptCheckFrameworks    `json:"frameworks"`
+	Candidates             []adoptCheckCandidate   `json:"candidates"`
 	Diagnostics            []adoptCheckDiagnostic  `json:"diagnostics"`
 	NextActions            []adoptCheckNextAction  `json:"next_actions"`
 }
@@ -52,8 +55,24 @@ type adoptCheckFramework struct {
 }
 
 type adoptCheckEvidence struct {
-	Kind string `json:"kind"`
-	Path string `json:"path"`
+	Kind   string `json:"kind"`
+	Path   string `json:"path"`
+	Detail string `json:"detail,omitempty"`
+}
+
+type adoptCheckCandidate struct {
+	Path                  string                     `json:"path"`
+	Kind                  string                     `json:"kind"`
+	Shape                 string                     `json:"shape"`
+	RecommendedMemberRole string                     `json:"recommended_member_role,omitempty"`
+	RoleConfirmation      adoptCheckRoleConfirmation `json:"role_confirmation,omitempty"`
+	Evidence              []adoptCheckEvidence       `json:"evidence"`
+}
+
+type adoptCheckRoleConfirmation struct {
+	Required               bool     `json:"required"`
+	BatchAcceptRecommended bool     `json:"batch_accept_recommended"`
+	EditableRoles          []string `json:"editable_roles,omitempty"`
 }
 
 type adoptCheckDiagnostic struct {
@@ -132,6 +151,10 @@ func buildAdoptCheckOutput(cmd *cobra.Command, explicitOrbitID string) (adoptChe
 	if err != nil {
 		return adoptCheckOutput{}, err
 	}
+	candidates, candidateDiagnostics, err := inspectAdoptCheckGuidanceCandidates(cmd, repo.Root)
+	if err != nil {
+		return adoptCheckOutput{}, err
+	}
 
 	output := adoptCheckOutput{
 		SchemaVersion:          adoptionCheckSchemaVersion,
@@ -145,6 +168,7 @@ func buildAdoptCheckOutput(cmd *cobra.Command, explicitOrbitID string) (adoptChe
 			DerivedFrom: derivedFrom,
 		},
 		Frameworks:  frameworks,
+		Candidates:  candidates,
 		Diagnostics: []adoptCheckDiagnostic{},
 		NextActions: []adoptCheckNextAction{},
 	}
@@ -157,6 +181,7 @@ func buildAdoptCheckOutput(cmd *cobra.Command, explicitOrbitID string) (adoptChe
 		})
 	}
 	output.Diagnostics = append(output.Diagnostics, adoptCheckUnsupportedFootprintDiagnostics(frameworks.Unsupported)...)
+	output.Diagnostics = append(output.Diagnostics, candidateDiagnostics...)
 
 	manifest, err := harnesspkg.LoadManifestFile(repo.Root)
 	if err == nil && manifest.Kind == harnesspkg.ManifestKindRuntime {
@@ -234,6 +259,267 @@ func inspectAdoptCheckFrameworks(repoRoot string) (adoptCheckFrameworks, error) 
 	}
 
 	return frameworks, nil
+}
+
+func inspectAdoptCheckGuidanceCandidates(cmd *cobra.Command, repoRoot string) ([]adoptCheckCandidate, []adoptCheckDiagnostic, error) {
+	trackedFiles, err := gitpkg.TrackedFiles(cmd.Context(), repoRoot)
+	if err != nil {
+		return nil, nil, fmt.Errorf("load tracked files for guidance discovery: %w", err)
+	}
+	tracked := make(map[string]struct{}, len(trackedFiles))
+	for _, path := range trackedFiles {
+		tracked[path] = struct{}{}
+	}
+	if _, ok := tracked["AGENTS.md"]; !ok {
+		return []adoptCheckCandidate{}, []adoptCheckDiagnostic{}, nil
+	}
+
+	candidates := []adoptCheckCandidate{
+		{
+			Path:  "AGENTS.md",
+			Kind:  "root_agent_guidance",
+			Shape: "file",
+			Evidence: []adoptCheckEvidence{
+				{Kind: "root_agent_guidance", Path: "AGENTS.md"},
+			},
+		},
+	}
+
+	content, err := os.ReadFile(filepath.Join(repoRoot, "AGENTS.md"))
+	if err != nil {
+		return nil, nil, fmt.Errorf("read root agent guidance: %w", err)
+	}
+	seen := map[string]struct{}{
+		"AGENTS.md": {},
+	}
+	rejected := map[string]struct{}{}
+	diagnostics := []adoptCheckDiagnostic{}
+	guidanceText := string(content)
+	references := append(
+		parseAdoptCheckMarkdownLinks(guidanceText),
+		parseAdoptCheckPathMentions(adoptCheckMarkdownLinkPattern.ReplaceAllString(guidanceText, " "))...,
+	)
+	for _, reference := range references {
+		if reference.Unsafe {
+			if _, rejectedAlready := rejected[reference.Path]; rejectedAlready {
+				continue
+			}
+			rejected[reference.Path] = struct{}{}
+			diagnostics = append(diagnostics, adoptCheckUnsafeGuidanceReferenceDiagnostic(reference))
+			continue
+		}
+		if adoptCheckIgnoredDependencyOrCachePath(reference.Path) {
+			if _, rejectedAlready := rejected[reference.Path]; rejectedAlready {
+				continue
+			}
+			rejected[reference.Path] = struct{}{}
+			diagnostics = append(diagnostics, adoptCheckIgnoredGuidanceReferenceDiagnostic(reference))
+			continue
+		}
+		if _, ok := seen[reference.Path]; ok {
+			continue
+		}
+		shape, ok := adoptCheckGuidanceCandidateShape(reference.Path, trackedFiles, tracked)
+		if !ok {
+			if _, rejectedAlready := rejected[reference.Path]; rejectedAlready {
+				continue
+			}
+			rejected[reference.Path] = struct{}{}
+			diagnostic, err := adoptCheckRejectedGuidanceReferenceDiagnostic(repoRoot, reference)
+			if err != nil {
+				return nil, nil, err
+			}
+			diagnostics = append(diagnostics, diagnostic)
+			continue
+		}
+		seen[reference.Path] = struct{}{}
+		candidates = append(candidates, adoptCheckCandidate{
+			Path:                  reference.Path,
+			Kind:                  "referenced_guidance_document",
+			Shape:                 shape,
+			RecommendedMemberRole: "rule",
+			RoleConfirmation: adoptCheckRoleConfirmation{
+				Required:               true,
+				BatchAcceptRecommended: true,
+				EditableRoles:          []string{"rule", "subject", "process", "ignore"},
+			},
+			Evidence: []adoptCheckEvidence{
+				{Kind: reference.Kind, Path: "AGENTS.md", Detail: reference.Path},
+			},
+		})
+	}
+
+	return candidates, diagnostics, nil
+}
+
+var adoptCheckMarkdownLinkPattern = regexp.MustCompile(`\[[^\]]+\]\(([^)]+)\)`)
+
+type adoptCheckGuidanceReference struct {
+	Kind   string
+	Path   string
+	Unsafe bool
+}
+
+func adoptCheckGuidanceCandidateShape(repoPath string, trackedFiles []string, tracked map[string]struct{}) (string, bool) {
+	if _, ok := tracked[repoPath]; ok {
+		return "file", true
+	}
+	prefix := strings.TrimSuffix(repoPath, "/") + "/"
+	for _, trackedFile := range trackedFiles {
+		if strings.HasPrefix(trackedFile, prefix) {
+			return "directory", true
+		}
+	}
+
+	return "", false
+}
+
+func adoptCheckRejectedGuidanceReferenceDiagnostic(repoRoot string, reference adoptCheckGuidanceReference) (adoptCheckDiagnostic, error) {
+	absolutePath := filepath.Join(repoRoot, filepath.FromSlash(reference.Path))
+	if _, err := os.Lstat(absolutePath); err == nil {
+		return adoptCheckDiagnostic{
+			Code:     "referenced_guidance_untracked",
+			Severity: "warning",
+			Message:  "referenced guidance path is untracked and will not be adopted",
+			Evidence: []adoptCheckEvidence{
+				{Kind: reference.Kind, Path: "AGENTS.md", Detail: reference.Path},
+			},
+		}, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return adoptCheckDiagnostic{}, fmt.Errorf("inspect referenced guidance path %s: %w", reference.Path, err)
+	}
+
+	return adoptCheckDiagnostic{
+		Code:     "referenced_guidance_missing",
+		Severity: "warning",
+		Message:  "referenced guidance path is missing",
+		Evidence: []adoptCheckEvidence{
+			{Kind: reference.Kind, Path: "AGENTS.md", Detail: reference.Path},
+		},
+	}, nil
+}
+
+func adoptCheckUnsafeGuidanceReferenceDiagnostic(reference adoptCheckGuidanceReference) adoptCheckDiagnostic {
+	return adoptCheckDiagnostic{
+		Code:     "referenced_guidance_unsafe",
+		Severity: "warning",
+		Message:  "referenced guidance path is unsafe and will not be adopted",
+		Evidence: []adoptCheckEvidence{
+			{Kind: reference.Kind, Path: "AGENTS.md", Detail: reference.Path},
+		},
+	}
+}
+
+func adoptCheckIgnoredGuidanceReferenceDiagnostic(reference adoptCheckGuidanceReference) adoptCheckDiagnostic {
+	return adoptCheckDiagnostic{
+		Code:     "referenced_guidance_ignored",
+		Severity: "warning",
+		Message:  "referenced guidance path is ignored dependency or cache content and will not be adopted",
+		Evidence: []adoptCheckEvidence{
+			{Kind: reference.Kind, Path: "AGENTS.md", Detail: reference.Path},
+		},
+	}
+}
+
+func adoptCheckIgnoredDependencyOrCachePath(repoPath string) bool {
+	ignoredRoots := []string{
+		".cache",
+		".next",
+		".pnpm-store",
+		".turbo",
+		".yarn/cache",
+		"build",
+		"coverage",
+		"dist",
+		"node_modules",
+	}
+	for _, root := range ignoredRoots {
+		if repoPath == root || strings.HasPrefix(repoPath, root+"/") {
+			return true
+		}
+	}
+
+	return false
+}
+
+func parseAdoptCheckMarkdownLinks(content string) []adoptCheckGuidanceReference {
+	matches := adoptCheckMarkdownLinkPattern.FindAllStringSubmatch(content, -1)
+	references := make([]adoptCheckGuidanceReference, 0, len(matches))
+
+	for _, match := range matches {
+		if len(match) < 2 {
+			continue
+		}
+		if reference, ok := normalizeAdoptCheckGuidanceReference("markdown_link", match[1]); ok {
+			references = append(references, reference)
+		}
+	}
+
+	return references
+}
+
+var adoptCheckPathMentionPattern = regexp.MustCompile(`(?:^|[\s("'` + "`" + `])([A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)+/?|[A-Za-z0-9._-]+\.(?:md|markdown|txt|toml|ya?ml|json))(?:$|[\s).,;:"'` + "`" + `])`)
+
+func parseAdoptCheckPathMentions(content string) []adoptCheckGuidanceReference {
+	matches := adoptCheckPathMentionPattern.FindAllStringSubmatch(content, -1)
+	references := make([]adoptCheckGuidanceReference, 0, len(matches))
+
+	for _, match := range matches {
+		if len(match) < 2 {
+			continue
+		}
+		if reference, ok := normalizeAdoptCheckGuidanceReference("path_mention", match[1]); ok {
+			references = append(references, reference)
+		}
+	}
+
+	return references
+}
+
+func normalizeAdoptCheckGuidanceReference(kind string, value string) (adoptCheckGuidanceReference, bool) {
+	target := adoptCheckGuidanceReferenceTarget(value)
+	target = strings.TrimRight(target, ".,;:")
+	if target == "" || strings.HasPrefix(target, "#") || strings.Contains(target, "://") {
+		return adoptCheckGuidanceReference{}, false
+	}
+	target = stripAdoptCheckGuidanceReferenceFragment(target)
+	if target == "" {
+		return adoptCheckGuidanceReference{}, false
+	}
+	normalized, err := ids.NormalizeRepoRelativePath(target)
+	if err != nil {
+		return adoptCheckGuidanceReference{
+			Kind:   kind,
+			Path:   target,
+			Unsafe: true,
+		}, true
+	}
+
+	return adoptCheckGuidanceReference{
+		Kind: kind,
+		Path: normalized,
+	}, true
+}
+
+func adoptCheckGuidanceReferenceTarget(value string) string {
+	target := strings.TrimSpace(value)
+	if strings.HasPrefix(target, "<") {
+		if end := strings.Index(target, ">"); end >= 0 {
+			target = target[1:end]
+		}
+	} else if end := strings.IndexAny(target, " \t\r\n"); end >= 0 {
+		target = target[:end]
+	}
+
+	return strings.Trim(strings.TrimSpace(target), `"'`)
+}
+
+func stripAdoptCheckGuidanceReferenceFragment(target string) string {
+	if end := strings.IndexAny(target, "#?"); end >= 0 {
+		return target[:end]
+	}
+
+	return target
 }
 
 func adoptCheckUnsupportedFootprintDiagnostics(unsupported []adoptCheckFramework) []adoptCheckDiagnostic {

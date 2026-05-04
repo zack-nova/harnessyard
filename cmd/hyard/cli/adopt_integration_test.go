@@ -24,6 +24,7 @@ type hyardAdoptCheckPayload struct {
 	DirtyWorktree          hyardAdoptCheckDirtyWorktree `json:"dirty_worktree"`
 	AdoptedOrbit           hyardAdoptCheckAdoptedOrbit  `json:"adopted_orbit"`
 	Frameworks             hyardAdoptCheckFrameworks    `json:"frameworks"`
+	Candidates             []hyardAdoptCheckCandidate   `json:"candidates"`
 	Diagnostics            []hyardAdoptCheckDiagnostic  `json:"diagnostics"`
 	NextActions            []hyardAdoptCheckNextAction  `json:"next_actions"`
 }
@@ -51,8 +52,24 @@ type hyardAdoptCheckFramework struct {
 }
 
 type hyardAdoptCheckEvidence struct {
-	Kind string `json:"kind"`
-	Path string `json:"path"`
+	Kind   string `json:"kind"`
+	Path   string `json:"path"`
+	Detail string `json:"detail,omitempty"`
+}
+
+type hyardAdoptCheckCandidate struct {
+	Path                  string                          `json:"path"`
+	Kind                  string                          `json:"kind"`
+	Shape                 string                          `json:"shape"`
+	RecommendedMemberRole string                          `json:"recommended_member_role,omitempty"`
+	RoleConfirmation      hyardAdoptCheckRoleConfirmation `json:"role_confirmation,omitempty"`
+	Evidence              []hyardAdoptCheckEvidence       `json:"evidence"`
+}
+
+type hyardAdoptCheckRoleConfirmation struct {
+	Required               bool     `json:"required"`
+	BatchAcceptRecommended bool     `json:"batch_accept_recommended"`
+	EditableRoles          []string `json:"editable_roles,omitempty"`
 }
 
 type hyardAdoptCheckDiagnostic struct {
@@ -264,6 +281,304 @@ func TestHyardAdoptCheckJSONReportsUnsupportedClaudeCodeAndOpenClawFootprints(t 
 		Message:  "OpenClaw project footprint is detected but unsupported by first-version Adoption",
 		Evidence: openclaw.Evidence,
 	})
+}
+
+func TestHyardAdoptCheckJSONReportsRootAndReferencedGuidanceCandidates(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, "AGENTS.md", ""+
+		"# Agent guidance\n\n"+
+		"See [domain docs](docs/agents/domain.md).\n")
+	repo.WriteFile(t, "docs/agents/domain.md", "# Domain language\n")
+	repo.AddAndCommit(t, "seed agent guidance")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "adopt", "--check", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload hyardAdoptCheckPayload
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Contains(t, payload.Candidates, hyardAdoptCheckCandidate{
+		Path:  "AGENTS.md",
+		Kind:  "root_agent_guidance",
+		Shape: "file",
+		Evidence: []hyardAdoptCheckEvidence{
+			{Kind: "root_agent_guidance", Path: "AGENTS.md"},
+		},
+	})
+	require.Contains(t, payload.Candidates, hyardAdoptCheckCandidate{
+		Path:                  "docs/agents/domain.md",
+		Kind:                  "referenced_guidance_document",
+		Shape:                 "file",
+		RecommendedMemberRole: "rule",
+		RoleConfirmation: hyardAdoptCheckRoleConfirmation{
+			Required:               true,
+			BatchAcceptRecommended: true,
+			EditableRoles:          []string{"rule", "subject", "process", "ignore"},
+		},
+		Evidence: []hyardAdoptCheckEvidence{
+			{Kind: "markdown_link", Path: "AGENTS.md", Detail: "docs/agents/domain.md"},
+		},
+	})
+}
+
+func TestHyardAdoptCheckJSONDiscoversMarkdownLinksWithFragmentsAndTitles(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, "AGENTS.md", ""+
+		"# Agent guidance\n\n"+
+		"See [domain docs](docs/agents/domain.md#language \"Domain language\").\n")
+	repo.WriteFile(t, "docs/agents/domain.md", "# Domain language\n")
+	repo.AddAndCommit(t, "seed titled agent guidance link")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "adopt", "--check", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload hyardAdoptCheckPayload
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Contains(t, payload.Candidates, hyardAdoptCheckCandidate{
+		Path:                  "docs/agents/domain.md",
+		Kind:                  "referenced_guidance_document",
+		Shape:                 "file",
+		RecommendedMemberRole: "rule",
+		RoleConfirmation: hyardAdoptCheckRoleConfirmation{
+			Required:               true,
+			BatchAcceptRecommended: true,
+			EditableRoles:          []string{"rule", "subject", "process", "ignore"},
+		},
+		Evidence: []hyardAdoptCheckEvidence{
+			{Kind: "markdown_link", Path: "AGENTS.md", Detail: "docs/agents/domain.md"},
+		},
+	})
+	require.Empty(t, payload.Diagnostics)
+}
+
+func TestHyardAdoptCheckJSONDiscoversPathMentionsAndKeepsDirectoryCandidates(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, "AGENTS.md", ""+
+		"# Agent guidance\n\n"+
+		"Read CONTEXT.md, docs/runbook.md, and docs/ops/ before adopting this repository.\n")
+	repo.WriteFile(t, "CONTEXT.md", "# Project language\n")
+	repo.WriteFile(t, "docs/runbook.md", "# Runbook\n")
+	repo.WriteFile(t, "docs/ops/incident.md", "# Incident process\n")
+	repo.AddAndCommit(t, "seed mentioned guidance")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "adopt", "--check", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload hyardAdoptCheckPayload
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Contains(t, payload.Candidates, hyardAdoptCheckCandidate{
+		Path:                  "CONTEXT.md",
+		Kind:                  "referenced_guidance_document",
+		Shape:                 "file",
+		RecommendedMemberRole: "rule",
+		RoleConfirmation: hyardAdoptCheckRoleConfirmation{
+			Required:               true,
+			BatchAcceptRecommended: true,
+			EditableRoles:          []string{"rule", "subject", "process", "ignore"},
+		},
+		Evidence: []hyardAdoptCheckEvidence{
+			{Kind: "path_mention", Path: "AGENTS.md", Detail: "CONTEXT.md"},
+		},
+	})
+	require.Contains(t, payload.Candidates, hyardAdoptCheckCandidate{
+		Path:                  "docs/runbook.md",
+		Kind:                  "referenced_guidance_document",
+		Shape:                 "file",
+		RecommendedMemberRole: "rule",
+		RoleConfirmation: hyardAdoptCheckRoleConfirmation{
+			Required:               true,
+			BatchAcceptRecommended: true,
+			EditableRoles:          []string{"rule", "subject", "process", "ignore"},
+		},
+		Evidence: []hyardAdoptCheckEvidence{
+			{Kind: "path_mention", Path: "AGENTS.md", Detail: "docs/runbook.md"},
+		},
+	})
+	require.Contains(t, payload.Candidates, hyardAdoptCheckCandidate{
+		Path:                  "docs/ops",
+		Kind:                  "referenced_guidance_document",
+		Shape:                 "directory",
+		RecommendedMemberRole: "rule",
+		RoleConfirmation: hyardAdoptCheckRoleConfirmation{
+			Required:               true,
+			BatchAcceptRecommended: true,
+			EditableRoles:          []string{"rule", "subject", "process", "ignore"},
+		},
+		Evidence: []hyardAdoptCheckEvidence{
+			{Kind: "path_mention", Path: "AGENTS.md", Detail: "docs/ops"},
+		},
+	})
+	require.NotContains(t, hyardAdoptCheckCandidatePaths(payload.Candidates), "docs/ops/incident.md")
+}
+
+func TestHyardAdoptCheckJSONWarnsAboutMissingAndUntrackedGuidanceReferences(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, "AGENTS.md", ""+
+		"# Agent guidance\n\n"+
+		"See [missing guidance](docs/missing.md) and docs/draft.md.\n")
+	repo.WriteFile(t, "docs/draft.md", "# Draft guidance\n")
+	repo.AddAndCommit(t, "seed root guidance", "AGENTS.md")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "adopt", "--check", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload hyardAdoptCheckPayload
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	candidatePaths := hyardAdoptCheckCandidatePaths(payload.Candidates)
+	require.NotContains(t, candidatePaths, "docs/missing.md")
+	require.NotContains(t, candidatePaths, "docs/draft.md")
+	require.Contains(t, payload.Diagnostics, hyardAdoptCheckDiagnostic{
+		Code:     "referenced_guidance_missing",
+		Severity: "warning",
+		Message:  "referenced guidance path is missing",
+		Evidence: []hyardAdoptCheckEvidence{
+			{Kind: "markdown_link", Path: "AGENTS.md", Detail: "docs/missing.md"},
+		},
+	})
+	require.Contains(t, payload.Diagnostics, hyardAdoptCheckDiagnostic{
+		Code:     "referenced_guidance_untracked",
+		Severity: "warning",
+		Message:  "referenced guidance path is untracked and will not be adopted",
+		Evidence: []hyardAdoptCheckEvidence{
+			{Kind: "path_mention", Path: "AGENTS.md", Detail: "docs/draft.md"},
+		},
+	})
+}
+
+func TestHyardAdoptCheckJSONFiltersExternalAnchorsAndWarnsAboutUnsafeGuidanceReferences(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, "AGENTS.md", ""+
+		"# Agent guidance\n\n"+
+		"See [external](https://example.com/guide.md), [anchor](#local), "+
+		"[parent](../outside.md), and [absolute](/tmp/secret.md).\n")
+	repo.AddAndCommit(t, "seed unsafe guidance")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "adopt", "--check", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload hyardAdoptCheckPayload
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, []hyardAdoptCheckCandidate{
+		{
+			Path:  "AGENTS.md",
+			Kind:  "root_agent_guidance",
+			Shape: "file",
+			Evidence: []hyardAdoptCheckEvidence{
+				{Kind: "root_agent_guidance", Path: "AGENTS.md"},
+			},
+		},
+	}, payload.Candidates)
+	require.Contains(t, payload.Diagnostics, hyardAdoptCheckDiagnostic{
+		Code:     "referenced_guidance_unsafe",
+		Severity: "warning",
+		Message:  "referenced guidance path is unsafe and will not be adopted",
+		Evidence: []hyardAdoptCheckEvidence{
+			{Kind: "markdown_link", Path: "AGENTS.md", Detail: "../outside.md"},
+		},
+	})
+	require.Contains(t, payload.Diagnostics, hyardAdoptCheckDiagnostic{
+		Code:     "referenced_guidance_unsafe",
+		Severity: "warning",
+		Message:  "referenced guidance path is unsafe and will not be adopted",
+		Evidence: []hyardAdoptCheckEvidence{
+			{Kind: "markdown_link", Path: "AGENTS.md", Detail: "/tmp/secret.md"},
+		},
+	})
+}
+
+func TestHyardAdoptCheckJSONWarnsAboutIgnoredDependencyAndCacheGuidanceReferences(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, ".gitignore", "node_modules/\n.cache/\n")
+	repo.WriteFile(t, "AGENTS.md", ""+
+		"# Agent guidance\n\n"+
+		"Do not adopt node_modules/tool/README.md or .cache/agent.md.\n")
+	repo.WriteFile(t, "node_modules/tool/README.md", "# Tool docs\n")
+	repo.WriteFile(t, ".cache/agent.md", "# Cached agent output\n")
+	repo.AddAndCommit(t, "seed ignored guidance references", ".gitignore", "AGENTS.md")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "adopt", "--check", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload hyardAdoptCheckPayload
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Contains(t, payload.Diagnostics, hyardAdoptCheckDiagnostic{
+		Code:     "referenced_guidance_ignored",
+		Severity: "warning",
+		Message:  "referenced guidance path is ignored dependency or cache content and will not be adopted",
+		Evidence: []hyardAdoptCheckEvidence{
+			{Kind: "path_mention", Path: "AGENTS.md", Detail: "node_modules/tool/README.md"},
+		},
+	})
+	require.Contains(t, payload.Diagnostics, hyardAdoptCheckDiagnostic{
+		Code:     "referenced_guidance_ignored",
+		Severity: "warning",
+		Message:  "referenced guidance path is ignored dependency or cache content and will not be adopted",
+		Evidence: []hyardAdoptCheckEvidence{
+			{Kind: "path_mention", Path: "AGENTS.md", Detail: ".cache/agent.md"},
+		},
+	})
+}
+
+func TestHyardAdoptCheckJSONKeepsGuidanceDiscoveryOneHopByDefault(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, "AGENTS.md", ""+
+		"# Agent guidance\n\n"+
+		"Start with [first hop](docs/first.md).\n")
+	repo.WriteFile(t, "docs/first.md", ""+
+		"# First hop\n\n"+
+		"Do not recursively adopt [second hop](docs/second.md).\n")
+	repo.WriteFile(t, "docs/second.md", "# Second hop\n")
+	repo.AddAndCommit(t, "seed one-hop guidance")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "adopt", "--check", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload hyardAdoptCheckPayload
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Contains(t, payload.Candidates, hyardAdoptCheckCandidate{
+		Path:                  "docs/first.md",
+		Kind:                  "referenced_guidance_document",
+		Shape:                 "file",
+		RecommendedMemberRole: "rule",
+		RoleConfirmation: hyardAdoptCheckRoleConfirmation{
+			Required:               true,
+			BatchAcceptRecommended: true,
+			EditableRoles:          []string{"rule", "subject", "process", "ignore"},
+		},
+		Evidence: []hyardAdoptCheckEvidence{
+			{Kind: "markdown_link", Path: "AGENTS.md", Detail: "docs/first.md"},
+		},
+	})
+	require.NotContains(t, hyardAdoptCheckCandidatePaths(payload.Candidates), "docs/second.md")
+}
+
+func hyardAdoptCheckCandidatePaths(candidates []hyardAdoptCheckCandidate) []string {
+	paths := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		paths = append(paths, candidate.Path)
+	}
+
+	return paths
 }
 
 func newNamedGitRepoForHyardAdopt(t *testing.T, name string) string {
