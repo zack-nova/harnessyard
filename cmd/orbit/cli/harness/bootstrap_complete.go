@@ -94,7 +94,8 @@ func PlanRuntimeBootstrapCompletion(
 		return BootstrapCompleteResult{}, err
 	}
 	touchedPaths := touchedBootstrapCompletionPaths(pendingPlans, mutation)
-	if err := ensureBootstrapCompletionPathsClean(ctx, repo.Root, statusesToOrbitIDs(statuses), bootstrapCompletionCleanCheckPaths(touchedPaths, input)); err != nil {
+	allowedDirtyPaths := dirtyAllowedBootstrapCompletionPaths(pendingPlans, mutation, input)
+	if err := ensureBootstrapCompletionPathsClean(ctx, repo.Root, statusesToOrbitIDs(statuses), touchedPaths, allowedDirtyPaths); err != nil {
 		return BootstrapCompleteResult{}, err
 	}
 
@@ -174,7 +175,8 @@ func CompleteRuntimeBootstrap(
 		return BootstrapCompleteResult{}, err
 	}
 	touchedPaths := touchedBootstrapCompletionPaths(pendingPlans, mutation)
-	if err := ensureBootstrapCompletionPathsClean(ctx, repo.Root, statusesToOrbitIDs(statuses), bootstrapCompletionCleanCheckPaths(touchedPaths, input)); err != nil {
+	allowedDirtyPaths := dirtyAllowedBootstrapCompletionPaths(pendingPlans, mutation, input)
+	if err := ensureBootstrapCompletionPathsClean(ctx, repo.Root, statusesToOrbitIDs(statuses), touchedPaths, allowedDirtyPaths); err != nil {
 		return BootstrapCompleteResult{}, err
 	}
 
@@ -201,6 +203,10 @@ func CompleteRuntimeBootstrap(
 			strings.Join(statusesToOrbitIDs(statuses), ", "),
 			strings.Join(hiddenPaths, ", "),
 		)
+	}
+
+	if err := resetBootstrapCompletionIndex(ctx, repo.Root, allowedDirtyPaths); err != nil {
+		return BootstrapCompleteResult{}, err
 	}
 
 	deletePaths := bootstrapDeletePathsFromPlans(pendingPlans)
@@ -483,7 +489,13 @@ func applyRuntimeBootstrapMutation(repoRoot string, mutation runtimeBootstrapMut
 	return nil
 }
 
-func ensureBootstrapCompletionPathsClean(ctx context.Context, repoRoot string, orbitIDs []string, touchedPaths []string) error {
+func ensureBootstrapCompletionPathsClean(
+	ctx context.Context,
+	repoRoot string,
+	orbitIDs []string,
+	touchedPaths []string,
+	allowedDirtyPaths []string,
+) error {
 	if len(touchedPaths) == 0 {
 		return nil
 	}
@@ -504,6 +516,9 @@ func ensureBootstrapCompletionPathsClean(ctx context.Context, repoRoot string, o
 		if !ok {
 			continue
 		}
+		if containsString(allowedDirtyPaths, path) {
+			continue
+		}
 		dirtyPaths = append(dirtyPaths, fmt.Sprintf("%s (%s)", path, code))
 	}
 	if len(dirtyPaths) == 0 {
@@ -515,6 +530,17 @@ func ensureBootstrapCompletionPathsClean(ctx context.Context, repoRoot string, o
 		strings.Join(sortedUniqueStrings(orbitIDs), ", "),
 		strings.Join(dirtyPaths, ", "),
 	)
+}
+
+func resetBootstrapCompletionIndex(ctx context.Context, repoRoot string, allowedDirtyPaths []string) error {
+	if len(allowedDirtyPaths) == 0 {
+		return nil
+	}
+	if err := gitpkg.ResetIndexPathspec(ctx, repoRoot, allowedDirtyPaths); err != nil {
+		return fmt.Errorf("reset bootstrap completion index paths: %w", err)
+	}
+
+	return nil
 }
 
 func writeBootstrapCompletedState(store statepkg.FSStore, orbitID string, now time.Time) error {
@@ -575,19 +601,19 @@ func touchedBootstrapCompletionPaths(plans []runtimeBootstrapCompletionPlan, mut
 	return sortedUniqueStrings(touchedPaths)
 }
 
-func bootstrapCompletionCleanCheckPaths(paths []string, input BootstrapCompleteInput) []string {
+func dirtyAllowedBootstrapCompletionPaths(
+	plans []runtimeBootstrapCompletionPlan,
+	mutation runtimeBootstrapMutation,
+	input BootstrapCompleteInput,
+) []string {
 	if !input.AllowDirtyBootstrapArtifact {
-		return paths
-	}
-	filtered := make([]string, 0, len(paths))
-	for _, path := range paths {
-		if path == rootBootstrapPath {
-			continue
-		}
-		filtered = append(filtered, path)
+		return nil
 	}
 
-	return filtered
+	paths := append([]string(nil), bootstrapDeletePathsFromPlans(plans)...)
+	paths = append(paths, touchedBootstrapArtifactPaths(mutation)...)
+
+	return sortedUniqueStrings(paths)
 }
 
 func orbitIDsFromCompletionPlans(plans []runtimeBootstrapCompletionPlan) []string {
