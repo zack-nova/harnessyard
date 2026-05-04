@@ -6,12 +6,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
 	harnesspkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/harness"
+	orbitpkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/orbit"
+	orbittemplate "github.com/zack-nova/harnessyard/cmd/orbit/cli/template"
 	"github.com/zack-nova/harnessyard/cmd/orbit/cli/testutil"
 )
 
@@ -82,6 +85,173 @@ type hyardAdoptCheckDiagnostic struct {
 type hyardAdoptCheckNextAction struct {
 	Command string `json:"command"`
 	Reason  string `json:"reason"`
+}
+
+type hyardAdoptWritePayload struct {
+	SchemaVersion string                      `json:"schema_version"`
+	RepoRoot      string                      `json:"repo_root"`
+	Mode          string                      `json:"mode"`
+	AdoptedOrbit  hyardAdoptCheckAdoptedOrbit `json:"adopted_orbit"`
+	WrittenPaths  []string                    `json:"written_paths"`
+	Validations   []hyardAdoptWriteValidation `json:"validations"`
+	Check         harnesspkg.CheckResult      `json:"check"`
+	Readiness     harnesspkg.ReadinessReport  `json:"readiness"`
+	NextActions   []hyardAdoptCheckNextAction `json:"next_actions"`
+}
+
+type hyardAdoptWriteValidation struct {
+	Target string `json:"target"`
+	OK     bool   `json:"ok"`
+}
+
+func TestHyardAdoptWriteJSONConvertsCleanRootGuidanceSlice(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	originalGuidance := "# Agent guidance\n\nUse the project language from CONTEXT.md.\n"
+	repo.WriteFile(t, "AGENTS.md", originalGuidance)
+	repo.WriteFile(t, "CONTEXT.md", "# Project language\n")
+	repo.AddAndCommit(t, "seed root guidance")
+	initialHead := strings.TrimSpace(repo.Run(t, "rev-parse", "HEAD"))
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "adopt", "--json", "--orbit", "docs")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload hyardAdoptWritePayload
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "1.0", payload.SchemaVersion)
+	require.Equal(t, repo.Root, payload.RepoRoot)
+	require.Equal(t, "write", payload.Mode)
+	require.Equal(t, "docs", payload.AdoptedOrbit.ID)
+	require.ElementsMatch(t, []string{
+		".harness/manifest.yaml",
+		".harness/orbits/docs.yaml",
+		"AGENTS.md",
+	}, payload.WrittenPaths)
+	require.True(t, payload.Check.OK)
+	require.Equal(t, 0, payload.Check.FindingCount)
+	require.Equal(t, harnesspkg.ReadinessStatusReady, payload.Readiness.Runtime.Status)
+	require.ElementsMatch(t, []hyardAdoptWriteValidation{
+		{Target: "runtime_manifest", OK: true},
+		{Target: "adopted_orbit_spec", OK: true},
+		{Target: "projection_plan", OK: true},
+		{Target: "runtime_check", OK: true},
+		{Target: "runtime_readiness", OK: true},
+	}, payload.Validations)
+	require.Contains(t, payload.NextActions, hyardAdoptCheckNextAction{
+		Command: "hyard check",
+		Reason:  "validate the generated Harness Runtime",
+	})
+	require.Contains(t, payload.NextActions, hyardAdoptCheckNextAction{
+		Command: "hyard agent apply --yes",
+		Reason:  "optionally activate agent-facing runtime guidance",
+	})
+	require.Contains(t, payload.NextActions, hyardAdoptCheckNextAction{
+		Command: "hyard publish harness",
+		Reason:  "optionally publish a Harness Template after review",
+	})
+	require.Contains(t, payload.NextActions, hyardAdoptCheckNextAction{
+		Command: "git status && git add AGENTS.md .harness/manifest.yaml .harness/orbits/docs.yaml && git commit",
+		Reason:  "review and commit Adoption changes when ready",
+	})
+
+	manifestFile, err := harnesspkg.LoadManifestFile(repo.Root)
+	require.NoError(t, err)
+	require.Equal(t, harnesspkg.ManifestKindRuntime, manifestFile.Kind)
+	require.Len(t, manifestFile.Members, 1)
+	require.Equal(t, "docs", manifestFile.Members[0].OrbitID)
+	require.Equal(t, harnesspkg.ManifestMemberSourceManual, manifestFile.Members[0].Source)
+
+	spec, err := orbitpkg.LoadHostedOrbitSpec(context.Background(), repo.Root, "docs")
+	require.NoError(t, err)
+	require.Equal(t, originalGuidance, spec.Meta.AgentsTemplate)
+
+	agentsData, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoError(t, err)
+	document, err := orbittemplate.ParseRuntimeAgentsDocument(agentsData)
+	require.NoError(t, err)
+	require.Equal(t, []orbittemplate.AgentsRuntimeSegment{{
+		Kind:    orbittemplate.AgentsRuntimeSegmentBlock,
+		OrbitID: "docs",
+		Content: []byte(originalGuidance),
+	}}, document.Segments)
+
+	_, statErr := os.Stat(filepath.Join(repo.Root, ".harness", "vars.yaml"))
+	require.ErrorIs(t, statErr, os.ErrNotExist)
+	_, statErr = os.Stat(filepath.Join(repo.Root, ".harness", "agents"))
+	require.ErrorIs(t, statErr, os.ErrNotExist)
+	_, statErr = os.Stat(filepath.Join(repo.Root, ".harness", "template.yaml"))
+	require.ErrorIs(t, statErr, os.ErrNotExist)
+	require.Equal(t, initialHead, strings.TrimSpace(repo.Run(t, "rev-parse", "HEAD")))
+}
+
+func TestHyardAdoptWriteRefusesDirtyWorktreeBeforeWriting(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	originalGuidance := "# Agent guidance\n\nStay clean before adoption.\n"
+	repo.WriteFile(t, "AGENTS.md", originalGuidance)
+	repo.WriteFile(t, "README.md", "# Dirty ordinary repository\n")
+	repo.AddAndCommit(t, "seed dirty refusal repo")
+	repo.WriteFile(t, "README.md", "# Dirty ordinary repository\n\nUncommitted note.\n")
+	repo.WriteFile(t, "notes/todo.md", "- adopt later\n")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "adopt", "--json")
+	require.Error(t, err)
+	require.ErrorContains(t, err, "adoption write mode requires a clean worktree")
+	require.ErrorContains(t, err, "README.md")
+	require.ErrorContains(t, err, "notes/todo.md")
+	require.Empty(t, stdout)
+	require.Empty(t, stderr)
+
+	agentsData, readErr := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoError(t, readErr)
+	require.Equal(t, originalGuidance, string(agentsData))
+	_, statErr := os.Stat(filepath.Join(repo.Root, ".harness"))
+	require.ErrorIs(t, statErr, os.ErrNotExist)
+}
+
+func TestHyardAdoptWriteRefusesExistingHarnessRuntimeBeforeWriting(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, "AGENTS.md", "# Runtime guidance\n")
+	_, err := harnesspkg.BootstrapRuntimeControlPlane(repo.Root, time.Date(2026, time.May, 4, 12, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	repo.AddAndCommit(t, "seed existing harness runtime")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "adopt", "--json", "--orbit", "docs")
+	require.Error(t, err)
+	require.ErrorContains(t, err, "existing Harness Runtime cannot be adopted again")
+	require.ErrorContains(t, err, "hyard layout optimize")
+	require.Empty(t, stdout)
+	require.Empty(t, stderr)
+
+	_, statErr := os.Stat(filepath.Join(repo.Root, ".harness", "orbits", "docs.yaml"))
+	require.ErrorIs(t, statErr, os.ErrNotExist)
+}
+
+func TestHyardAdoptWriteRefusesMalformedExistingRootGuidanceMarkersBeforeWriting(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	originalGuidance := "<!-- orbit:begin orbit_id=\"docs\" -->\nUnclosed adopted guidance.\n"
+	repo.WriteFile(t, "AGENTS.md", originalGuidance)
+	repo.AddAndCommit(t, "seed malformed root marker")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "adopt", "--json", "--orbit", "docs")
+	require.Error(t, err)
+	require.ErrorContains(t, err, "root AGENTS.md has malformed orbit markers")
+	require.ErrorContains(t, err, "unterminated orbit block")
+	require.Empty(t, stdout)
+	require.Empty(t, stderr)
+
+	agentsData, readErr := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoError(t, readErr)
+	require.Equal(t, originalGuidance, string(agentsData))
+	_, statErr := os.Stat(filepath.Join(repo.Root, ".harness"))
+	require.ErrorIs(t, statErr, os.ErrNotExist)
 }
 
 func TestHyardAdoptCheckJSONReportsCleanOrdinaryRepositoryWithoutWriting(t *testing.T) {

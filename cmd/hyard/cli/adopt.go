@@ -8,12 +8,15 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	gitpkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/git"
 	harnesspkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/harness"
 	"github.com/zack-nova/harnessyard/cmd/orbit/cli/ids"
+	orbitpkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/orbit"
+	orbittemplate "github.com/zack-nova/harnessyard/cmd/orbit/cli/template"
 )
 
 const adoptionCheckSchemaVersion = "1.0"
@@ -87,6 +90,23 @@ type adoptCheckNextAction struct {
 	Reason  string `json:"reason"`
 }
 
+type adoptWriteOutput struct {
+	SchemaVersion string                     `json:"schema_version"`
+	RepoRoot      string                     `json:"repo_root"`
+	Mode          string                     `json:"mode"`
+	AdoptedOrbit  adoptCheckAdoptedOrbit     `json:"adopted_orbit"`
+	WrittenPaths  []string                   `json:"written_paths"`
+	Validations   []adoptWriteValidation     `json:"validations"`
+	Check         harnesspkg.CheckResult     `json:"check"`
+	Readiness     harnesspkg.ReadinessReport `json:"readiness"`
+	NextActions   []adoptCheckNextAction     `json:"next_actions"`
+}
+
+type adoptWriteValidation struct {
+	Target string `json:"target"`
+	OK     bool   `json:"ok"`
+}
+
 func newAdoptCommand() *cobra.Command {
 	var check bool
 	var orbitID string
@@ -95,20 +115,29 @@ func newAdoptCommand() *cobra.Command {
 		Use:   "adopt",
 		Short: "Inspect or convert an Ordinary Repository into a Harness Runtime",
 		Long: "Inspect or convert an Ordinary Repository into a Harness Runtime.\n" +
-			"The first Adoption slice supports `--check --json` to preview adoptability\n" +
-			"without mutating the repository.",
+			"The first Adoption write slice converts root AGENTS.md into hosted Adopted Orbit truth\n" +
+			"and rewrites root guidance as an orbit-owned marker block.",
 		Example: "" +
 			"  hyard adopt --check --json\n" +
+			"  hyard adopt --json\n" +
 			"  hyard adopt --check --json --orbit workspace\n",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if !check {
-				return fmt.Errorf("adoption write mode is not available yet; use --check to preview without mutating")
-			}
-
 			jsonOutput, err := wantHyardJSON(cmd)
 			if err != nil {
 				return err
+			}
+
+			if !check {
+				output, err := buildAdoptWriteOutput(cmd, orbitID)
+				if err != nil {
+					return err
+				}
+				if jsonOutput {
+					return emitHyardJSON(cmd, output)
+				}
+
+				return printAdoptWriteText(cmd, output)
 			}
 
 			output, err := buildAdoptCheckOutput(cmd, orbitID)
@@ -127,6 +156,116 @@ func newAdoptCommand() *cobra.Command {
 	addHyardJSONFlag(cmd)
 
 	return cmd
+}
+
+func buildAdoptWriteOutput(cmd *cobra.Command, explicitOrbitID string) (adoptWriteOutput, error) {
+	preflight, err := buildAdoptCheckOutput(cmd, explicitOrbitID)
+	if err != nil {
+		return adoptWriteOutput{}, err
+	}
+	if preflight.ExistingHarnessRuntime {
+		return adoptWriteOutput{}, fmt.Errorf("existing Harness Runtime cannot be adopted again; use `hyard layout optimize`")
+	}
+	if preflight.DirtyWorktree.Dirty {
+		return adoptWriteOutput{}, fmt.Errorf(
+			"adoption write mode requires a clean worktree; dirty paths: %s",
+			strings.Join(preflight.DirtyWorktree.Paths, ", "),
+		)
+	}
+
+	agentsPath := filepath.Join(preflight.RepoRoot, "AGENTS.md")
+	//nolint:gosec // The root guidance path is fixed under the discovered repository root.
+	originalAgents, err := os.ReadFile(agentsPath)
+	if err != nil {
+		return adoptWriteOutput{}, fmt.Errorf("read root agent guidance: %w", err)
+	}
+	if err := orbittemplate.ValidateRuntimeAgentsFile(preflight.RepoRoot); err != nil {
+		return adoptWriteOutput{}, fmt.Errorf("root AGENTS.md has malformed orbit markers: %w", err)
+	}
+
+	now := time.Now().UTC()
+	manifestFile, err := harnesspkg.DefaultRuntimeManifestFile(preflight.RepoRoot, now)
+	if err != nil {
+		return adoptWriteOutput{}, fmt.Errorf("build adoption runtime manifest: %w", err)
+	}
+	manifestFile.Members = append(manifestFile.Members, harnesspkg.ManifestMember{
+		Package: ids.PackageIdentity{
+			Type: ids.PackageTypeOrbit,
+			Name: preflight.AdoptedOrbit.ID,
+		},
+		OrbitID: preflight.AdoptedOrbit.ID,
+		Source:  harnesspkg.ManifestMemberSourceManual,
+		AddedAt: now,
+	})
+	if _, err := harnesspkg.WriteManifestFile(preflight.RepoRoot, manifestFile); err != nil {
+		return adoptWriteOutput{}, fmt.Errorf("write adoption runtime manifest: %w", err)
+	}
+
+	spec, err := orbitpkg.DefaultHostedMemberSchemaSpec(preflight.AdoptedOrbit.ID)
+	if err != nil {
+		return adoptWriteOutput{}, fmt.Errorf("build adopted orbit spec: %w", err)
+	}
+	spec.Meta.AgentsTemplate = string(originalAgents)
+	if _, err := orbitpkg.WriteHostedOrbitSpec(preflight.RepoRoot, spec); err != nil {
+		return adoptWriteOutput{}, fmt.Errorf("write adopted orbit spec: %w", err)
+	}
+
+	wrappedAgents, err := orbittemplate.WrapRuntimeAgentsBlock(preflight.AdoptedOrbit.ID, originalAgents)
+	if err != nil {
+		return adoptWriteOutput{}, fmt.Errorf("wrap adopted root guidance: %w", err)
+	}
+	if err := os.WriteFile(agentsPath, wrappedAgents, 0o644); err != nil {
+		return adoptWriteOutput{}, fmt.Errorf("write root agent guidance marker block: %w", err)
+	}
+
+	if _, err := harnesspkg.LoadManifestFile(preflight.RepoRoot); err != nil {
+		return adoptWriteOutput{}, fmt.Errorf("validate generated runtime manifest: %w", err)
+	}
+	validatedSpec, err := orbitpkg.LoadHostedOrbitSpec(cmd.Context(), preflight.RepoRoot, preflight.AdoptedOrbit.ID)
+	if err != nil {
+		return adoptWriteOutput{}, fmt.Errorf("validate generated adopted orbit spec: %w", err)
+	}
+	repoConfig, err := orbitpkg.LoadHostedRepositoryConfig(cmd.Context(), preflight.RepoRoot)
+	if err != nil {
+		return adoptWriteOutput{}, fmt.Errorf("load generated hosted repository config: %w", err)
+	}
+	trackedFiles, err := gitpkg.TrackedFiles(cmd.Context(), preflight.RepoRoot)
+	if err != nil {
+		return adoptWriteOutput{}, fmt.Errorf("load tracked files for generated projection plan: %w", err)
+	}
+	if _, err := orbitpkg.ResolveProjectionPlan(repoConfig, validatedSpec, trackedFiles); err != nil {
+		return adoptWriteOutput{}, fmt.Errorf("validate generated projection plan: %w", err)
+	}
+	checkResult, err := harnesspkg.CheckRuntime(cmd.Context(), preflight.RepoRoot)
+	if err != nil {
+		return adoptWriteOutput{}, fmt.Errorf("validate generated runtime check summary: %w", err)
+	}
+	readiness, err := harnesspkg.EvaluateRuntimeReadiness(cmd.Context(), preflight.RepoRoot)
+	if err != nil {
+		return adoptWriteOutput{}, fmt.Errorf("validate generated runtime readiness: %w", err)
+	}
+
+	orbitSpecPath, err := harnesspkg.OrbitSpecRepoPath(preflight.AdoptedOrbit.ID)
+	if err != nil {
+		return adoptWriteOutput{}, fmt.Errorf("build adopted orbit spec path: %w", err)
+	}
+	writtenPaths := []string{
+		harnesspkg.ManifestRepoPath(),
+		orbitSpecPath,
+		"AGENTS.md",
+	}
+
+	return adoptWriteOutput{
+		SchemaVersion: adoptionCheckSchemaVersion,
+		RepoRoot:      preflight.RepoRoot,
+		Mode:          "write",
+		AdoptedOrbit:  preflight.AdoptedOrbit,
+		WrittenPaths:  writtenPaths,
+		Validations:   adoptWriteValidations(checkResult, readiness),
+		Check:         checkResult,
+		Readiness:     readiness,
+		NextActions:   adoptWriteNextActions(writtenPaths),
+	}, nil
 }
 
 func buildAdoptCheckOutput(cmd *cobra.Command, explicitOrbitID string) (adoptCheckOutput, error) {
@@ -582,6 +721,53 @@ func adoptCheckWorktreeEvidence(paths []string) []adoptCheckEvidence {
 	return evidence
 }
 
+func adoptWriteValidations(checkResult harnesspkg.CheckResult, readiness harnesspkg.ReadinessReport) []adoptWriteValidation {
+	return []adoptWriteValidation{
+		{Target: "runtime_manifest", OK: true},
+		{Target: "adopted_orbit_spec", OK: true},
+		{Target: "projection_plan", OK: true},
+		{Target: "runtime_check", OK: checkResult.OK},
+		{Target: "runtime_readiness", OK: readiness.Runtime.Status != harnesspkg.ReadinessStatusBroken},
+	}
+}
+
+func adoptWriteNextActions(writtenPaths []string) []adoptCheckNextAction {
+	return []adoptCheckNextAction{
+		{
+			Command: "hyard check",
+			Reason:  "validate the generated Harness Runtime",
+		},
+		{
+			Command: "hyard agent apply --yes",
+			Reason:  "optionally activate agent-facing runtime guidance",
+		},
+		{
+			Command: "hyard publish harness",
+			Reason:  "optionally publish a Harness Template after review",
+		},
+		{
+			Command: "git status && git add " + strings.Join(adoptWriteReviewPaths(writtenPaths), " ") + " && git commit",
+			Reason:  "review and commit Adoption changes when ready",
+		},
+	}
+}
+
+func adoptWriteReviewPaths(writtenPaths []string) []string {
+	reviewPaths := make([]string, 0, len(writtenPaths))
+	for _, path := range writtenPaths {
+		if path == "AGENTS.md" {
+			reviewPaths = append(reviewPaths, path)
+		}
+	}
+	for _, path := range writtenPaths {
+		if path != "AGENTS.md" {
+			reviewPaths = append(reviewPaths, path)
+		}
+	}
+
+	return reviewPaths
+}
+
 func adoptCheckOrbitID(repoRoot string, explicitOrbitID string) (string, string, error) {
 	if explicitOrbitID != "" {
 		if err := ids.ValidateOrbitID(explicitOrbitID); err != nil {
@@ -623,5 +809,34 @@ func printAdoptCheckText(cmd *cobra.Command, output adoptCheckOutput) error {
 	if err != nil {
 		return fmt.Errorf("write command output: %w", err)
 	}
+	return nil
+}
+
+func printAdoptWriteText(cmd *cobra.Command, output adoptWriteOutput) error {
+	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "adopted: true\nadopted_orbit: %s\n", output.AdoptedOrbit.ID); err != nil {
+		return fmt.Errorf("write command output: %w", err)
+	}
+	for _, path := range output.WrittenPaths {
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "written: %s\n", path); err != nil {
+			return fmt.Errorf("write command output: %w", err)
+		}
+	}
+	for _, validation := range output.Validations {
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "validation: %s ok=%t\n", validation.Target, validation.OK); err != nil {
+			return fmt.Errorf("write command output: %w", err)
+		}
+	}
+	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "check_ok: %t\n", output.Check.OK); err != nil {
+		return fmt.Errorf("write command output: %w", err)
+	}
+	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "readiness_status: %s\n", output.Readiness.Status); err != nil {
+		return fmt.Errorf("write command output: %w", err)
+	}
+	for _, action := range output.NextActions {
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "next_action: %s (%s)\n", action.Command, action.Reason); err != nil {
+			return fmt.Errorf("write command output: %w", err)
+		}
+	}
+
 	return nil
 }
