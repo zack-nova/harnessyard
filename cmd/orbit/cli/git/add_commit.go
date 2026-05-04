@@ -45,6 +45,62 @@ func StageAllPathspec(ctx context.Context, repoRoot string, paths []string) (err
 	return nil
 }
 
+// ResetIndexPathspec restores the index entries for the requested repo-relative paths.
+func ResetIndexPathspec(ctx context.Context, repoRoot string, paths []string) (err error) {
+	if len(paths) == 0 {
+		return nil
+	}
+
+	pathspecFile, err := CreatePathspecFile(paths)
+	if err != nil {
+		return fmt.Errorf("create reset pathspec file: %w", err)
+	}
+	defer func() {
+		cleanupErr := pathspecFile.Cleanup()
+		if cleanupErr == nil {
+			return
+		}
+
+		wrappedCleanupErr := fmt.Errorf("cleanup reset pathspec file: %w", cleanupErr)
+		if err == nil {
+			err = wrappedCleanupErr
+			return
+		}
+
+		err = errors.Join(err, wrappedCleanupErr)
+	}()
+
+	headExists, err := RevisionExists(ctx, repoRoot, "HEAD")
+	if err != nil {
+		return fmt.Errorf("check HEAD before index reset: %w", err)
+	}
+
+	args := []string{
+		"reset",
+		"-q",
+		"HEAD",
+		"--pathspec-from-file=" + pathspecFile.Path,
+		"--pathspec-file-nul",
+	}
+	if !headExists {
+		args = []string{
+			"rm",
+			"-q",
+			"--cached",
+			"--ignore-unmatch",
+			"-r",
+			"--pathspec-from-file=" + pathspecFile.Path,
+			"--pathspec-file-nul",
+		}
+	}
+
+	if _, err := runGit(ctx, repoRoot, args...); err != nil {
+		return fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+	}
+
+	return nil
+}
+
 // CommitPathspec creates a scoped Git commit from the requested repo-relative paths.
 func CommitPathspec(ctx context.Context, repoRoot string, paths []string, message string) (err error) {
 	pathspecFile, err := CreatePathspecFile(paths)

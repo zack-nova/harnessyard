@@ -140,6 +140,10 @@ hyard bootstrap complete --check --json
 hyard bootstrap complete --yes
 ```
 
+Bootstrap closeout treats bootstrap-lane runtime files as closeout artifacts:
+`--check` lists tracked, modified, staged, and untracked matches, and `--yes`
+removes the listed paths.
+
 If completion was accidental or the bootstrap lane needs to reopen:
 
 ```bash

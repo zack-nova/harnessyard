@@ -4302,6 +4302,51 @@ func TestHyardBootstrapCompleteYesAcceptsUncommittedPrepareGuidance(t *testing.T
 	require.NoFileExists(t, filepath.Join(repo.Root, "AGENTS.md"))
 }
 
+func TestHyardBootstrapCompleteYesAcceptsDirtyBootstrapLaneArtifacts(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardBootstrapCompletionRepo(t)
+	repo.WriteFile(t, "bootstrap/docs/setup.md", "Locally edited docs bootstrap\n")
+	repo.WriteFile(t, "bootstrap/docs/generated.md", "Generated docs bootstrap artifact\n")
+	repo.Run(t, "add", "--", "bootstrap/docs/setup.md", "bootstrap/docs/generated.md")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "bootstrap", "complete", "--check", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var checkPayload struct {
+		Completed    bool     `json:"completed"`
+		RemovedPaths []string `json:"removed_paths"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &checkPayload))
+	require.False(t, checkPayload.Completed)
+	require.Contains(t, checkPayload.RemovedPaths, "bootstrap/docs/setup.md")
+	require.Contains(t, checkPayload.RemovedPaths, "bootstrap/docs/generated.md")
+	require.FileExists(t, filepath.Join(repo.Root, "bootstrap", "docs", "setup.md"))
+	require.FileExists(t, filepath.Join(repo.Root, "bootstrap", "docs", "generated.md"))
+
+	stdout, stderr, err = executeHyardCLI(t, repo.Root, "bootstrap", "complete", "--yes", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var completePayload struct {
+		Completed    bool     `json:"completed"`
+		RemovedPaths []string `json:"removed_paths"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &completePayload))
+	require.True(t, completePayload.Completed)
+	require.Contains(t, completePayload.RemovedPaths, "bootstrap/docs/setup.md")
+	require.Contains(t, completePayload.RemovedPaths, "bootstrap/docs/generated.md")
+	require.NoFileExists(t, filepath.Join(repo.Root, "bootstrap", "docs", "setup.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "bootstrap", "docs", "generated.md"))
+
+	status := repo.Run(t, "status", "--short")
+	require.Contains(t, status, " D bootstrap/docs/setup.md")
+	require.NotContains(t, status, "MD bootstrap/docs/setup.md")
+	require.NotContains(t, status, "AD bootstrap/docs/generated.md")
+	require.NotContains(t, status, "bootstrap/docs/generated.md")
+}
+
 func TestHyardBootstrapCompleteYesRejectsMalformedAgentsBlockBeforeRuntimeMutation(t *testing.T) {
 	t.Parallel()
 
