@@ -438,7 +438,7 @@ func TestBuildTemplateInstallPreviewConflictsWhenStaleBundleAgentsBlockDrifted(t
 	_, err = ApplyTemplateInstallPreview(ctx, runtimeRepo.Root, initialPreview, false)
 	require.NoError(t, err)
 
-	driftedAgents, err := orbittemplate.WrapRuntimeAgentsBlock("workspace", []byte("Locally drifted bundle guide\n"))
+	driftedAgents, err := orbittemplate.WrapRuntimeAgentsOwnerBlock(orbittemplate.OwnerKindHarness, "workspace", []byte("Locally drifted bundle guide\n"))
 	require.NoError(t, err)
 	runtimeRepo.WriteFile(t, "AGENTS.md", string(driftedAgents))
 	sourceRepo.Run(t, "rm", "-f", "AGENTS.md")

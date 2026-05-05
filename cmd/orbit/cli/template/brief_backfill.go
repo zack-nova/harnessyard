@@ -186,7 +186,7 @@ func extractRuntimeAgentsBlock(document AgentsRuntimeDocument, orbitID string) (
 		if segment.Kind != AgentsRuntimeSegmentBlock {
 			continue
 		}
-		if segment.OrbitID != orbitID {
+		if segment.OwnerKind != OwnerKindOrbit || segment.WorkflowID != orbitID {
 			continue
 		}
 

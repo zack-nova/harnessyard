@@ -1,14 +1,11 @@
 package orbittemplate
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 )
-
-var runtimeAgentsMarkerPrefix = []byte("<!-- orbit:")
 
 // ValidateRuntimeAgentsFile validates the runtime AGENTS.md marker contract when Orbit markers are present.
 func ValidateRuntimeAgentsFile(repoRoot string) error {
@@ -21,10 +18,6 @@ func ValidateRuntimeAgentsFile(repoRoot string) error {
 		}
 		return fmt.Errorf("read runtime AGENTS.md: %w", err)
 	}
-	if !bytes.Contains(data, runtimeAgentsMarkerPrefix) {
-		return nil
-	}
-
 	if _, err := ParseRuntimeAgentsDocument(data); err != nil {
 		return fmt.Errorf("parse runtime AGENTS.md: %w", err)
 	}

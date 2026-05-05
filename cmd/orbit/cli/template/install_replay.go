@@ -419,7 +419,7 @@ func runtimeAgentsBlockContent(data []byte, orbitID string) ([]byte, bool, error
 	}
 
 	for _, segment := range document.Segments {
-		if segment.Kind == AgentsRuntimeSegmentBlock && segment.OrbitID == orbitID {
+		if segment.Kind == AgentsRuntimeSegmentBlock && segment.OwnerKind == OwnerKindOrbit && segment.WorkflowID == orbitID {
 			return append([]byte(nil), segment.Content...), true, nil
 		}
 	}

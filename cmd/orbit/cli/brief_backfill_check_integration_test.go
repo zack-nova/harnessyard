@@ -44,10 +44,10 @@ func TestOrbitBriefBackfillCheckReportsMissingTruthJSONWithoutWritingTruth(t *te
 
 	repo := seedBriefMaterializeRevisionRepo(t, "runtime", "",
 		""+
-			"<!-- orbit:begin orbit_id=\"docs\" -->\n"+
+			"<!-- orbit:begin workflow=\"docs\" -->\n"+
 			"You are the Acme docs orbit.\n"+
 			"Keep release notes current.\n"+
-			"<!-- orbit:end orbit_id=\"docs\" -->\n",
+			"<!-- orbit:end workflow=\"docs\" -->\n",
 	)
 
 	spec, err := orbitpkg.LoadHostedOrbitSpec(context.Background(), repo.Root, "docs")
@@ -97,7 +97,7 @@ func TestOrbitBriefBackfillCheckReportsInvalidContainer(t *testing.T) {
 		"You are the $project_name docs orbit.\n",
 		""+
 			"Workspace overview.\n"+
-			"<!-- orbit:begin orbit_id=\"docs\" -->\n"+
+			"<!-- orbit:begin workflow=\"docs\" -->\n"+
 			"broken docs block\n",
 	)
 

@@ -137,7 +137,7 @@ func verifyBundleAgentsBlockOwnership(repoRoot string, record BundleRecord) erro
 	}
 
 	for _, segment := range document.Segments {
-		if segment.OrbitID != record.HarnessID {
+		if segment.OwnerKind != orbittemplate.OwnerKindHarness || segment.WorkflowID != record.HarnessID {
 			continue
 		}
 		if strings.TrimSpace(record.RootAgentsDigest) == "" {

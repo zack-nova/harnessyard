@@ -443,7 +443,9 @@ func scanRuntimeAgentsBlock(repoRoot string, orbitID string) ([]string, error) {
 	}
 
 	for _, segment := range document.Segments {
-		if segment.Kind != orbittemplate.AgentsRuntimeSegmentBlock || segment.OrbitID != orbitID {
+		if segment.Kind != orbittemplate.AgentsRuntimeSegmentBlock ||
+			segment.OwnerKind != orbittemplate.OwnerKindOrbit ||
+			segment.WorkflowID != orbitID {
 			continue
 		}
 		return scanPlaceholderVariables(runtimeAgentsRepoPath, segment.Content), nil

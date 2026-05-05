@@ -3,21 +3,35 @@ package orbittemplate
 import "fmt"
 
 func extractRuntimeGuidanceBlock(document AgentsRuntimeDocument, orbitID string, containerLabel string) ([]byte, error) {
+	return extractRuntimeGuidanceOwnerBlock(document, OwnerKindOrbit, orbitID, containerLabel)
+}
+
+func extractRuntimeGuidanceOwnerBlock(document AgentsRuntimeDocument, ownerKind OwnerKind, workflowID string, containerLabel string) ([]byte, error) {
 	for _, segment := range document.Segments {
 		if segment.Kind != AgentsRuntimeSegmentBlock {
 			continue
 		}
-		if segment.OrbitID != orbitID {
+		if segment.OwnerKind != ownerKind || segment.WorkflowID != workflowID {
 			continue
 		}
 
 		return append([]byte(nil), segment.Content...), nil
 	}
 
-	return nil, fmt.Errorf("%s does not contain orbit block %q", containerLabel, orbitID)
+	return nil, fmt.Errorf("%s does not contain %s block %q", containerLabel, blockOwnerLabel(ownerKind), workflowID)
 }
 
 func replaceOrAppendRuntimeGuidanceBlock(existing []byte, orbitID string, wrappedBlock []byte, containerLabel string) ([]byte, error) {
+	return replaceOrAppendRuntimeGuidanceOwnerBlock(existing, OwnerKindOrbit, orbitID, wrappedBlock, containerLabel)
+}
+
+func replaceOrAppendRuntimeGuidanceOwnerBlock(
+	existing []byte,
+	ownerKind OwnerKind,
+	workflowID string,
+	wrappedBlock []byte,
+	containerLabel string,
+) ([]byte, error) {
 	if _, err := ParseRuntimeAgentsDocument(existing); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", containerLabel, err)
 	}
@@ -28,13 +42,13 @@ func replaceOrAppendRuntimeGuidanceBlock(existing []byte, orbitID string, wrappe
 	replaced := false
 
 	for _, line := range lines {
-		markerKind, markerOrbitID, isMarker, err := parseRuntimeAgentsMarkerLine(line)
+		marker, isMarker, err := parseRuntimeAgentsMarkerLine(line)
 		if err != nil {
 			return nil, err
 		}
 
 		if replacing {
-			if isMarker && markerKind == "end" && markerOrbitID == orbitID {
+			if isMarker && marker.Kind == "end" && marker.OwnerKind == ownerKind && marker.WorkflowID == workflowID {
 				output = append(output, wrappedBlock...)
 				replacing = false
 				replaced = true
@@ -42,7 +56,7 @@ func replaceOrAppendRuntimeGuidanceBlock(existing []byte, orbitID string, wrappe
 			continue
 		}
 
-		if isMarker && markerKind == "begin" && markerOrbitID == orbitID {
+		if isMarker && marker.Kind == "begin" && marker.OwnerKind == ownerKind && marker.WorkflowID == workflowID {
 			replacing = true
 			continue
 		}
@@ -51,7 +65,7 @@ func replaceOrAppendRuntimeGuidanceBlock(existing []byte, orbitID string, wrappe
 	}
 
 	if replacing {
-		return nil, fmt.Errorf("unterminated orbit block for %q", orbitID)
+		return nil, fmt.Errorf("unterminated %s block for %q", blockOwnerLabel(ownerKind), workflowID)
 	}
 	if replaced {
 		return output, nil
@@ -73,6 +87,11 @@ func replaceOrAppendRuntimeGuidanceBlock(existing []byte, orbitID string, wrappe
 
 // RemoveRuntimeGuidanceBlockData removes one runtime guidance block by identity from raw document data.
 func RemoveRuntimeGuidanceBlockData(existing []byte, orbitID string, containerLabel string) ([]byte, bool, error) {
+	return RemoveRuntimeGuidanceOwnerBlockData(existing, OwnerKindOrbit, orbitID, containerLabel)
+}
+
+// RemoveRuntimeGuidanceOwnerBlockData removes one owner-scoped runtime guidance block from raw document data.
+func RemoveRuntimeGuidanceOwnerBlockData(existing []byte, ownerKind OwnerKind, workflowID string, containerLabel string) ([]byte, bool, error) {
 	if _, err := ParseRuntimeAgentsDocument(existing); err != nil {
 		return nil, false, fmt.Errorf("parse %s: %w", containerLabel, err)
 	}
@@ -83,20 +102,20 @@ func RemoveRuntimeGuidanceBlockData(existing []byte, orbitID string, containerLa
 	removed := false
 
 	for _, line := range lines {
-		markerKind, markerOrbitID, isMarker, err := parseRuntimeAgentsMarkerLine(line)
+		marker, isMarker, err := parseRuntimeAgentsMarkerLine(line)
 		if err != nil {
 			return nil, false, err
 		}
 
 		if removing {
-			if isMarker && markerKind == "end" && markerOrbitID == orbitID {
+			if isMarker && marker.Kind == "end" && marker.OwnerKind == ownerKind && marker.WorkflowID == workflowID {
 				removing = false
 				removed = true
 			}
 			continue
 		}
 
-		if isMarker && markerKind == "begin" && markerOrbitID == orbitID {
+		if isMarker && marker.Kind == "begin" && marker.OwnerKind == ownerKind && marker.WorkflowID == workflowID {
 			removing = true
 			continue
 		}
@@ -105,7 +124,7 @@ func RemoveRuntimeGuidanceBlockData(existing []byte, orbitID string, containerLa
 	}
 
 	if removing {
-		return nil, false, fmt.Errorf("unterminated orbit block for %q", orbitID)
+		return nil, false, fmt.Errorf("unterminated %s block for %q", blockOwnerLabel(ownerKind), workflowID)
 	}
 	if !removed {
 		return append([]byte(nil), existing...), false, nil

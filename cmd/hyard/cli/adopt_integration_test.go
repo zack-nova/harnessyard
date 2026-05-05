@@ -488,12 +488,16 @@ func TestHyardAdoptWriteJSONConvertsCleanRootGuidanceSlice(t *testing.T) {
 
 	agentsData, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
 	require.NoError(t, err)
+	require.Contains(t, string(agentsData), "<!-- orbit:begin workflow=\"docs\" -->\n")
+	require.Contains(t, string(agentsData), "<!-- orbit:end workflow=\"docs\" -->\n")
 	document, err := orbittemplate.ParseRuntimeAgentsDocument(agentsData)
 	require.NoError(t, err)
 	require.Equal(t, []orbittemplate.AgentsRuntimeSegment{{
-		Kind:    orbittemplate.AgentsRuntimeSegmentBlock,
-		OrbitID: "docs",
-		Content: []byte(originalGuidance),
+		Kind:       orbittemplate.AgentsRuntimeSegmentBlock,
+		OwnerKind:  orbittemplate.OwnerKindOrbit,
+		WorkflowID: "docs",
+		OrbitID:    "docs",
+		Content:    []byte(originalGuidance),
 	}}, document.Segments)
 
 	_, statErr := os.Stat(filepath.Join(repo.Root, ".harness", "vars.yaml"))
@@ -937,7 +941,7 @@ func TestHyardAdoptWriteRefusesMalformedExistingRootGuidanceMarkersBeforeWriting
 	stdout, stderr, err := executeHyardCLI(t, repo.Root, "adopt", "--json", "--orbit", "docs")
 	require.Error(t, err)
 	require.ErrorContains(t, err, "root AGENTS.md has malformed orbit markers")
-	require.ErrorContains(t, err, "unterminated orbit block")
+	require.ErrorContains(t, err, "malformed workflow marker")
 	require.Empty(t, stdout)
 	require.Empty(t, stderr)
 

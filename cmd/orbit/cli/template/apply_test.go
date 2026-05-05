@@ -730,9 +730,9 @@ func TestBuildTemplateApplyPreviewWarnsWhenRuntimeAgentsAlreadyHasCurrentOrbitBl
 		"    value: Local Orbit\n")
 	repo.WriteFile(t, "AGENTS.md", ""+
 		"shared intro\n"+
-		"<!-- orbit:begin orbit_id=\"docs\" -->\n"+
+		"<!-- orbit:begin workflow=\"docs\" -->\n"+
 		"old docs block\n"+
-		"<!-- orbit:end orbit_id=\"docs\" -->\n")
+		"<!-- orbit:end workflow=\"docs\" -->\n")
 	repo.AddAndCommit(t, "seed clean runtime agents")
 
 	preview, err := BuildTemplateApplyPreview(context.Background(), TemplateApplyPreviewInput{
@@ -757,7 +757,7 @@ func TestBuildTemplateApplyPreviewFailsWhenRuntimeAgentsIsMalformed(t *testing.T
 		"  project_name:\n"+
 		"    value: Local Orbit\n")
 	repo.WriteFile(t, "AGENTS.md", ""+
-		"<!-- orbit:begin orbit_id=\"docs\" -->\n"+
+		"<!-- orbit:begin workflow=\"docs\" -->\n"+
 		"broken docs block\n")
 
 	_, err := BuildTemplateApplyPreview(context.Background(), TemplateApplyPreviewInput{
@@ -1012,12 +1012,12 @@ func TestApplyLocalTemplateMergesSharedAgentsBlockInPlace(t *testing.T) {
 		"    value: Applied Orbit\n")
 	repo.WriteFile(t, "AGENTS.md", ""+
 		"shared intro\n"+
-		"<!-- orbit:begin orbit_id=\"api\" -->\n"+
+		"<!-- orbit:begin workflow=\"api\" -->\n"+
 		"api only\n"+
-		"<!-- orbit:end orbit_id=\"api\" -->\n"+
-		"<!-- orbit:begin orbit_id=\"docs\" -->\n"+
+		"<!-- orbit:end workflow=\"api\" -->\n"+
+		"<!-- orbit:begin workflow=\"docs\" -->\n"+
 		"old docs block\n"+
-		"<!-- orbit:end orbit_id=\"docs\" -->\n"+
+		"<!-- orbit:end workflow=\"docs\" -->\n"+
 		"tail guidance\n")
 	repo.AddAndCommit(t, "seed runtime agents for merge")
 
@@ -1038,12 +1038,12 @@ func TestApplyLocalTemplateMergesSharedAgentsBlockInPlace(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, ""+
 		"shared intro\n"+
-		"<!-- orbit:begin orbit_id=\"api\" -->\n"+
+		"<!-- orbit:begin workflow=\"api\" -->\n"+
 		"api only\n"+
-		"<!-- orbit:end orbit_id=\"api\" -->\n"+
-		"<!-- orbit:begin orbit_id=\"docs\" -->\n"+
+		"<!-- orbit:end workflow=\"api\" -->\n"+
+		"<!-- orbit:begin workflow=\"docs\" -->\n"+
 		"Docs orbit for Applied Orbit\n"+
-		"<!-- orbit:end orbit_id=\"docs\" -->\n"+
+		"<!-- orbit:end workflow=\"docs\" -->\n"+
 		"tail guidance\n", string(agentsData))
 }
 
