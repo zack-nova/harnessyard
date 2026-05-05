@@ -88,15 +88,16 @@ type hyardAdoptCheckNextAction struct {
 }
 
 type hyardAdoptWritePayload struct {
-	SchemaVersion string                      `json:"schema_version"`
-	RepoRoot      string                      `json:"repo_root"`
-	Mode          string                      `json:"mode"`
-	AdoptedOrbit  hyardAdoptCheckAdoptedOrbit `json:"adopted_orbit"`
-	WrittenPaths  []string                    `json:"written_paths"`
-	Validations   []hyardAdoptWriteValidation `json:"validations"`
-	Check         harnesspkg.CheckResult      `json:"check"`
-	Readiness     harnesspkg.ReadinessReport  `json:"readiness"`
-	NextActions   []hyardAdoptCheckNextAction `json:"next_actions"`
+	SchemaVersion string                              `json:"schema_version"`
+	RepoRoot      string                              `json:"repo_root"`
+	Mode          string                              `json:"mode"`
+	AdoptedOrbit  hyardAdoptCheckAdoptedOrbit         `json:"adopted_orbit"`
+	WrittenPaths  []string                            `json:"written_paths"`
+	AgentConfig   *harnesspkg.AgentConfigImportResult `json:"agent_config_import,omitempty"`
+	Validations   []hyardAdoptWriteValidation         `json:"validations"`
+	Check         harnesspkg.CheckResult              `json:"check"`
+	Readiness     harnesspkg.ReadinessReport          `json:"readiness"`
+	NextActions   []hyardAdoptCheckNextAction         `json:"next_actions"`
 }
 
 type hyardAdoptWriteValidation struct {
@@ -203,6 +204,7 @@ func TestHyardAdoptWriteJSONAuthorsCodexLocalSkillsAsCapabilityTruth(t *testing.
 	var payload hyardAdoptWritePayload
 	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
 	require.True(t, payload.Check.OK)
+	require.Contains(t, payload.WrittenPaths, ".harness/agents/manifest.yaml")
 
 	spec, err := orbitpkg.LoadHostedOrbitSpec(context.Background(), repo.Root, "docs")
 	require.NoError(t, err)
@@ -220,6 +222,218 @@ func TestHyardAdoptWriteJSONAuthorsCodexLocalSkillsAsCapabilityTruth(t *testing.
 		RootPath:    ".codex/skills/frontend-test-lab",
 		SkillMDPath: ".codex/skills/frontend-test-lab/SKILL.md",
 	}}, resolved)
+
+	frameworksData, err := os.ReadFile(filepath.Join(repo.Root, ".harness", "agents", "manifest.yaml"))
+	require.NoError(t, err)
+	require.Contains(t, string(frameworksData), "recommended_framework: codex\n")
+}
+
+func TestHyardAdoptWriteJSONImportsSafeCodexProjectConfig(t *testing.T) {
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, "AGENTS.md", "# Agent guidance\n\nUse Codex project settings.\n")
+	repo.WriteFile(t, ".codex/config.toml", ""+
+		"model = \"gpt-5.4\"\n"+
+		"sandbox_mode = \"workspace-write\"\n")
+	repo.AddAndCommit(t, "seed codex project config ordinary repository")
+
+	lockHyardProcessEnv(t)
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	require.NoError(t, os.MkdirAll(filepath.Join(homeDir, ".codex"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(homeDir, ".codex", "config.toml"), []byte("approval_policy = \"never\"\n"), 0o600))
+
+	stdout, stderr, err := executeHyardCLIUnlocked(t, repo.Root, "adopt", "--json", "--orbit", "docs")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload hyardAdoptWritePayload
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.NotNil(t, payload.AgentConfig)
+	require.Equal(t, "codex", payload.AgentConfig.Framework)
+	require.False(t, payload.AgentConfig.DryRun)
+	require.Contains(t, payload.AgentConfig.Imported, harnesspkg.AgentConfigImportEntry{
+		Key:    "model",
+		Source: "project",
+		Value:  "gpt-5.4",
+	})
+	require.Contains(t, payload.AgentConfig.Imported, harnesspkg.AgentConfigImportEntry{
+		Key:    "sandbox_mode",
+		Source: "project",
+		Value:  "workspace-write",
+	})
+	require.NotContains(t, payload.AgentConfig.Imported, harnesspkg.AgentConfigImportEntry{
+		Key:    "approval_policy",
+		Source: "global",
+		Value:  "never",
+	})
+	require.Contains(t, payload.WrittenPaths, ".harness/agents/config.yaml")
+	require.Contains(t, payload.WrittenPaths, ".harness/agents/manifest.yaml")
+
+	configData, err := os.ReadFile(filepath.Join(repo.Root, ".harness", "agents", "config.yaml"))
+	require.NoError(t, err)
+	require.Contains(t, string(configData), "  codex:\n")
+	require.Contains(t, string(configData), "    scope: project\n")
+	require.Contains(t, string(configData), "  model: gpt-5.4\n")
+	require.Contains(t, string(configData), "  sandbox_mode: workspace-write\n")
+	require.NotContains(t, string(configData), "approval_policy")
+
+	frameworksData, err := os.ReadFile(filepath.Join(repo.Root, ".harness", "agents", "manifest.yaml"))
+	require.NoError(t, err)
+	require.Contains(t, string(frameworksData), "recommended_framework: codex\n")
+}
+
+func TestHyardAdoptWriteJSONReportsSkippedUnsafeCodexProjectConfigKeys(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, "AGENTS.md", "# Agent guidance\n\nUse safe Codex project settings.\n")
+	repo.WriteFile(t, ".codex/config.toml", ""+
+		"model = \"gpt-5.4\"\n"+
+		"api_key = \"secret-value\"\n"+
+		"helper_path = \"~/bin/local-helper\"\n")
+	repo.AddAndCommit(t, "seed unsafe codex project config ordinary repository")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "adopt", "--json", "--orbit", "docs")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload hyardAdoptWritePayload
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.NotNil(t, payload.AgentConfig)
+	require.Contains(t, payload.AgentConfig.Imported, harnesspkg.AgentConfigImportEntry{
+		Key:    "model",
+		Source: "project",
+		Value:  "gpt-5.4",
+	})
+	require.Contains(t, payload.AgentConfig.Skipped, harnesspkg.AgentConfigImportSkippedEntry{
+		Key:    "api_key",
+		Source: "project",
+		Reason: "sensitive",
+	})
+	require.Contains(t, payload.AgentConfig.Skipped, harnesspkg.AgentConfigImportSkippedEntry{
+		Key:    "helper_path",
+		Source: "project",
+		Reason: "local_path",
+	})
+
+	configData, err := os.ReadFile(filepath.Join(repo.Root, ".harness", "agents", "config.yaml"))
+	require.NoError(t, err)
+	require.Contains(t, string(configData), "  model: gpt-5.4\n")
+	require.NotContains(t, string(configData), "secret-value")
+	require.NotContains(t, string(configData), "local-helper")
+}
+
+func TestHyardAdoptWriteJSONPreservesRoundTripUnstableCodexProjectConfigSidecar(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	nativeConfig := "# keep native Codex comments\nmodel = \"gpt-5.4\"\n"
+	repo.WriteFile(t, "AGENTS.md", "# Agent guidance\n\nKeep Codex native config reviewable.\n")
+	repo.WriteFile(t, ".codex/config.toml", nativeConfig)
+	repo.AddAndCommit(t, "seed roundtrip unstable codex project config ordinary repository")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "adopt", "--json", "--orbit", "docs")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload hyardAdoptWritePayload
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.NotNil(t, payload.AgentConfig)
+	require.Contains(t, payload.AgentConfig.Sidecars, harnesspkg.AgentConfigImportSidecar{
+		Path:   ".harness/agents/codex.config.toml",
+		Source: "project",
+		Reason: "roundtrip_unstable",
+	})
+	require.Contains(t, payload.WrittenPaths, ".harness/agents/codex.config.toml")
+
+	sidecarData, err := os.ReadFile(filepath.Join(repo.Root, ".harness", "agents", "codex.config.toml"))
+	require.NoError(t, err)
+	require.Equal(t, nativeConfig, string(sidecarData))
+
+	configData, err := os.ReadFile(filepath.Join(repo.Root, ".harness", "agents", "config.yaml"))
+	require.NoError(t, err)
+	require.Contains(t, string(configData), "  model: gpt-5.4\n")
+}
+
+func TestHyardAdoptWriteJSONSkipsCodexProjectConfigSidecarWithUnsafeNativeContent(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, "AGENTS.md", "# Agent guidance\n\nKeep unsafe Codex config out of truth.\n")
+	repo.WriteFile(t, ".codex/config.toml", ""+
+		"# keep native Codex comments\n"+
+		"model = \"gpt-5.4\"\n"+
+		"api_key = \"secret-value\"\n")
+	repo.AddAndCommit(t, "seed unsafe native codex project config ordinary repository")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "adopt", "--json", "--orbit", "docs")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload hyardAdoptWritePayload
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.NotNil(t, payload.AgentConfig)
+	require.Contains(t, payload.AgentConfig.Imported, harnesspkg.AgentConfigImportEntry{
+		Key:    "model",
+		Source: "project",
+		Value:  "gpt-5.4",
+	})
+	require.Contains(t, payload.AgentConfig.Skipped, harnesspkg.AgentConfigImportSkippedEntry{
+		Key:    "api_key",
+		Source: "project",
+		Reason: "sensitive",
+	})
+	require.Empty(t, payload.AgentConfig.Sidecars)
+	require.Contains(t, payload.AgentConfig.SkippedSidecars, harnesspkg.AgentConfigImportSidecar{
+		Path:   ".harness/agents/codex.config.toml",
+		Source: "project",
+		Reason: "unsafe_native_content",
+	})
+	require.NotContains(t, payload.WrittenPaths, ".harness/agents/codex.config.toml")
+	require.NoFileExists(t, filepath.Join(repo.Root, ".harness", "agents", "codex.config.toml"))
+}
+
+func TestHyardAdoptWriteJSONMergesCodexProjectConfigWithExistingUnifiedAgentTruth(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, "AGENTS.md", "# Agent guidance\n\nPreserve team Codex defaults.\n")
+	repo.WriteFile(t, ".harness/agents/config.yaml", ""+
+		"version: 1\n"+
+		"targets:\n"+
+		"  codex:\n"+
+		"    enabled: true\n"+
+		"    scope: project\n"+
+		"config:\n"+
+		"  model: team-standard\n")
+	repo.WriteFile(t, ".codex/config.toml", ""+
+		"model = \"gpt-5.4\"\n"+
+		"sandbox_mode = \"workspace-write\"\n")
+	repo.AddAndCommit(t, "seed existing unified agent truth ordinary repository")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "adopt", "--json", "--orbit", "docs")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload hyardAdoptWritePayload
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.NotNil(t, payload.AgentConfig)
+	require.Contains(t, payload.AgentConfig.Imported, harnesspkg.AgentConfigImportEntry{
+		Key:    "sandbox_mode",
+		Source: "project",
+		Value:  "workspace-write",
+	})
+	require.Contains(t, payload.AgentConfig.Skipped, harnesspkg.AgentConfigImportSkippedEntry{
+		Key:    "model",
+		Source: "project",
+		Reason: "already_configured",
+	})
+
+	configData, err := os.ReadFile(filepath.Join(repo.Root, ".harness", "agents", "config.yaml"))
+	require.NoError(t, err)
+	require.Contains(t, string(configData), "  model: team-standard\n")
+	require.Contains(t, string(configData), "  sandbox_mode: workspace-write\n")
+	require.NotContains(t, string(configData), "gpt-5.4")
 }
 
 func TestHyardAdoptWriteRefusesDirtyWorktreeBeforeWriting(t *testing.T) {

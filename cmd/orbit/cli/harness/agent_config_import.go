@@ -19,6 +19,7 @@ type AgentConfigImportInput struct {
 	RepoRoot       string
 	HomeDir        string
 	Framework      string
+	SourceScopes   []string
 	Write          bool
 	Replace        bool
 	PreserveNative bool
@@ -89,13 +90,17 @@ func ImportAgentConfig(ctx context.Context, input AgentConfigImportInput) (Agent
 		Framework: frameworkID,
 		DryRun:    !input.Write,
 	}
+	sourceScopes, err := normalizeAgentConfigImportSourceScopes(input.SourceScopes)
+	if err != nil {
+		return AgentConfigImportResult{}, err
+	}
 
 	merged := map[string]any{}
 	sourcesByKey := map[string]string{}
 	var sidecarCandidate *agentConfigImportSidecarCandidate
 	sidecarPath, hasSidecar := agentConfigSidecarRepoPath(frameworkID)
 	blockUnifiedImport := false
-	for _, source := range agentConfigImportSources(frameworkID) {
+	for _, source := range agentConfigImportSources(frameworkID, sourceScopes) {
 		result.Sources = append(result.Sources, AgentConfigImportSource{
 			Scope: source.scope,
 			Path:  source.displayPath,
@@ -306,21 +311,43 @@ type agentConfigImportSidecarCandidate struct {
 	data     []byte
 }
 
-func agentConfigImportSources(frameworkID string) []agentConfigImportSource {
+func normalizeAgentConfigImportSourceScopes(scopes []string) (map[string]struct{}, error) {
+	if len(scopes) == 0 {
+		return nil, nil
+	}
+	allowed := make(map[string]struct{}, len(scopes))
+	for _, scope := range scopes {
+		normalized := strings.TrimSpace(scope)
+		switch normalized {
+		case "global", "project":
+			allowed[normalized] = struct{}{}
+		default:
+			return nil, fmt.Errorf("agent config import source scope %q is not supported", scope)
+		}
+	}
+
+	return allowed, nil
+}
+
+func agentConfigImportSources(frameworkID string, scopes map[string]struct{}) []agentConfigImportSource {
 	sources := []agentConfigImportSource{}
 	if path, format, _, ok := agentConfigTargetPaths(frameworkID, true); ok {
-		sources = append(sources, agentConfigImportSource{
-			scope:       "global",
-			displayPath: path,
-			format:      format,
-		})
+		if _, filtered := scopes["global"]; scopes == nil || filtered {
+			sources = append(sources, agentConfigImportSource{
+				scope:       "global",
+				displayPath: path,
+				format:      format,
+			})
+		}
 	}
 	if path, format, _, ok := agentConfigTargetPaths(frameworkID, false); ok {
-		sources = append(sources, agentConfigImportSource{
-			scope:       "project",
-			displayPath: path,
-			format:      format,
-		})
+		if _, filtered := scopes["project"]; scopes == nil || filtered {
+			sources = append(sources, agentConfigImportSource{
+				scope:       "project",
+				displayPath: path,
+				format:      format,
+			})
+		}
 	}
 
 	return sources
