@@ -2,9 +2,11 @@ package commands
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/spf13/cobra"
 
+	statepkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/state"
 	orbittemplate "github.com/zack-nova/harnessyard/cmd/orbit/cli/template"
 )
 
@@ -123,6 +125,11 @@ func NewGuidanceMaterializeCommandWithOptions(options GuidanceCommandOptions) *c
 				if err != nil {
 					return err
 				}
+				if options.RecordAuthorViewOnMaterialize && guidanceMaterializeOrbitsChanged(orbits) {
+					if err := recordGuidanceMaterializeAuthorView(repo.GitDir, time.Now().UTC()); err != nil {
+						return err
+					}
+				}
 				return emitOrbitGuidanceAggregateMaterialize(cmd, repo.Root, resolvedTarget, orbits, jsonOutput)
 			}
 
@@ -137,6 +144,11 @@ func NewGuidanceMaterializeCommandWithOptions(options GuidanceCommandOptions) *c
 			artifacts, err := materializeOrbitGuidanceTargets(cmd, repo.Root, orbitID, resolvedTarget, targets, statuses, force, seedEmpty, strict)
 			if err != nil {
 				return err
+			}
+			if options.RecordAuthorViewOnMaterialize && guidanceMaterializeArtifactsChanged(artifacts) {
+				if err := recordGuidanceMaterializeAuthorView(repo.GitDir, time.Now().UTC()); err != nil {
+					return err
+				}
 			}
 			return emitOrbitGuidanceMaterialize(cmd, repo.Root, orbitID, resolvedTarget, artifacts, jsonOutput)
 		},
@@ -196,4 +208,39 @@ func materializeAllOrbitGuidanceTargets(
 	}
 
 	return orbits, nil
+}
+
+func guidanceMaterializeOrbitsChanged(orbits []guidanceMaterializeOrbitSummary) bool {
+	for _, orbit := range orbits {
+		if guidanceMaterializeArtifactsChanged(orbit.Artifacts) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func guidanceMaterializeArtifactsChanged(artifacts []guidanceMaterializeArtifact) bool {
+	for _, artifact := range artifacts {
+		if artifact.Changed {
+			return true
+		}
+	}
+
+	return false
+}
+
+func recordGuidanceMaterializeAuthorView(gitDir string, now time.Time) error {
+	store, err := statepkg.NewFSStore(gitDir)
+	if err != nil {
+		return fmt.Errorf("create state store: %w", err)
+	}
+	if err := store.WriteRuntimeViewSelection(statepkg.RuntimeViewSelection{
+		View:       statepkg.RuntimeViewAuthor,
+		SelectedAt: now,
+	}); err != nil {
+		return fmt.Errorf("write runtime view selection: %w", err)
+	}
+
+	return nil
 }

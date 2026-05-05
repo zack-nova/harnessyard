@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -20,9 +21,114 @@ func newViewCommand() *cobra.Command {
 		Args: cobra.NoArgs,
 	}
 
-	cmd.AddCommand(newViewStatusCommand())
+	cmd.AddCommand(
+		newViewAuthorCommand(),
+		newViewStatusCommand(),
+	)
 
 	return cmd
+}
+
+type hyardViewAuthorResult struct {
+	SelectedView       statepkg.RuntimeView              `json:"selected_view"`
+	SelectionPersisted bool                              `json:"selection_persisted"`
+	SelectedAt         time.Time                         `json:"selected_at"`
+	Materialized       hyardViewAuthorMaterializedResult `json:"materialized"`
+	NextActions        []string                          `json:"next_actions"`
+}
+
+type hyardViewAuthorMaterializedResult struct {
+	GuidanceMarkers bool `json:"guidance_markers"`
+	MarkdownContent bool `json:"markdown_content"`
+	MemberHints     bool `json:"member_hints"`
+}
+
+func newViewAuthorCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "author",
+		Short: "Select Author View",
+		Long: "Select Author View for this Harness Runtime.\n" +
+			"Selecting Author View records repository-local intent only; it does not render\n" +
+			"root guidance markers, Markdown Member Hints, or Member Hint sidecars.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			workingDir, err := hyardWorkingDirFromCommand(cmd)
+			if err != nil {
+				return err
+			}
+			repo, err := gitpkg.DiscoverRepo(cmd.Context(), workingDir)
+			if err != nil {
+				return fmt.Errorf("discover git repository: %w", err)
+			}
+			if _, err := harnesspkg.LoadRuntimeFile(repo.Root); err != nil {
+				return fmt.Errorf("load harness runtime: %w", err)
+			}
+			store, err := statepkg.NewFSStore(repo.GitDir)
+			if err != nil {
+				return fmt.Errorf("create state store: %w", err)
+			}
+
+			result, err := selectHyardAuthorView(store, time.Now().UTC())
+			if err != nil {
+				return err
+			}
+
+			jsonOutput, err := cmd.Flags().GetBool("json")
+			if err != nil {
+				return fmt.Errorf("read --json flag: %w", err)
+			}
+			if jsonOutput {
+				return emitHyardJSON(cmd, result)
+			}
+
+			return renderHyardViewAuthor(cmd, result)
+		},
+	}
+	cmd.Flags().Bool("json", false, "Output machine-readable JSON")
+
+	return cmd
+}
+
+func selectHyardAuthorView(store statepkg.FSStore, now time.Time) (hyardViewAuthorResult, error) {
+	selection := statepkg.RuntimeViewSelection{
+		View:       statepkg.RuntimeViewAuthor,
+		SelectedAt: now,
+	}
+	if err := store.WriteRuntimeViewSelection(selection); err != nil {
+		return hyardViewAuthorResult{}, fmt.Errorf("write runtime view selection: %w", err)
+	}
+
+	return hyardViewAuthorResult{
+		SelectedView:       statepkg.RuntimeViewAuthor,
+		SelectionPersisted: true,
+		SelectedAt:         now,
+		Materialized:       hyardViewAuthorMaterializedResult{},
+		NextActions: []string{
+			"render editable guidance with `hyard guide render`",
+			"publish an Orbit Package",
+			"publish current runtime as a Harness Package",
+		},
+	}, nil
+}
+
+func renderHyardViewAuthor(cmd *cobra.Command, result hyardViewAuthorResult) error {
+	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "selected_view: %s (stored)\n", result.SelectedView); err != nil {
+		return fmt.Errorf("write command output: %w", err)
+	}
+	if _, err := fmt.Fprintf(
+		cmd.OutOrStdout(),
+		"materialized: guidance_markers=%t markdown_content=%t member_hints=%t\n",
+		result.Materialized.GuidanceMarkers,
+		result.Materialized.MarkdownContent,
+		result.Materialized.MemberHints,
+	); err != nil {
+		return fmt.Errorf("write command output: %w", err)
+	}
+	if err := renderHyardViewStatusList(cmd, "next_actions", result.NextActions); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func newViewStatusCommand() *cobra.Command {

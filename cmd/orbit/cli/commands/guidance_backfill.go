@@ -18,6 +18,7 @@ import (
 // guidance lane while preserving compatibility defaults for raw orbit commands.
 type GuidanceCommandOptions struct {
 	DefaultAllOrbitsWhenOrbitOmitted bool
+	RecordAuthorViewOnMaterialize    bool
 }
 
 type guidanceBackfillOutput struct {

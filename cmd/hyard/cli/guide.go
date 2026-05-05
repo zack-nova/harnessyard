@@ -31,6 +31,7 @@ func newGuideCommand() *cobra.Command {
 func newGuideRenderCommand() *cobra.Command {
 	cmd := orbitcommands.NewGuidanceMaterializeCommandWithOptions(orbitcommands.GuidanceCommandOptions{
 		DefaultAllOrbitsWhenOrbitOmitted: true,
+		RecordAuthorViewOnMaterialize:    true,
 	})
 	cmd.Use = "render"
 	cmd.Short = "Render authored guidance into editable root artifacts"
