@@ -88,7 +88,7 @@ func newRemoveCommand() *cobra.Command {
 			"  hyard remove harness frontend-lab --yes --json\n",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runHyardRemoveAuto(cmd, args[0])
+			return runHyardRemoveAuto(cmd, args[0], hyardRemoveSurface)
 		},
 	}
 	cmd.PersistentFlags().Bool("json", false, "Output machine-readable JSON")
@@ -101,17 +101,21 @@ func newRemoveCommand() *cobra.Command {
 
 func newUninstallCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "uninstall",
+		Use:   "uninstall <package>",
 		Short: "Uninstall a package from the current runtime",
 		Long: "Uninstall a package from the current runtime through the canonical hyard package lifecycle surface.\n" +
 			"Use `hyard uninstall orbit <name>` or `hyard uninstall harness <name>` when a package name is ambiguous.",
 		Example: "" +
+			"  hyard uninstall docs\n" +
 			"  hyard uninstall orbit docs\n" +
 			"  hyard uninstall harness frontend-lab\n" +
 			"  hyard uninstall harness frontend-lab --dry-run\n" +
 			"  hyard uninstall harness frontend-lab --yes --json\n" +
 			"  hyard uninstall orbit docs --json\n",
-		Args: cobra.NoArgs,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runHyardRemoveAuto(cmd, args[0], hyardUninstallSurface)
+		},
 	}
 	cmd.PersistentFlags().Bool("json", false, "Output machine-readable JSON")
 	cmd.PersistentFlags().Bool("dry-run", false, "Preview package uninstallation without applying when supported")
@@ -181,8 +185,8 @@ func newUninstallHarnessCommand() *cobra.Command {
 	}
 }
 
-func runHyardRemoveAuto(cmd *cobra.Command, rawPackage string) error {
-	packageName, err := parseHyardRemovePackageName(rawPackage)
+func runHyardRemoveAuto(cmd *cobra.Command, rawPackage string, surface hyardPackageRemovalSurface) error {
+	packageName, err := parseHyardPackageRemovalName(rawPackage, surface.Command)
 	if err != nil {
 		return err
 	}
@@ -203,17 +207,28 @@ func runHyardRemoveAuto(cmd *cobra.Command, rawPackage string) error {
 	switch {
 	case matchesOrbit && matchesHarness:
 		return fmt.Errorf(
-			"remove target %q is ambiguous; use `hyard remove orbit %s` or `hyard remove harness %s`",
+			"%s target %q is ambiguous; use `hyard %s orbit %s` or `hyard %s harness %s`",
+			surface.Command,
 			packageName,
+			surface.Command,
 			packageName,
+			surface.Command,
 			packageName,
 		)
 	case matchesOrbit:
-		return runHyardRemoveOrbitWithResolvedRoot(cmd, resolved, packageName, hyardRemoveSurface)
+		return runHyardRemoveOrbitWithResolvedRoot(cmd, resolved, packageName, surface)
 	case matchesHarness:
-		return runHyardRemoveHarnessWithResolvedRoot(cmd, resolved, packageName, hyardRemoveSurface)
+		return runHyardRemoveHarnessWithResolvedRoot(cmd, resolved, packageName, surface)
 	default:
-		return fmt.Errorf("remove target %q was not found in the current runtime", packageName)
+		return fmt.Errorf(
+			"%s target %q was not found in the current runtime; use `hyard %s orbit %s` or `hyard %s harness %s` when the package type is known",
+			surface.Command,
+			packageName,
+			surface.Command,
+			packageName,
+			surface.Command,
+			packageName,
+		)
 	}
 }
 
