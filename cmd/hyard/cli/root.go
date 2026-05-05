@@ -62,6 +62,7 @@ func NewRootCommand() *cobra.Command {
 		harnesscommands.NewAgentCommand(),
 		newHooksCommand(),
 		newGuideCommand(),
+		newViewCommand(),
 		orbitcommands.NewCurrentCommand(),
 		orbitcommands.NewEnterCommand(),
 		orbitcommands.NewLeaveCommand(),
