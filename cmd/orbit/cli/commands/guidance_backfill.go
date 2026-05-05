@@ -596,13 +596,16 @@ func discoverAggregateBackfillRequests(
 			if segment.Kind != orbittemplate.AgentsRuntimeSegmentBlock {
 				continue
 			}
-			if _, ok := allowed[segment.OrbitID]; !ok {
-				return nil, fmt.Errorf("%s contains orbit block %q, but that orbit is not in the current guidance scope", label, segment.OrbitID)
+			if segment.OwnerKind != orbittemplate.OwnerKindOrbit {
+				continue
 			}
-			if targetsByOrbit[segment.OrbitID] == nil {
-				targetsByOrbit[segment.OrbitID] = make(map[orbittemplate.GuidanceTarget]struct{})
+			if _, ok := allowed[segment.WorkflowID]; !ok {
+				return nil, fmt.Errorf("%s contains orbit block %q, but that orbit is not in the current guidance scope", label, segment.WorkflowID)
 			}
-			targetsByOrbit[segment.OrbitID][target] = struct{}{}
+			if targetsByOrbit[segment.WorkflowID] == nil {
+				targetsByOrbit[segment.WorkflowID] = make(map[orbittemplate.GuidanceTarget]struct{})
+			}
+			targetsByOrbit[segment.WorkflowID][target] = struct{}{}
 		}
 	}
 

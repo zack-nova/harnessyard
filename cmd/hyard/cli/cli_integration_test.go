@@ -2156,6 +2156,46 @@ func TestHyardGuideWritebackDefaultsToAllRootOrbitBlocks(t *testing.T) {
 	require.Equal(t, "Edited API guidance\n", apiSpec.Meta.AgentsTemplate)
 }
 
+func TestHyardGuideWritebackDefaultsIgnoreHarnessBlocks(t *testing.T) {
+	t.Parallel()
+
+	repo := seedCommittedHyardSourceRepo(t)
+	writeHyardHostedDocsOrbitWithStructuredBrief(t, repo.Root)
+
+	workspaceHarnessBlock, err := orbittemplate.WrapRuntimeAgentsOwnerBlock(orbittemplate.OwnerKindHarness, "workspace", []byte("Harness workspace guidance\n"))
+	require.NoError(t, err)
+	docsHarnessBlock, err := orbittemplate.WrapRuntimeAgentsOwnerBlock(orbittemplate.OwnerKindHarness, "docs", []byte("Harness docs guidance\n"))
+	require.NoError(t, err)
+	docsBlock, err := orbittemplate.WrapRuntimeAgentsBlock("docs", []byte("Edited docs guidance\n"))
+	require.NoError(t, err)
+	repo.WriteFile(t, "AGENTS.md", string(workspaceHarnessBlock)+string(docsHarnessBlock)+string(docsBlock))
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "guide", "writeback", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		OrbitCount    int `json:"orbit_count"`
+		ArtifactCount int `json:"artifact_count"`
+		Orbits        []struct {
+			OrbitID string `json:"orbit_id"`
+		} `json:"orbits"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, 1, payload.OrbitCount)
+	require.Equal(t, 1, payload.ArtifactCount)
+	require.Equal(t, "docs", payload.Orbits[0].OrbitID)
+
+	agentsData, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoError(t, err)
+	require.Contains(t, string(agentsData), "<!-- harness:begin workflow=\"workspace\" -->\nHarness workspace guidance\n<!-- harness:end workflow=\"workspace\" -->\n")
+	require.Contains(t, string(agentsData), "<!-- harness:begin workflow=\"docs\" -->\nHarness docs guidance\n<!-- harness:end workflow=\"docs\" -->\n")
+
+	docsSpec, err := orbitpkg.LoadHostedOrbitSpec(context.Background(), repo.Root, "docs")
+	require.NoError(t, err)
+	require.Equal(t, "Edited docs guidance\n", docsSpec.Meta.AgentsTemplate)
+}
+
 func TestHyardGuideWritebackExplicitAllSkipsMissingBlocksWithoutHostedTruth(t *testing.T) {
 	t.Parallel()
 
