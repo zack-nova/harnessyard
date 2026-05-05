@@ -9,8 +9,10 @@ import (
 	harnesscommands "github.com/zack-nova/harnessyard/cmd/harness/cli/commands"
 	orbitcommands "github.com/zack-nova/harnessyard/cmd/orbit/cli/commands"
 	gitpkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/git"
+	harnesspkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/harness"
 	"github.com/zack-nova/harnessyard/cmd/orbit/cli/ids"
 	orbitpkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/orbit"
+	statepkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/state"
 	orbittemplate "github.com/zack-nova/harnessyard/cmd/orbit/cli/template"
 )
 
@@ -21,6 +23,39 @@ var publishOrbitHiddenCompatibilityFlags = []string{
 	"backfill-brief",
 	"aggregate-detected-skills",
 	"allow-out-of-range-skills",
+}
+
+type hyardPublishViewPermissionError struct {
+	SelectedView statepkg.RuntimeView
+}
+
+type hyardPublishViewPermissionPayload struct {
+	Error                      string               `json:"error"`
+	SelectedView               statepkg.RuntimeView `json:"selected_view"`
+	RequestedPublicationAction string               `json:"requested_publication_action"`
+	AllowedPublicationActions  []string             `json:"allowed_publication_actions"`
+	NextActions                []string             `json:"next_actions"`
+}
+
+func (err hyardPublishViewPermissionError) Error() string {
+	return "Run View allows publishing only the current runtime as a Harness Package; " +
+		"switch to Author View with `hyard view author` before publishing an Orbit Package, " +
+		"or publish current runtime as a Harness Package with `hyard publish harness <package>`"
+}
+
+func (err hyardPublishViewPermissionError) Payload() hyardPublishViewPermissionPayload {
+	return hyardPublishViewPermissionPayload{
+		Error:                      "orbit_package_not_allowed_in_run_view",
+		SelectedView:               err.SelectedView,
+		RequestedPublicationAction: harnesspkg.PublicationActionOrbitPackage,
+		AllowedPublicationActions: []string{
+			harnesspkg.PublicationActionCurrentRuntimeHarnessPackage,
+		},
+		NextActions: []string{
+			"switch to Author View with `hyard view author` before publishing an Orbit Package",
+			"publish current runtime as a Harness Package with `hyard publish harness <package>`",
+		},
+	}
 }
 
 func newPublishCommand() *cobra.Command {
@@ -104,7 +139,14 @@ func newPublishOrbitCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		if !prepare && !checkpoint && packageName != "" && !publishOrbitHiddenCompatibilityFlagChanged(cmd) {
+		if err := guardHyardPublishOrbitRuntimeView(cmd, jsonOutput); err != nil {
+			return err
+		}
+		checkReadiness, err := shouldCheckHyardPublishOrbitReadiness(cmd)
+		if err != nil {
+			return err
+		}
+		if checkReadiness && !prepare && !checkpoint && packageName != "" && !publishOrbitHiddenCompatibilityFlagChanged(cmd) {
 			if jsonOutput {
 				readiness, err := buildHyardOrbitPrepareOutput(cmd.Context(), cmd, packageName)
 				if err != nil {
@@ -143,6 +185,62 @@ func newPublishOrbitCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&yes, "yes", false, "Confirm explicit prepare/checkpoint mutations in scripted publish flows")
 	cmd.Flags().StringVarP(&checkpointMessage, "message", "m", "", "Checkpoint commit message")
 	return cmd
+}
+
+func guardHyardPublishOrbitRuntimeView(cmd *cobra.Command, jsonOutput bool) error {
+	workingDir, err := hyardWorkingDirFromCommand(cmd)
+	if err != nil {
+		return err
+	}
+	repo, err := gitpkg.DiscoverRepo(cmd.Context(), workingDir)
+	if err != nil {
+		return fmt.Errorf("discover git repository: %w", err)
+	}
+	repoState, err := orbittemplate.LoadCurrentRepoState(cmd.Context(), repo.Root)
+	if err != nil {
+		return fmt.Errorf("load current repo state: %w", err)
+	}
+	if repoState.Kind != "runtime" {
+		return nil
+	}
+
+	store, err := statepkg.NewFSStore(repo.GitDir)
+	if err != nil {
+		return fmt.Errorf("create state store: %w", err)
+	}
+	selection, err := store.ReadRuntimeViewSelection()
+	if err != nil {
+		return fmt.Errorf("read runtime view selection: %w", err)
+	}
+	if selection.View == statepkg.RuntimeViewAuthor {
+		return nil
+	}
+
+	permissionErr := hyardPublishViewPermissionError{SelectedView: selection.View}
+	if jsonOutput {
+		if err := emitHyardJSON(cmd, permissionErr.Payload()); err != nil {
+			return err
+		}
+	}
+
+	return permissionErr
+}
+
+func shouldCheckHyardPublishOrbitReadiness(cmd *cobra.Command) (bool, error) {
+	workingDir, err := hyardWorkingDirFromCommand(cmd)
+	if err != nil {
+		return false, err
+	}
+	repo, err := gitpkg.DiscoverRepo(cmd.Context(), workingDir)
+	if err != nil {
+		return false, fmt.Errorf("discover git repository: %w", err)
+	}
+	repoState, err := orbittemplate.LoadCurrentRepoState(cmd.Context(), repo.Root)
+	if err != nil {
+		return false, fmt.Errorf("load current repo state: %w", err)
+	}
+
+	return repoState.Kind != "runtime", nil
 }
 
 func inferBarePublishOrbitPackageName(cmd *cobra.Command) (string, error) {

@@ -21,6 +21,7 @@ type TemplatePublishMode string
 const (
 	TemplatePublishModeSource   TemplatePublishMode = "source"
 	TemplatePublishModeTemplate TemplatePublishMode = "orbit_template"
+	TemplatePublishModeRuntime  TemplatePublishMode = "runtime"
 )
 
 type orbitTemplateBranchManifest struct {
@@ -101,15 +102,15 @@ func (err *PublishError) Unwrap() error {
 	return err.Err
 }
 
-// BuildTemplatePublishPreview validates source/orbit_template publish preconditions and constructs the local publish plan.
+// BuildTemplatePublishPreview validates source/runtime/orbit_template publish preconditions and constructs the local publish plan.
 func BuildTemplatePublishPreview(ctx context.Context, input TemplatePublishInput) (TemplatePublishPreview, error) {
 	state, err := LoadCurrentRepoState(ctx, input.RepoRoot)
 	if err != nil {
 		return TemplatePublishPreview{}, fmt.Errorf("load current repo state: %w", err)
 	}
 	switch state.Kind {
-	case "runtime", "harness_template":
-		return TemplatePublishPreview{}, fmt.Errorf("publish requires a source or orbit_template revision; current revision kind is %q", state.Kind)
+	case "harness_template":
+		return TemplatePublishPreview{}, fmt.Errorf("publish requires a source, runtime, or orbit_template revision; current revision kind is %q", state.Kind)
 	}
 	currentBranch, err := RequireCurrentBranch(state, "publish")
 	if err != nil {
@@ -118,6 +119,8 @@ func BuildTemplatePublishPreview(ctx context.Context, input TemplatePublishInput
 	switch state.Kind {
 	case "orbit_template":
 		return buildOrbitTemplateGeneratedPublishPreview(ctx, input, currentBranch)
+	case "runtime":
+		return buildRuntimeTemplatePublishPreview(ctx, input, currentBranch)
 	}
 
 	return buildSourceTemplatePublishPreview(ctx, input, currentBranch)
@@ -187,6 +190,62 @@ func buildSourceTemplatePublishPreview(ctx context.Context, input TemplatePublis
 	}, nil
 }
 
+func buildRuntimeTemplatePublishPreview(ctx context.Context, input TemplatePublishInput, currentBranch string) (TemplatePublishPreview, error) {
+	if err := ensureCleanTrackedWorktree(ctx, input.RepoRoot); err != nil {
+		return TemplatePublishPreview{}, err
+	}
+
+	orbitID, err := resolveRuntimePublishOrbitID(ctx, input.RepoRoot, input.OrbitID)
+	if err != nil {
+		return TemplatePublishPreview{}, err
+	}
+	if err := EnsureMemberHintExportSync(ctx, input.RepoRoot, orbitID, "publishing"); err != nil {
+		return TemplatePublishPreview{}, err
+	}
+	skillDetection, err := RunTemplateLocalSkillDetection(ctx, TemplateLocalSkillDetectionInput{
+		RepoRoot:                input.RepoRoot,
+		OrbitID:                 orbitID,
+		AggregateDetectedSkills: input.AggregateDetectedSkills,
+		AllowOutOfRangeSkills:   input.AllowOutOfRangeSkills,
+		ConfirmPrompter:         input.SkillDetectionPrompter,
+	})
+	if err != nil {
+		return TemplatePublishPreview{}, err
+	}
+	briefSync, err := EnsureBriefExportSync(ctx, input.RepoRoot, orbitID, "publishing", input.BackfillBrief)
+	if err != nil {
+		return TemplatePublishPreview{}, err
+	}
+
+	publishBranch := strings.TrimSpace(input.TargetBranch)
+	if publishBranch == "" {
+		publishBranch = fmt.Sprintf("orbit-template/%s", orbitID)
+	}
+	savePreview, err := BuildTemplateSavePreview(ctx, TemplateSavePreviewInput{
+		RepoRoot:      input.RepoRoot,
+		OrbitID:       orbitID,
+		TargetBranch:  publishBranch,
+		DefaultBranch: input.DefaultTemplate,
+		Warnings:      append([]string(nil), skillDetection.Warnings...),
+	})
+	if err != nil {
+		return TemplatePublishPreview{}, fmt.Errorf("build publish preview: %w", err)
+	}
+	if briefSync.Warning != "" {
+		savePreview.Warnings = append(savePreview.Warnings, briefSync.Warning)
+	}
+
+	return TemplatePublishPreview{
+		RepoRoot:        input.RepoRoot,
+		OrbitID:         orbitID,
+		SourceBranch:    currentBranch,
+		PublishBranch:   publishBranch,
+		DefaultTemplate: input.DefaultTemplate,
+		Mode:            TemplatePublishModeRuntime,
+		SavePreview:     savePreview,
+	}, nil
+}
+
 // PublishTemplate performs the local publish path only. Remote push is intentionally out of scope here.
 func PublishTemplate(ctx context.Context, input TemplatePublishInput) (TemplatePublishResult, error) {
 	if err := publishStage(input.Progress, "building publish preview"); err != nil {
@@ -225,7 +284,7 @@ func PublishTemplate(ctx context.Context, input TemplatePublishInput) (TemplateP
 		return TemplatePublishResult{}, err
 	}
 
-	if preview.Mode == TemplatePublishModeSource {
+	if preview.Mode == TemplatePublishModeSource || preview.Mode == TemplatePublishModeRuntime {
 		relation, err := gitpkg.CompareBranchToRemoteBranchFullHistory(ctx, preview.RepoRoot, remote, preview.SourceBranch)
 		if err != nil {
 			result.RemotePush.Reason = "remote_source_branch_unavailable"
@@ -551,6 +610,101 @@ func resolvePublishOrbitID(ctx context.Context, repoRoot string, requestedOrbitI
 		return requestedOrbitID, nil
 	}
 	return orbitID, nil
+}
+
+type runtimePublishManifest struct {
+	Kind     string                         `yaml:"kind"`
+	Members  []runtimePublishManifestMember `yaml:"members"`
+	Packages []runtimePublishManifestMember `yaml:"packages"`
+}
+
+type runtimePublishManifestMember struct {
+	Package runtimePublishPackageIdentity `yaml:"package"`
+	OrbitID string                        `yaml:"orbit_id"`
+}
+
+type runtimePublishPackageIdentity struct {
+	Name string `yaml:"name"`
+}
+
+func resolveRuntimePublishOrbitID(ctx context.Context, repoRoot string, requestedOrbitID string) (string, error) {
+	memberIDs, err := loadRuntimePublishMemberIDs(ctx, repoRoot)
+	if err != nil {
+		return "", err
+	}
+	memberSet := make(map[string]struct{}, len(memberIDs))
+	for _, memberID := range memberIDs {
+		memberSet[memberID] = struct{}{}
+	}
+
+	config, err := orbitpkg.LoadRuntimeRepositoryConfig(ctx, repoRoot)
+	if err != nil {
+		return "", fmt.Errorf("load runtime repository config: %w", err)
+	}
+	if err := orbitpkg.ValidateRepositoryConfig(config.Global, config.Orbits); err != nil {
+		return "", fmt.Errorf("validate repository config: %w", err)
+	}
+	orbitpkg.SortDefinitions(config.Orbits)
+
+	orbitID := strings.TrimSpace(requestedOrbitID)
+	if orbitID == "" {
+		switch len(memberIDs) {
+		case 1:
+			orbitID = memberIDs[0]
+		case 0:
+			return "", fmt.Errorf("runtime Orbit Package publication requires at least one runtime member")
+		default:
+			return "", fmt.Errorf("runtime Orbit Package publication requires a package argument when the current runtime has multiple orbits")
+		}
+	}
+
+	if _, ok := memberSet[orbitID]; !ok {
+		return "", fmt.Errorf("requested orbit %q is not a member of the current runtime", orbitID)
+	}
+	if _, found := config.OrbitByID(orbitID); !found {
+		return "", fmt.Errorf("runtime member %q is missing hosted definition", orbitID)
+	}
+
+	return orbitID, nil
+}
+
+func loadRuntimePublishMemberIDs(ctx context.Context, repoRoot string) ([]string, error) {
+	data, err := gitpkg.ReadFileWorktreeOrHEAD(ctx, repoRoot, branchManifestPath)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", branchManifestPath, err)
+	}
+
+	var manifest runtimePublishManifest
+	if err := yaml.Unmarshal(data, &manifest); err != nil {
+		return nil, fmt.Errorf("decode runtime manifest: %w", err)
+	}
+	if strings.TrimSpace(manifest.Kind) != "runtime" {
+		return nil, fmt.Errorf("kind must be %q", "runtime")
+	}
+
+	members := manifest.Packages
+	if len(members) == 0 {
+		members = manifest.Members
+	}
+	ids := make([]string, 0, len(members))
+	seen := make(map[string]struct{}, len(members))
+	for _, member := range members {
+		memberID := strings.TrimSpace(member.Package.Name)
+		if memberID == "" {
+			memberID = strings.TrimSpace(member.OrbitID)
+		}
+		if memberID == "" {
+			return nil, fmt.Errorf("runtime package member must include package.name")
+		}
+		if _, ok := seen[memberID]; ok {
+			continue
+		}
+		seen[memberID] = struct{}{}
+		ids = append(ids, memberID)
+	}
+	sort.Strings(ids)
+
+	return ids, nil
 }
 
 func isTemplatePublishNoOp(ctx context.Context, preview TemplatePublishPreview) (bool, error) {
