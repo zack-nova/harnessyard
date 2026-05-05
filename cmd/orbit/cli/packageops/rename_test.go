@@ -13,6 +13,7 @@ import (
 	"github.com/zack-nova/harnessyard/cmd/orbit/cli/ids"
 	"github.com/zack-nova/harnessyard/cmd/orbit/cli/orbit"
 	"github.com/zack-nova/harnessyard/cmd/orbit/cli/packageops"
+	orbittemplate "github.com/zack-nova/harnessyard/cmd/orbit/cli/template"
 	"github.com/zack-nova/harnessyard/cmd/orbit/cli/testutil"
 )
 
@@ -218,6 +219,39 @@ func TestRenameHostedOrbitPackageUpdatesRuntimeGuidanceMarkers(t *testing.T) {
 		require.Contains(t, string(data), `<!-- orbit:end workflow="api" -->`)
 		require.NotContains(t, string(data), `workflow="docs"`)
 	}
+}
+
+func TestRenameHostedOrbitPackageUpdatesOnlyMatchingOrbitGuidanceBlocks(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	spec, err := orbit.DefaultHostedMemberSchemaSpec("docs")
+	require.NoError(t, err)
+	_, err = orbit.WriteHostedOrbitSpec(repo.Root, spec)
+	require.NoError(t, err)
+	orbitDocsBlock, err := orbittemplate.WrapRuntimeAgentsOwnerBlock(orbittemplate.OwnerKindOrbit, "docs", []byte("Docs orbit block.\n"))
+	require.NoError(t, err)
+	harnessDocsBlock, err := orbittemplate.WrapRuntimeAgentsOwnerBlock(orbittemplate.OwnerKindHarness, "docs", []byte("Docs harness block.\n"))
+	require.NoError(t, err)
+	orbitOpsBlock, err := orbittemplate.WrapRuntimeAgentsOwnerBlock(orbittemplate.OwnerKindOrbit, "ops", []byte("Ops orbit block.\n"))
+	require.NoError(t, err)
+	repo.WriteFile(t, "AGENTS.md", ""+
+		"Workspace guidance.\n"+
+		string(orbitDocsBlock)+
+		string(harnessDocsBlock)+
+		string(orbitOpsBlock))
+
+	result, err := packageops.RenameHostedOrbitPackage(context.Background(), repo.Root, "docs", "api")
+	require.NoError(t, err)
+	require.Equal(t, []string{"AGENTS.md"}, result.UpdatedFiles)
+
+	data, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoError(t, err)
+	require.Contains(t, string(data), "<!-- orbit:begin workflow=\"api\" -->\nDocs orbit block.\n<!-- orbit:end workflow=\"api\" -->\n")
+	require.Contains(t, string(data), "<!-- harness:begin workflow=\"docs\" -->\nDocs harness block.\n<!-- harness:end workflow=\"docs\" -->\n")
+	require.Contains(t, string(data), "<!-- orbit:begin workflow=\"ops\" -->\nOps orbit block.\n<!-- orbit:end workflow=\"ops\" -->\n")
+	require.NotContains(t, string(data), "<!-- orbit:begin workflow=\"docs\" -->")
+	require.NotContains(t, string(data), "<!-- harness:begin workflow=\"api\" -->")
 }
 
 func TestRenameHostedOrbitPackageUpdatesLegacyPathListsAndMovesFiles(t *testing.T) {

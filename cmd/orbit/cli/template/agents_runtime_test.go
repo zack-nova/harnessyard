@@ -135,6 +135,22 @@ func TestParseRuntimeAgentsDocumentIgnoresFormatterPaddingAroundMarkers(t *testi
 	}, document)
 }
 
+func TestParseRuntimeAgentsDocumentNamesOwnerKindForMalformedKnownNamespaceMarker(t *testing.T) {
+	t.Parallel()
+
+	_, err := ParseRuntimeAgentsDocument([]byte("<!-- harness:begin orbit_id=\"docs\" -->\n"))
+	require.Error(t, err)
+	require.ErrorContains(t, err, "malformed harness block marker")
+}
+
+func TestParseRuntimeAgentsDocumentNamesOwnerKindForInvalidWorkflowID(t *testing.T) {
+	t.Parallel()
+
+	_, err := ParseRuntimeAgentsDocument([]byte("<!-- harness:begin workflow=\"Docs\" -->\n"))
+	require.Error(t, err)
+	require.ErrorContains(t, err, `validate harness block workflow id "Docs"`)
+}
+
 func TestParseRuntimeAgentsDocumentRejectsInvalidContracts(t *testing.T) {
 	t.Parallel()
 
@@ -189,7 +205,7 @@ func TestParseRuntimeAgentsDocumentRejectsInvalidContracts(t *testing.T) {
 			name: "orbit_id attribute fails closed",
 			input: "" +
 				"<!-- orbit:begin orbit_id=docs -->\n",
-			contains: "malformed workflow marker",
+			contains: "malformed orbit block marker",
 		},
 		{
 			name: "legacy quoted orbit_id attribute fails closed",
@@ -197,19 +213,19 @@ func TestParseRuntimeAgentsDocumentRejectsInvalidContracts(t *testing.T) {
 				"<!-- orbit:begin orbit_id=\"docs\" -->\n" +
 				"docs guidance\n" +
 				"<!-- orbit:end orbit_id=\"docs\" -->\n",
-			contains: "malformed workflow marker",
+			contains: "malformed orbit block marker",
 		},
 		{
 			name: "duplicate workflow attribute fails closed",
 			input: "" +
 				"<!-- orbit:begin workflow=\"docs\" workflow=\"api\" -->\n",
-			contains: "malformed workflow marker",
+			contains: "malformed orbit block marker",
 		},
 		{
 			name: "unknown attribute fails closed",
 			input: "" +
 				"<!-- orbit:begin workflow=\"docs\" extra=\"value\" -->\n",
-			contains: "malformed workflow marker",
+			contains: "malformed orbit block marker",
 		},
 		{
 			name: "unknown namespace fails closed",
@@ -221,25 +237,25 @@ func TestParseRuntimeAgentsDocumentRejectsInvalidContracts(t *testing.T) {
 			name: "missing closing delimiter fails closed",
 			input: "" +
 				"<!-- orbit:begin workflow=\"docs\"\n",
-			contains: "malformed workflow marker",
+			contains: "malformed orbit block marker",
 		},
 		{
 			name: "single quoted workflow fails closed",
 			input: "" +
 				"<!-- orbit:begin workflow='docs' -->\n",
-			contains: "malformed workflow marker",
+			contains: "malformed orbit block marker",
 		},
 		{
 			name: "unquoted workflow fails closed",
 			input: "" +
 				"<!-- orbit:begin workflow=docs -->\n",
-			contains: "malformed workflow marker",
+			contains: "malformed orbit block marker",
 		},
 		{
 			name: "invalid workflow id fails closed",
 			input: "" +
 				"<!-- orbit:begin workflow=\"Docs\" -->\n",
-			contains: "validate workflow id",
+			contains: "validate orbit block workflow id",
 		},
 		{
 			name: "unclosed begin marker fails closed",
@@ -268,5 +284,13 @@ func TestWrapRuntimeAgentsBlockRejectsInvalidOrbitID(t *testing.T) {
 
 	_, err := WrapRuntimeAgentsBlock("Docs", []byte("content"))
 	require.Error(t, err)
-	require.ErrorContains(t, err, "validate workflow id")
+	require.ErrorContains(t, err, "validate orbit block workflow id")
+}
+
+func TestWrapRuntimeAgentsOwnerBlockRejectsInvalidWorkflowIDWithOwnerKind(t *testing.T) {
+	t.Parallel()
+
+	_, err := WrapRuntimeAgentsOwnerBlock(OwnerKindHarness, "Docs", []byte("content"))
+	require.Error(t, err)
+	require.ErrorContains(t, err, "validate harness block workflow id")
 }

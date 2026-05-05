@@ -209,7 +209,7 @@ func validateRuntimeAgentsBlockID(ownerKind OwnerKind, workflowID string) error 
 		return err
 	}
 	if err := ids.ValidateOrbitID(workflowID); err != nil {
-		return fmt.Errorf("validate workflow id %q: %w", workflowID, err)
+		return fmt.Errorf("validate %s block workflow id %q: %w", blockOwnerLabel(ownerKind), workflowID, err)
 	}
 
 	return nil
@@ -253,14 +253,18 @@ func parseRuntimeAgentsMarkerLine(line []byte) (runtimeAgentsMarker, bool, error
 
 	matches := runtimeAgentsMarkerPattern.FindStringSubmatch(trimmed)
 	if matches == nil {
+		if ownerKind, ok := malformedRuntimeAgentsMarkerOwnerKind(trimmed); ok {
+			return runtimeAgentsMarker{}, false, fmt.Errorf("malformed %s block marker %q", blockOwnerLabel(ownerKind), trimmed)
+		}
 		return runtimeAgentsMarker{}, false, fmt.Errorf("malformed workflow marker %q", trimmed)
 	}
+	ownerKind := OwnerKind(matches[1])
 	if err := ids.ValidateOrbitID(matches[3]); err != nil {
-		return runtimeAgentsMarker{}, false, fmt.Errorf("validate workflow id %q: %w", matches[3], err)
+		return runtimeAgentsMarker{}, false, fmt.Errorf("validate %s block workflow id %q: %w", blockOwnerLabel(ownerKind), matches[3], err)
 	}
 
 	return runtimeAgentsMarker{
-		OwnerKind:  OwnerKind(matches[1]),
+		OwnerKind:  ownerKind,
 		Kind:       matches[2],
 		WorkflowID: matches[3],
 	}, true, nil
@@ -281,6 +285,23 @@ func looksLikeRuntimeAgentsMarker(trimmed string) bool {
 		return false
 	}
 	return action == "begin" || action == "end"
+}
+
+func malformedRuntimeAgentsMarkerOwnerKind(trimmed string) (OwnerKind, bool) {
+	if !strings.HasPrefix(trimmed, "<!-- ") {
+		return "", false
+	}
+	body := strings.TrimPrefix(trimmed, "<!-- ")
+	firstField, _, _ := strings.Cut(body, " ")
+	namespace, _, ok := strings.Cut(firstField, ":")
+	if !ok {
+		return "", false
+	}
+	ownerKind := OwnerKind(namespace)
+	if err := validateOwnerKind(ownerKind); err != nil {
+		return "", false
+	}
+	return ownerKind, true
 }
 
 func runtimeAgentsBlockKey(ownerKind OwnerKind, workflowID string) string {

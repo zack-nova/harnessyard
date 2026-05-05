@@ -941,7 +941,7 @@ func TestHyardAdoptWriteRefusesMalformedExistingRootGuidanceMarkersBeforeWriting
 	stdout, stderr, err := executeHyardCLI(t, repo.Root, "adopt", "--json", "--orbit", "docs")
 	require.Error(t, err)
 	require.ErrorContains(t, err, "root AGENTS.md has malformed orbit markers")
-	require.ErrorContains(t, err, "malformed workflow marker")
+	require.ErrorContains(t, err, "malformed orbit block marker")
 	require.Empty(t, stdout)
 	require.Empty(t, stderr)
 
