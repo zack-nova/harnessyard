@@ -4737,7 +4737,13 @@ func TestHyardCloneFromLocalHarnessTemplateSourceCreatesRuntime(t *testing.T) {
 		HarnessID   string `json:"harness_id"`
 		MemberCount int    `json:"member_count"`
 		BundleCount int    `json:"bundle_count"`
-		Source      struct {
+		NextActions []struct {
+			Kind             string `json:"kind"`
+			Command          string `json:"command"`
+			WorkingDirectory string `json:"working_directory"`
+			Intent           string `json:"intent"`
+		} `json:"next_actions"`
+		Source struct {
 			Repo         string `json:"repo"`
 			RequestedRef string `json:"requested_ref"`
 			ResolvedRef  string `json:"resolved_ref"`
@@ -4752,12 +4758,46 @@ func TestHyardCloneFromLocalHarnessTemplateSourceCreatesRuntime(t *testing.T) {
 	require.NotEmpty(t, payload.Source.Commit)
 	require.Equal(t, 1, payload.MemberCount)
 	require.Equal(t, 1, payload.BundleCount)
+	require.Len(t, payload.NextActions, 1)
+	require.Equal(t, "harness_start", payload.NextActions[0].Kind)
+	require.Equal(t, "hyard start", payload.NextActions[0].Command)
+	require.Equal(t, payload.HarnessRoot, payload.NextActions[0].WorkingDirectory)
+	require.Equal(t, "run Harness Start inside the cloned Harness Runtime", payload.NextActions[0].Intent)
 
 	resolved, err := harnesspkg.ResolveRoot(context.Background(), payload.HarnessRoot)
 	require.NoError(t, err)
 	require.Len(t, resolved.Runtime.Members, 1)
 	require.Equal(t, harnesspkg.MemberSourceInstallBundle, resolved.Runtime.Members[0].Source)
 	require.Equal(t, payload.HarnessID, resolved.Runtime.Members[0].OwnerHarnessID)
+}
+
+func TestHyardCloneTextSuggestsHarnessStartWithoutStartingAgent(t *testing.T) {
+	t.Parallel()
+
+	sourceRepo := seedHyardCloneHarnessTemplateSourceRepo(t)
+	parentDir := t.TempDir()
+	runtimeRoot := filepath.Join(parentDir, "cloned-runtime")
+
+	stdout, stderr, err := executeHyardCLI(
+		t,
+		parentDir,
+		"clone",
+		sourceRepo.Root,
+		"cloned-runtime",
+		"--path",
+		parentDir,
+		"--ref",
+		"harness-template/workspace",
+	)
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	expectedRuntimeRoot := gitpkg.ComparablePath(runtimeRoot)
+	require.Contains(t, stdout, "cloned harness template harness-template/workspace")
+	require.Contains(t, stdout, "next_action: cd "+expectedRuntimeRoot+"\n")
+	require.Contains(t, stdout, "next_action: hyard start\n")
+	require.NotContains(t, stdout, "Start Prompt")
+	require.NoFileExists(t, filepath.Join(runtimeRoot, ".codex", "skills", harnesspkg.BootstrapAgentSkillName, "SKILL.md"))
 }
 
 func TestHyardCloneUsesExplicitRepoNameAndParentPath(t *testing.T) {

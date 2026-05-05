@@ -36,6 +36,13 @@ type cloneSourceJSON struct {
 	PackageLocator     string `json:"package_locator,omitempty"`
 }
 
+type cloneNextActionJSON struct {
+	Kind             string `json:"kind"`
+	Command          string `json:"command"`
+	WorkingDirectory string `json:"working_directory"`
+	Intent           string `json:"intent"`
+}
+
 type cloneResultJSON struct {
 	HarnessRoot  string                     `json:"harness_root"`
 	ManifestPath string                     `json:"manifest_path"`
@@ -45,6 +52,7 @@ type cloneResultJSON struct {
 	MemberCount  int                        `json:"member_count"`
 	BundleCount  int                        `json:"bundle_count"`
 	Readiness    harnesspkg.ReadinessReport `json:"readiness"`
+	NextActions  []cloneNextActionJSON      `json:"next_actions"`
 }
 
 // WithWorkingDir injects the working directory used by hyard command tests.
@@ -183,6 +191,7 @@ func newCloneCommand() *cobra.Command {
 				MemberCount: len(source.MemberIDs()),
 				BundleCount: 1,
 				Readiness:   readiness,
+				NextActions: cloneHarnessStartNextActions(bootstrap.Repo.Root),
 			}
 
 			if jsonOutput {
@@ -199,6 +208,14 @@ func newCloneCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("write command output: %w", err)
 			}
+			for _, action := range output.NextActions {
+				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "next_action: cd %s\n", action.WorkingDirectory); err != nil {
+					return fmt.Errorf("write command output: %w", err)
+				}
+				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "next_action: %s\n", action.Command); err != nil {
+					return fmt.Errorf("write command output: %w", err)
+				}
+			}
 
 			return nil
 		},
@@ -209,6 +226,15 @@ func newCloneCommand() *cobra.Command {
 	cmd.Flags().Bool("json", false, "Output machine-readable JSON")
 
 	return cmd
+}
+
+func cloneHarnessStartNextActions(harnessRoot string) []cloneNextActionJSON {
+	return []cloneNextActionJSON{{
+		Kind:             "harness_start",
+		Command:          "hyard start",
+		WorkingDirectory: harnessRoot,
+		Intent:           "run Harness Start inside the cloned Harness Runtime",
+	}}
 }
 
 type cloneBootstrapResult struct {
