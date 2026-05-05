@@ -295,6 +295,7 @@ func NewInstallCommand() *cobra.Command {
 					if err != nil {
 						return fmt.Errorf("install harness template: %w", err)
 					}
+					appendRunViewPresentationToHarnessTemplateInstallResult(cmd.Context(), resolved.Repo.Root, &result)
 					if err := stageProgress(progress, "updating runtime metadata"); err != nil {
 						return err
 					}
@@ -534,6 +535,7 @@ func NewInstallCommand() *cobra.Command {
 					if err != nil {
 						return fmt.Errorf("install harness template: %w", err)
 					}
+					appendRunViewPresentationToHarnessTemplateInstallResult(cmd.Context(), resolved.Repo.Root, &result)
 					if err := stageProgress(progress, "updating runtime metadata"); err != nil {
 						return err
 					}
@@ -615,6 +617,7 @@ func NewInstallCommand() *cobra.Command {
 						if err != nil {
 							return fmt.Errorf("install harness template: %w", err)
 						}
+						appendRunViewPresentationToHarnessTemplateInstallResult(cmd.Context(), resolved.Repo.Root, &result)
 						return emitHarnessTemplateInstallResult(cmd, resolved.Repo.Root, result, jsonOutput)
 					}
 				}

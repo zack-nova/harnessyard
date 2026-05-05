@@ -395,6 +395,39 @@ func writeHyardHostedOrbitWithStructuredBrief(t *testing.T, repoRoot string, orb
 	require.NoError(t, err)
 }
 
+func ensureHyardHostedOrbitHasSubjectMember(t *testing.T, repoRoot string, orbitID string) {
+	t.Helper()
+
+	spec, err := orbitpkg.LoadHostedOrbitSpec(context.Background(), repoRoot, orbitID)
+	require.NoError(t, err)
+	spec.Members = []orbitpkg.OrbitMember{{
+		Key:  orbitID + "-content",
+		Role: orbitpkg.OrbitMemberSubject,
+		Paths: orbitpkg.OrbitMemberPaths{
+			Include: []string{orbitID + "/**"},
+		},
+	}}
+	require.NotNil(t, spec.Behavior)
+	spec.Behavior.Scope.WriteRoles = []orbitpkg.OrbitMemberRole{
+		orbitpkg.OrbitMemberMeta,
+		orbitpkg.OrbitMemberRule,
+		orbitpkg.OrbitMemberSubject,
+	}
+	spec.Behavior.Scope.ExportRoles = []orbitpkg.OrbitMemberRole{
+		orbitpkg.OrbitMemberMeta,
+		orbitpkg.OrbitMemberRule,
+		orbitpkg.OrbitMemberSubject,
+	}
+	spec.Behavior.Scope.OrchestrationRoles = []orbitpkg.OrbitMemberRole{
+		orbitpkg.OrbitMemberMeta,
+		orbitpkg.OrbitMemberRule,
+		orbitpkg.OrbitMemberProcess,
+		orbitpkg.OrbitMemberSubject,
+	}
+	_, err = orbitpkg.WriteHostedOrbitSpec(repoRoot, spec)
+	require.NoError(t, err)
+}
+
 func addHyardInstallOrbitMember(t *testing.T, repo *testutil.Repo, orbitID string) {
 	t.Helper()
 
@@ -2266,7 +2299,15 @@ func TestHyardGuideSyncCanFilterToOneOrbit(t *testing.T) {
 	repo := seedCommittedHyardRuntimeRepo(t)
 	writeHyardHostedDocsOrbitWithStructuredBrief(t, repo.Root)
 	writeHyardHostedOrbitWithStructuredBrief(t, repo.Root, "api", "API orbit guidance\n")
-	addHyardInstallOrbitMember(t, repo, "api")
+	ensureHyardHostedOrbitHasSubjectMember(t, repo.Root, "docs")
+	ensureHyardHostedOrbitHasSubjectMember(t, repo.Root, "api")
+	_, err := harnesspkg.AddManualMember(
+		context.Background(),
+		repo.Root,
+		"api",
+		time.Date(2026, time.April, 23, 9, 15, 0, 0, time.UTC),
+	)
+	require.NoError(t, err)
 
 	stdout, stderr, err := executeHyardCLI(t, repo.Root, "guide", "sync", "--orbit", "docs", "--json")
 	require.NoError(t, err)

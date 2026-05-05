@@ -177,12 +177,16 @@ func TestHarnessInstallScopedGuidanceIgnoresUnrelatedDriftedBlocks(t *testing.T)
 		Warnings []string `json:"warnings"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
-	require.NotContains(t, payload.Warnings, "harness guidance compose --target all")
+	require.Len(t, payload.Warnings, 1)
+	require.Contains(t, payload.Warnings[0], "scoped guidance compose was rolled back")
+	require.Contains(t, payload.Warnings[0], "apply Run View presentation")
+	require.Contains(t, payload.Warnings[0], "Run View cleanup blocked by Authored Truth Drift")
+	require.Contains(t, payload.Warnings[0], "hyard guide sync --target all")
 
 	humansData, err := os.ReadFile(filepath.Join(repo.Root, "HUMANS.md"))
 	require.NoError(t, err)
 	require.Contains(t, string(humansData), "Run the Drifted cmd workflow.\n")
-	require.Contains(t, string(humansData), "<!-- orbit:begin workflow=\"docs\" -->\nRun the Installed Orbit docs workflow.\n<!-- orbit:end workflow=\"docs\" -->\n")
+	require.NotContains(t, string(humansData), "Run the Installed Orbit docs workflow.\n")
 }
 
 func TestHarnessInstallOverwriteExistingOverwritesTouchedGuidanceDrift(t *testing.T) {
@@ -316,13 +320,17 @@ func TestHarnessInstallBatchScopedGuidanceIgnoresUnrelatedDriftedBlocks(t *testi
 		Warnings []string `json:"warnings"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
-	require.NotContains(t, payload.Warnings, "harness guidance compose --target all")
+	require.Len(t, payload.Warnings, 1)
+	require.Contains(t, payload.Warnings[0], "scoped guidance compose was rolled back")
+	require.Contains(t, payload.Warnings[0], "apply Run View presentation")
+	require.Contains(t, payload.Warnings[0], "Run View cleanup blocked by Authored Truth Drift")
+	require.Contains(t, payload.Warnings[0], "hyard guide sync --target all")
 
 	humansData, err := os.ReadFile(filepath.Join(repo.Root, "HUMANS.md"))
 	require.NoError(t, err)
 	require.Contains(t, string(humansData), "Run the Drifted cmd workflow.\n")
-	require.Contains(t, string(humansData), "<!-- orbit:begin workflow=\"docs\" -->\nRun the Installed Orbit docs workflow.\n<!-- orbit:end workflow=\"docs\" -->\n")
-	require.Contains(t, string(humansData), "<!-- orbit:begin workflow=\"ops\" -->\nRun the Installed Orbit ops workflow.\n<!-- orbit:end workflow=\"ops\" -->\n")
+	require.NotContains(t, string(humansData), "Run the Installed Orbit docs workflow.\n")
+	require.NotContains(t, string(humansData), "Run the Installed Orbit ops workflow.\n")
 }
 
 func TestHarnessInstallBatchOverwriteExistingOverwritesTouchedGuidanceDrift(t *testing.T) {

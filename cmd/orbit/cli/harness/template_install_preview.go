@@ -393,7 +393,9 @@ func ApplyTemplateInstallPreview(
 
 	if hasCleanupPlan {
 		runBeforeBundleOwnedCleanupHook(repoRoot, preview.Source.Manifest.Template.HarnessID, cleanupPlan)
-		removedPaths, err := applyBundleOwnedCleanup(repoRoot, preview.Source.Manifest.Template.HarnessID, cleanupPlan)
+		removedPaths, err := applyBundleOwnedCleanup(repoRoot, BundleRecord{
+			HarnessID: preview.Source.Manifest.Template.HarnessID,
+		}, cleanupPlan)
 		if err != nil {
 			return rollbackOnError(fmt.Errorf("remove stale bundle-owned paths: %w", err))
 		}
@@ -909,7 +911,7 @@ func cloneBundleAgentOverlayContents(files map[string]AgentOverlayFile) map[stri
 	return cloned
 }
 
-func applyBundleOwnedCleanup(repoRoot string, harnessID string, plan bundleOwnedCleanupPlan) ([]string, error) {
+func applyBundleOwnedCleanup(repoRoot string, record BundleRecord, plan bundleOwnedCleanupPlan) ([]string, error) {
 	removed := make([]string, 0, len(plan.DeletePaths)+1)
 	for _, path := range plan.DeletePaths {
 		filename := filepath.Join(repoRoot, filepath.FromSlash(path))
@@ -920,7 +922,13 @@ func applyBundleOwnedCleanup(repoRoot string, harnessID string, plan bundleOwned
 	}
 
 	if plan.RemoveRootAgentsBlock {
-		if err := RemoveBundleAgentsPayload(repoRoot, harnessID); err != nil {
+		var err error
+		if record.RootAgentsDigest != "" {
+			err = RemoveBundleAgentsPayloadForRecord(repoRoot, record)
+		} else {
+			err = RemoveBundleAgentsPayload(repoRoot, record.HarnessID)
+		}
+		if err != nil {
 			return nil, fmt.Errorf("remove stale bundle AGENTS block: %w", err)
 		}
 		removed = append(removed, rootAgentsPath)

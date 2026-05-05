@@ -161,6 +161,27 @@ func WrapRuntimeAgentsOwnerBlock(ownerKind OwnerKind, workflowID string, payload
 	return rendered.Bytes(), nil
 }
 
+func runtimeAgentsDocumentHasNoBlocks(document AgentsRuntimeDocument) bool {
+	for _, segment := range document.Segments {
+		if segment.Kind == AgentsRuntimeSegmentBlock {
+			return false
+		}
+	}
+	return true
+}
+
+func runtimeAgentsDocumentContainsRunViewPayload(document AgentsRuntimeDocument, data []byte, payload []byte) bool {
+	if !runtimeAgentsDocumentHasNoBlocks(document) {
+		return false
+	}
+	normalizedData := normalizeRuntimeAgentsPayload(data)
+	normalizedPayload := normalizeRuntimeAgentsPayload(payload)
+	if len(bytes.TrimSpace(normalizedPayload)) == 0 {
+		return bytes.Equal(normalizedData, normalizedPayload)
+	}
+	return bytes.Contains(normalizedData, normalizedPayload)
+}
+
 func trimRuntimeAgentsMarkerPadding(content []byte) []byte {
 	lines := splitLinesPreserveNewline(content)
 	if len(lines) == 0 {

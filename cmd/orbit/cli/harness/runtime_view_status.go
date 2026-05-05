@@ -221,6 +221,13 @@ func inspectRuntimeViewMemberHints(
 	repoRoot string,
 	members []RuntimeMember,
 ) (RuntimeViewMemberHintSummary, []RuntimeViewMemberHintOrbitInfo, error) {
+	if len(members) == 0 {
+		return RuntimeViewMemberHintSummary{
+			BackfillAllowed: true,
+			Blockers:        []string{},
+		}, []RuntimeViewMemberHintOrbitInfo{}, nil
+	}
+
 	worktreeFiles, err := gitpkg.WorktreeFiles(ctx, repoRoot)
 	if err != nil {
 		return RuntimeViewMemberHintSummary{}, nil, fmt.Errorf("list worktree files: %w", err)

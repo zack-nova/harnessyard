@@ -1,8 +1,11 @@
 package orbittemplate
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -27,9 +30,10 @@ type InstalledTemplateBindingsApplyPreviewInput struct {
 
 // InstalledTemplateBindingsApplyPreview captures the current-vars render preview plus changed paths and drift findings.
 type InstalledTemplateBindingsApplyPreview struct {
-	Preview       TemplateApplyPreview
-	ChangedPaths  []string
-	DriftFindings []InstallDriftFinding
+	Preview                          TemplateApplyPreview
+	PreviousRenderedSharedAgentsFile *CandidateFile
+	ChangedPaths                     []string
+	DriftFindings                    []InstallDriftFinding
 }
 
 // InstalledTemplateBindingsApplyInput captures the real write path for one install-backed orbit reapply.
@@ -66,6 +70,11 @@ func BuildInstalledTemplateBindingsApplyPreview(
 	if err != nil {
 		return InstalledTemplateBindingsApplyPreview{}, fmt.Errorf("resolve installed template source: %w", err)
 	}
+	previousPreview, previousOK := replayInstalledTemplateBestEffort(ctx, input.RepoRoot, record)
+	var previousSharedAgentsFile *CandidateFile
+	if previousOK {
+		previousSharedAgentsFile = previousPreview.RenderedSharedAgentsFile
+	}
 
 	preview, err := buildInstalledTemplateBindingsPreviewFromRecord(
 		ctx,
@@ -94,9 +103,10 @@ func BuildInstalledTemplateBindingsApplyPreview(
 	}
 
 	return InstalledTemplateBindingsApplyPreview{
-		Preview:       preview,
-		ChangedPaths:  changedPaths,
-		DriftFindings: driftFindings,
+		Preview:                          preview,
+		PreviousRenderedSharedAgentsFile: previousSharedAgentsFile,
+		ChangedPaths:                     changedPaths,
+		DriftFindings:                    driftFindings,
 	}, nil
 }
 
@@ -123,7 +133,7 @@ func ApplyInstalledTemplateBindings(
 		)
 	}
 
-	writtenPaths, err := applyInstalledTemplateBindingsPreview(input.Preview.RepoRoot, preview.Preview, preview.ChangedPaths)
+	writtenPaths, err := applyInstalledTemplateBindingsPreview(input.Preview.RepoRoot, preview.Preview, preview.ChangedPaths, preview.PreviousRenderedSharedAgentsFile)
 	if err != nil {
 		return InstalledTemplateBindingsApplyResult{}, err
 	}
@@ -150,7 +160,7 @@ func WriteInstalledTemplateBindingsApplyPreview(
 		changedPaths = append(changedPaths, installRepoPath)
 	}
 
-	return applyInstalledTemplateBindingsPreview(repoRoot, preview.Preview, changedPaths)
+	return applyInstalledTemplateBindingsPreview(repoRoot, preview.Preview, changedPaths, preview.PreviousRenderedSharedAgentsFile)
 }
 
 func buildInstalledTemplateBindingsPreviewFromRecord(
@@ -345,6 +355,7 @@ func applyInstalledTemplateBindingsPreview(
 	repoRoot string,
 	preview TemplateApplyPreview,
 	changedPaths []string,
+	previousSharedAgentsFile *CandidateFile,
 ) ([]string, error) {
 	changedSet := make(map[string]struct{}, len(changedPaths))
 	for _, path := range changedPaths {
@@ -369,7 +380,12 @@ func applyInstalledTemplateBindingsPreview(
 
 	if _, ok := changedSet[sharedFilePathAgents]; ok {
 		if preview.RenderedSharedAgentsFile != nil {
-			if err := applySharedAgentsPayload(repoRoot, preview.Source.Manifest.Template.OrbitID, preview.RenderedSharedAgentsFile.Content); err != nil {
+			if err := applySharedAgentsPayloadReplacingRunViewPayload(
+				repoRoot,
+				preview.Source.Manifest.Template.OrbitID,
+				previousSharedAgentsFile,
+				preview.RenderedSharedAgentsFile.Content,
+			); err != nil {
 				return nil, fmt.Errorf("write runtime AGENTS.md: %w", err)
 			}
 		} else {
@@ -407,6 +423,48 @@ func applyInstalledTemplateBindingsPreview(
 	sort.Strings(writtenPaths)
 
 	return writtenPaths, nil
+}
+
+func applySharedAgentsPayloadReplacingRunViewPayload(repoRoot string, orbitID string, previous *CandidateFile, next []byte) error {
+	if previous == nil {
+		return applySharedAgentsPayload(repoRoot, orbitID, next)
+	}
+
+	filename := filepath.Join(repoRoot, filepath.FromSlash(sharedFilePathAgents))
+	//nolint:gosec // The runtime AGENTS path is fixed under the repo root.
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return applySharedAgentsPayload(repoRoot, orbitID, next)
+		}
+		return fmt.Errorf("read runtime AGENTS.md: %w", err)
+	}
+	document, err := ParseRuntimeAgentsDocument(data)
+	if err != nil {
+		return fmt.Errorf("parse runtime AGENTS.md: %w", err)
+	}
+	if _, found := runtimeAgentsBlockContent(document, orbitID); found || !runtimeAgentsDocumentHasNoBlocks(document) {
+		return applySharedAgentsPayload(repoRoot, orbitID, next)
+	}
+
+	previousPayload := normalizeRuntimeAgentsPayload(previous.Content)
+	if len(bytes.TrimSpace(previousPayload)) == 0 {
+		return applySharedAgentsPayload(repoRoot, orbitID, next)
+	}
+	normalizedData := normalizeRuntimeAgentsPayload(data)
+	if !bytes.Contains(normalizedData, previousPayload) {
+		return applySharedAgentsPayload(repoRoot, orbitID, next)
+	}
+
+	fileInfo, err := os.Stat(filename)
+	if err != nil {
+		return fmt.Errorf("stat runtime AGENTS.md: %w", err)
+	}
+	updated := bytes.Replace(normalizedData, previousPayload, normalizeRuntimeAgentsPayload(next), 1)
+	if err := contractutil.AtomicWriteFileMode(filename, updated, fileInfo.Mode().Perm()); err != nil {
+		return fmt.Errorf("write runtime AGENTS.md: %w", err)
+	}
+	return nil
 }
 
 func orbitHostedDefinitionPathForPreview(repoRoot string, preview TemplateApplyPreview) (string, error) {

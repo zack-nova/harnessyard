@@ -423,7 +423,7 @@ func applyBundleMemberExtractMutation(
 	}
 
 	if input.Prepared.DetachPlan.RemoveRootAgentsBlock {
-		if err := RemoveBundleAgentsPayload(input.RepoRoot, input.Prepared.DetachPlan.ExistingRecord.HarnessID); err != nil {
+		if err := RemoveBundleAgentsPayloadForRecord(input.RepoRoot, input.Prepared.DetachPlan.ExistingRecord); err != nil {
 			return rollbackOnError(fmt.Errorf("remove bundle AGENTS block: %w", err))
 		}
 		removedPaths = append(removedPaths, rootAgentsPath)

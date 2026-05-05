@@ -9412,11 +9412,9 @@ func TestHarnessInstallHarnessTemplateLocalWriteJSON(t *testing.T) {
 
 	agentsData, err := os.ReadFile(filepath.Join(runtimeRepo.Root, "AGENTS.md"))
 	require.NoError(t, err)
-	document, err := orbittemplate.ParseRuntimeAgentsDocument(agentsData)
-	require.NoError(t, err)
-	require.Len(t, document.Segments, 1)
-	require.Equal(t, payload.HarnessID, document.Segments[0].OrbitID)
-	require.Contains(t, string(document.Segments[0].Content), "Installed Orbit")
+	require.Contains(t, string(agentsData), "Installed Orbit")
+	require.NotContains(t, string(agentsData), "<!-- harness:begin")
+	require.NotContains(t, string(agentsData), "<!-- harness:end")
 }
 
 func TestHarnessInstallHarnessTemplateOverwriteExistingReplacesSameBundle(t *testing.T) {
@@ -9530,11 +9528,9 @@ func TestHarnessInstallHarnessTemplateOverwriteExistingReplacesSameBundle(t *tes
 
 	agentsData, err := os.ReadFile(filepath.Join(runtimeRepo.Root, "AGENTS.md"))
 	require.NoError(t, err)
-	document, err := orbittemplate.ParseRuntimeAgentsDocument(agentsData)
-	require.NoError(t, err)
-	require.Len(t, document.Segments, 1)
-	require.Equal(t, payload.HarnessID, document.Segments[0].OrbitID)
-	require.Contains(t, string(document.Segments[0].Content), "Installed Orbit v2")
+	require.Contains(t, string(agentsData), "Installed Orbit v2")
+	require.NotContains(t, string(agentsData), "<!-- harness:begin")
+	require.NotContains(t, string(agentsData), "<!-- harness:end")
 }
 
 func TestHarnessInstallHarnessTemplateOverwriteExistingFailsAcrossInstallUnits(t *testing.T) {

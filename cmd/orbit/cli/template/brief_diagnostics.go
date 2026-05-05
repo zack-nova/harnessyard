@@ -106,6 +106,11 @@ func InspectOrbitBriefLaneForOperation(ctx context.Context, repoRoot string, orb
 
 			return status, nil
 		}
+		if hasTruth && runtimeAgentsDocumentContainsRunViewPayload(document, data, payload) {
+			status.State = BriefLaneStateMaterializedInSync
+			applyBriefLanePermissions(&status)
+			return status, nil
+		}
 
 		status.State = missingTruthOrStructuredOnly(hasTruth)
 		applyBriefLanePermissions(&status)

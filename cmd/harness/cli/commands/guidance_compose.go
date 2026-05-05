@@ -158,6 +158,10 @@ func runGuidanceCompose(
 		return harnesspkg.ComposeRuntimeGuidanceResult{}, harnesspkg.ReadinessReport{}, false, err
 	}
 
+	tx, err := harnesspkg.BeginInstallTransaction(cmd.Context(), repoRoot, []string{"AGENTS.md", "HUMANS.md", "BOOTSTRAP.md"})
+	if err != nil {
+		return harnesspkg.ComposeRuntimeGuidanceResult{}, harnesspkg.ReadinessReport{}, false, fmt.Errorf("begin guidance sync transaction: %w", err)
+	}
 	result, err := harnesspkg.ComposeRuntimeGuidance(cmd.Context(), harnesspkg.ComposeRuntimeGuidanceInput{
 		RepoRoot: repoRoot,
 		Force:    force,
@@ -165,8 +169,19 @@ func runGuidanceCompose(
 		OrbitIDs: orbitIDs,
 	})
 	if err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return harnesspkg.ComposeRuntimeGuidanceResult{}, harnesspkg.ReadinessReport{}, false, fmt.Errorf("compose runtime guidance: %w; rollback guidance sync: %v", err, rollbackErr)
+		}
 		return harnesspkg.ComposeRuntimeGuidanceResult{}, harnesspkg.ReadinessReport{}, false, fmt.Errorf("compose runtime guidance: %w", err)
 	}
+	if _, err := harnesspkg.ApplyRunViewPresentationDefault(cmd.Context(), repoRoot); err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return harnesspkg.ComposeRuntimeGuidanceResult{}, harnesspkg.ReadinessReport{}, false, fmt.Errorf("apply Run View presentation: %w; rollback guidance sync: %v", err, rollbackErr)
+		}
+		return harnesspkg.ComposeRuntimeGuidanceResult{}, harnesspkg.ReadinessReport{}, false, fmt.Errorf("apply Run View presentation: %w", err)
+	}
+	tx.Commit()
+
 	readiness, err := evaluateCommandReadiness(cmd.Context(), repoRoot)
 	if err != nil {
 		return harnesspkg.ComposeRuntimeGuidanceResult{}, harnesspkg.ReadinessReport{}, false, err

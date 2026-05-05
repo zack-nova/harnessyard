@@ -372,10 +372,11 @@ func ensureRuntimeAgentsBlockMatches(repoRoot string, orbitID string, payload []
 		return fmt.Errorf("read runtime AGENTS.md: %w", err)
 	}
 
-	actual, found, err := runtimeAgentsBlockContent(data, orbitID)
+	document, err := ParseRuntimeAgentsDocument(data)
 	if err != nil {
 		return fmt.Errorf("parse runtime AGENTS.md: %w", err)
 	}
+	actual, found := runtimeAgentsBlockContent(document, orbitID)
 	if !found {
 		return nil
 	}
@@ -397,34 +398,33 @@ func runtimeAgentsHasDrift(repoRoot string, orbitID string, expected *CandidateF
 		return false, fmt.Errorf("read runtime AGENTS.md: %w", err)
 	}
 
-	actual, found, err := runtimeAgentsBlockContent(data, orbitID)
+	document, err := ParseRuntimeAgentsDocument(data)
 	if err != nil {
 		return true, fmt.Errorf("parse runtime AGENTS.md: %w", err)
 	}
+	actual, found := runtimeAgentsBlockContent(document, orbitID)
 
 	if expected == nil {
 		return found, nil
 	}
 	if !found {
+		if runtimeAgentsDocumentContainsRunViewPayload(document, data, expected.Content) {
+			return false, nil
+		}
 		return true, nil
 	}
 
 	return !bytes.Equal(actual, normalizeRuntimeAgentsPayload(expected.Content)), nil
 }
 
-func runtimeAgentsBlockContent(data []byte, orbitID string) ([]byte, bool, error) {
-	document, err := ParseRuntimeAgentsDocument(data)
-	if err != nil {
-		return nil, false, err
-	}
-
+func runtimeAgentsBlockContent(document AgentsRuntimeDocument, orbitID string) ([]byte, bool) {
 	for _, segment := range document.Segments {
 		if segment.Kind == AgentsRuntimeSegmentBlock && segment.OwnerKind == OwnerKindOrbit && segment.WorkflowID == orbitID {
-			return append([]byte(nil), segment.Content...), true, nil
+			return append([]byte(nil), segment.Content...), true
 		}
 	}
 
-	return nil, false, nil
+	return nil, false
 }
 
 func normalizeRuntimeAgentsPayload(payload []byte) []byte {

@@ -163,7 +163,7 @@ func FilterBundleMemberShrinkPlanDeletePaths(
 
 // ApplyBundleMemberShrinkPlan applies one previously validated bundle shrink plan.
 func ApplyBundleMemberShrinkPlan(repoRoot string, plan BundleMemberShrinkPlan) ([]string, error) {
-	removedPaths, err := applyBundleOwnedCleanup(repoRoot, plan.ExistingRecord.HarnessID, bundleOwnedCleanupPlan{
+	removedPaths, err := applyBundleOwnedCleanup(repoRoot, plan.ExistingRecord, bundleOwnedCleanupPlan{
 		DeletePaths:           append([]string(nil), plan.DeletePaths...),
 		RemoveRootAgentsBlock: plan.RemoveRootAgentsBlock,
 	})

@@ -92,6 +92,13 @@ func composeInstallScopedGuidance(
 			Warnings: []string{formatInstallScopedGuidanceWarning(err, rollbackErr)},
 		}
 	}
+	runViewResult, err := harnesspkg.ApplyRunViewPresentationDefault(ctx, repoRoot)
+	if err != nil {
+		rollbackErr := tx.Rollback()
+		return installScopedGuidanceOutcome{
+			Warnings: []string{formatInstallScopedGuidanceWarning(fmt.Errorf("apply Run View presentation: %w", err), rollbackErr)},
+		}
+	}
 	tx.Commit()
 
 	writtenPaths := make([]string, 0, len(result.Artifacts))
@@ -101,6 +108,7 @@ func composeInstallScopedGuidance(
 		}
 		writtenPaths = append(writtenPaths, installRepoRelativePath(repoRoot, artifact.Path))
 	}
+	writtenPaths = append(writtenPaths, runViewCleanupChangedPaths(runViewResult.Cleanup)...)
 
 	return installScopedGuidanceOutcome{
 		WrittenPaths: dedupeSortedStrings(writtenPaths),
@@ -152,6 +160,34 @@ func installRepoRelativePath(repoRoot string, path string) string {
 		return filepath.ToSlash(path)
 	}
 	return filepath.ToSlash(relativePath)
+}
+
+func runViewCleanupChangedPaths(result harnesspkg.RuntimeViewCleanupPlanResult) []string {
+	paths := make([]string, 0, len(result.ChangedFiles))
+	for _, changedFile := range result.ChangedFiles {
+		paths = append(paths, changedFile.Path)
+	}
+	return dedupeSortedStrings(paths)
+}
+
+func appendRunViewPresentationToHarnessTemplateInstallResult(
+	ctx context.Context,
+	repoRoot string,
+	result *harnesspkg.TemplateInstallResult,
+) {
+	if result == nil {
+		return
+	}
+
+	runViewResult, err := harnesspkg.ApplyRunViewPresentationDefault(ctx, repoRoot)
+	if err != nil {
+		result.Preview.Warnings = append(result.Preview.Warnings, fmt.Sprintf(
+			"install succeeded, but Run View presentation cleanup failed: %v. Fix the issue and run `hyard view run`.",
+			err,
+		))
+		return
+	}
+	result.WrittenPaths = dedupeSortedStrings(append(result.WrittenPaths, runViewCleanupChangedPaths(runViewResult.Cleanup)...))
 }
 
 func dedupeSortedStrings(values []string) []string {

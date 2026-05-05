@@ -155,6 +155,9 @@ func newCloneCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("install harness template: %w", err)
 			}
+			if _, err := harnesspkg.ApplyRunViewPresentationDefault(cmd.Context(), bootstrap.Repo.Root); err != nil {
+				return fmt.Errorf("apply Run View presentation: %w", err)
+			}
 
 			readiness, err := harnesspkg.EvaluateRuntimeReadiness(cmd.Context(), bootstrap.Repo.Root)
 			if err != nil {
