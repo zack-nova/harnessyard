@@ -228,6 +228,105 @@ func TestHyardAdoptWriteJSONAuthorsCodexLocalSkillsAsCapabilityTruth(t *testing.
 	require.Contains(t, string(frameworksData), "recommended_framework: codex\n")
 }
 
+func TestHyardAdoptWriteJSONConvertsCodexNativeHookToUnifiedTruth(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, "AGENTS.md", "# Agent guidance\n\nUse Codex hook checks.\n")
+	repo.WriteFile(t, ".codex/hooks.json", ""+
+		"{\n"+
+		"  \"PreToolUse\": [\n"+
+		"    {\n"+
+		"      \"id\": \"block-dangerous-shell\",\n"+
+		"      \"description\": \"Block dangerous shell commands.\",\n"+
+		"      \"command\": \"hooks/block-dangerous-shell/run.sh\"\n"+
+		"    }\n"+
+		"  ]\n"+
+		"}\n")
+	repo.WriteFile(t, "hooks/block-dangerous-shell/run.sh", "#!/bin/sh\nprintf '{\"decision\":\"allow\"}\\n'\n")
+	require.NoError(t, os.Chmod(filepath.Join(repo.Root, "hooks", "block-dangerous-shell", "run.sh"), 0o755))
+	repo.AddAndCommit(t, "seed codex hook ordinary repository")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "adopt", "--json", "--orbit", "docs")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload hyardAdoptWritePayload
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Contains(t, payload.WrittenPaths, ".harness/agents/config.yaml")
+
+	config, err := harnesspkg.LoadAgentUnifiedConfigFile(repo.Root)
+	require.NoError(t, err)
+	require.Equal(t, map[string]harnesspkg.AgentUnifiedConfigTarget{
+		"codex": {Enabled: true, Scope: "project"},
+	}, config.Targets)
+	require.True(t, config.Hooks.Enabled)
+	require.Equal(t, "skip", config.Hooks.UnsupportedBehavior)
+	require.Len(t, config.Hooks.Entries, 1)
+	hook := config.Hooks.Entries[0]
+	require.Equal(t, "block-dangerous-shell", hook.ID)
+	require.Equal(t, "Block dangerous shell commands.", hook.Description)
+	require.Equal(t, "tool.before", hook.Event.Kind)
+	require.Equal(t, "command", hook.Handler.Type)
+	require.Equal(t, "hooks/block-dangerous-shell/run.sh", hook.Handler.Path)
+	require.Equal(t, map[string]bool{"codex": true}, hook.Targets)
+
+	spec, err := orbitpkg.LoadHostedOrbitSpec(context.Background(), repo.Root, "docs")
+	require.NoError(t, err)
+	require.Len(t, spec.Members, 1)
+	require.Equal(t, "hook-handler-block-dangerous-shell", spec.Members[0].Name)
+	require.Equal(t, orbitpkg.OrbitMemberProcess, spec.Members[0].Role)
+	require.Equal(t, []string{"hooks/block-dangerous-shell/run.sh"}, spec.Members[0].Paths.Include)
+}
+
+func TestHyardAdoptWriteJSONMergesCodexNativeHooksWithImportedProjectConfig(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, "AGENTS.md", "# Agent guidance\n\nUse Codex config and hook checks.\n")
+	repo.WriteFile(t, ".codex/config.toml", ""+
+		"model = \"gpt-5.4\"\n"+
+		"sandbox_mode = \"workspace-write\"\n")
+	repo.WriteFile(t, ".codex/hooks.json", ""+
+		"{\n"+
+		"  \"PreToolUse\": [\n"+
+		"    {\n"+
+		"      \"id\": \"block-dangerous-shell\",\n"+
+		"      \"command\": \"hooks/block-dangerous-shell/run.sh\"\n"+
+		"    }\n"+
+		"  ]\n"+
+		"}\n")
+	repo.WriteFile(t, "hooks/block-dangerous-shell/run.sh", "#!/bin/sh\nprintf '{\"decision\":\"allow\"}\\n'\n")
+	require.NoError(t, os.Chmod(filepath.Join(repo.Root, "hooks", "block-dangerous-shell", "run.sh"), 0o755))
+	repo.AddAndCommit(t, "seed codex config and hook ordinary repository")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "adopt", "--json", "--orbit", "docs")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload hyardAdoptWritePayload
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.NotNil(t, payload.AgentConfig)
+	require.Contains(t, payload.AgentConfig.Imported, harnesspkg.AgentConfigImportEntry{
+		Key:    "model",
+		Source: "project",
+		Value:  "gpt-5.4",
+	})
+	require.Contains(t, payload.AgentConfig.Imported, harnesspkg.AgentConfigImportEntry{
+		Key:    "sandbox_mode",
+		Source: "project",
+		Value:  "workspace-write",
+	})
+
+	config, err := harnesspkg.LoadAgentUnifiedConfigFile(repo.Root)
+	require.NoError(t, err)
+	require.Equal(t, "gpt-5.4", config.Config["model"])
+	require.Equal(t, "workspace-write", config.Config["sandbox_mode"])
+	require.Len(t, config.Hooks.Entries, 1)
+	require.Equal(t, "block-dangerous-shell", config.Hooks.Entries[0].ID)
+	require.Equal(t, "hooks/block-dangerous-shell/run.sh", config.Hooks.Entries[0].Handler.Path)
+}
+
 func TestHyardAdoptWriteJSONImportsSafeCodexProjectConfig(t *testing.T) {
 	repo := testutil.NewRepo(t)
 	repo.WriteFile(t, "AGENTS.md", "# Agent guidance\n\nUse Codex project settings.\n")
@@ -701,6 +800,165 @@ func TestHyardAdoptCheckJSONReportsValidCodexLocalSkillCandidate(t *testing.T) {
 		Shape: "directory",
 		Evidence: []hyardAdoptCheckEvidence{
 			{Kind: "codex_skill_root", Path: ".codex/skills/frontend-test-lab/SKILL.md", Detail: "frontend-test-lab"},
+		},
+	})
+}
+
+func TestHyardAdoptCheckJSONReportsConvertibleCodexHookHandlerCandidate(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, "README.md", "# Codex hook ordinary repository\n")
+	repo.WriteFile(t, ".codex/hooks.json", ""+
+		"{\n"+
+		"  \"PreToolUse\": [\n"+
+		"    {\n"+
+		"      \"id\": \"block-dangerous-shell\",\n"+
+		"      \"description\": \"Block dangerous shell commands.\",\n"+
+		"      \"command\": \"hooks/block-dangerous-shell/run.sh\"\n"+
+		"    }\n"+
+		"  ]\n"+
+		"}\n")
+	repo.WriteFile(t, "hooks/block-dangerous-shell/run.sh", "#!/bin/sh\nprintf '{\"decision\":\"allow\"}\\n'\n")
+	repo.AddAndCommit(t, "seed codex hook ordinary repository")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "adopt", "--check", "--json", "--orbit", "docs")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload hyardAdoptCheckPayload
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.True(t, payload.Adoptable)
+	require.Equal(t, "codex", payload.Frameworks.Recommended)
+	require.Contains(t, payload.Candidates, hyardAdoptCheckCandidate{
+		Path:                  "hooks/block-dangerous-shell/run.sh",
+		Kind:                  "codex_hook_handler",
+		Shape:                 "file",
+		RecommendedMemberRole: "process",
+		RoleConfirmation: hyardAdoptCheckRoleConfirmation{
+			Required:               true,
+			BatchAcceptRecommended: true,
+			EditableRoles:          []string{"process", "subject", "ignore"},
+		},
+		Evidence: []hyardAdoptCheckEvidence{
+			{Kind: "codex_hook_definition", Path: ".codex/hooks.json", Detail: "PreToolUse:block-dangerous-shell"},
+		},
+	})
+	require.Empty(t, payload.Diagnostics)
+}
+
+func TestHyardAdoptCheckJSONWarnsForUnsupportedCodexHookEvent(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, "README.md", "# Codex hook ordinary repository\n")
+	repo.WriteFile(t, ".codex/hooks.json", ""+
+		"{\n"+
+		"  \"Notification\": [\n"+
+		"    {\n"+
+		"      \"id\": \"notify-team\",\n"+
+		"      \"command\": \"hooks/notify-team/run.sh\"\n"+
+		"    }\n"+
+		"  ]\n"+
+		"}\n")
+	repo.WriteFile(t, "hooks/notify-team/run.sh", "#!/bin/sh\nprintf '{\"decision\":\"allow\"}\\n'\n")
+	repo.AddAndCommit(t, "seed unsupported codex hook ordinary repository")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "adopt", "--check", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload hyardAdoptCheckPayload
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.True(t, payload.Adoptable)
+	require.NotContains(t, hyardAdoptCheckCandidatePaths(payload.Candidates), "hooks/notify-team/run.sh")
+	require.Contains(t, payload.Diagnostics, hyardAdoptCheckDiagnostic{
+		Code:     "codex_hook_unsupported_event",
+		Severity: "warning",
+		Message:  "Codex native hook event is unsupported and will not be adopted",
+		Evidence: []hyardAdoptCheckEvidence{
+			{Kind: "codex_hook_event", Path: ".codex/hooks.json", Detail: "Notification"},
+		},
+	})
+}
+
+func TestHyardAdoptCheckJSONWarnsForUnparseableCodexHooksFile(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, "README.md", "# Broken Codex hook ordinary repository\n")
+	repo.WriteFile(t, ".codex/hooks.json", "{ not-json\n")
+	repo.AddAndCommit(t, "seed broken codex hooks ordinary repository")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "adopt", "--check", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload hyardAdoptCheckPayload
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.True(t, payload.Adoptable)
+	require.Empty(t, payload.Candidates)
+	require.Contains(t, hyardAdoptCheckDiagnosticCodes(payload.Diagnostics), "codex_hook_parse_error")
+}
+
+func TestHyardAdoptCheckJSONWarnsForUnsafeCodexHookHandlerPath(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, "README.md", "# Unsafe Codex hook ordinary repository\n")
+	repo.WriteFile(t, ".codex/hooks.json", ""+
+		"{\n"+
+		"  \"PreToolUse\": [\n"+
+		"    {\n"+
+		"      \"id\": \"escaping-handler\",\n"+
+		"      \"command\": \"../hooks/escaping-handler/run.sh\"\n"+
+		"    }\n"+
+		"  ]\n"+
+		"}\n")
+	repo.AddAndCommit(t, "seed unsafe codex hooks ordinary repository")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "adopt", "--check", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload hyardAdoptCheckPayload
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.True(t, payload.Adoptable)
+	require.Empty(t, payload.Candidates)
+	require.Contains(t, hyardAdoptCheckDiagnosticCodes(payload.Diagnostics), "codex_hook_unsafe_command")
+}
+
+func TestHyardAdoptCheckJSONWarnsForMissingCodexHookHandler(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, "README.md", "# Missing Codex hook handler ordinary repository\n")
+	repo.WriteFile(t, ".codex/hooks.json", ""+
+		"{\n"+
+		"  \"PreToolUse\": [\n"+
+		"    {\n"+
+		"      \"id\": \"missing-handler\",\n"+
+		"      \"command\": \"hooks/missing-handler/run.sh\"\n"+
+		"    }\n"+
+		"  ]\n"+
+		"}\n")
+	repo.AddAndCommit(t, "seed missing codex hook handler ordinary repository")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "adopt", "--check", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload hyardAdoptCheckPayload
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.True(t, payload.Adoptable)
+	require.Empty(t, payload.Candidates)
+	require.Contains(t, payload.Diagnostics, hyardAdoptCheckDiagnostic{
+		Code:     "codex_hook_handler_missing",
+		Severity: "warning",
+		Message:  "Codex native hook handler path is missing",
+		Evidence: []hyardAdoptCheckEvidence{
+			{Kind: "codex_hook_definition", Path: ".codex/hooks.json", Detail: "PreToolUse:missing-handler"},
+			{Kind: "codex_hook_handler", Path: "hooks/missing-handler/run.sh"},
 		},
 	})
 }
@@ -1229,6 +1487,15 @@ func hyardAdoptCheckCandidatePaths(candidates []hyardAdoptCheckCandidate) []stri
 	}
 
 	return paths
+}
+
+func hyardAdoptCheckDiagnosticCodes(diagnostics []hyardAdoptCheckDiagnostic) []string {
+	codes := make([]string, 0, len(diagnostics))
+	for _, diagnostic := range diagnostics {
+		codes = append(codes, diagnostic.Code)
+	}
+
+	return codes
 }
 
 func newNamedGitRepoForHyardAdopt(t *testing.T, name string) string {

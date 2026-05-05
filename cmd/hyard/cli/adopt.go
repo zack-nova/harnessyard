@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -214,6 +215,7 @@ func buildAdoptWriteOutput(cmd *cobra.Command, explicitOrbitID string) (adoptWri
 	}
 	spec.Meta.AgentsTemplate = string(originalAgents)
 	spec = applyAdoptedCodexLocalSkillCapabilityTruth(spec, preflight.Candidates)
+	spec = applyAdoptedCodexHookHandlerMemberTruth(spec, preflight.Candidates)
 	if _, err := orbitpkg.WriteHostedOrbitSpec(preflight.RepoRoot, spec); err != nil {
 		return adoptWriteOutput{}, fmt.Errorf("write adopted orbit spec: %w", err)
 	}
@@ -238,6 +240,17 @@ func buildAdoptWriteOutput(cmd *cobra.Command, explicitOrbitID string) (adoptWri
 			return adoptWriteOutput{}, fmt.Errorf("import Codex project config during Adoption: %w", err)
 		}
 		agentConfigImport = &importResult
+	}
+	convertedHooks, _, err := inspectAdoptableCodexNativeHooks(cmd, preflight.RepoRoot)
+	if err != nil {
+		return adoptWriteOutput{}, err
+	}
+	hooksConfigWritten := false
+	if len(convertedHooks) > 0 {
+		if err := writeAdoptedCodexNativeHookTruth(preflight.RepoRoot, convertedHooks); err != nil {
+			return adoptWriteOutput{}, fmt.Errorf("write adopted Codex hook truth: %w", err)
+		}
+		hooksConfigWritten = true
 	}
 
 	if _, err := harnesspkg.LoadManifestFile(preflight.RepoRoot); err != nil {
@@ -279,6 +292,10 @@ func buildAdoptWriteOutput(cmd *cobra.Command, explicitOrbitID string) (adoptWri
 	if agentConfigImport != nil {
 		writtenPaths = append(writtenPaths, agentConfigImport.WrittenPaths...)
 	}
+	if hooksConfigWritten {
+		writtenPaths = append(writtenPaths, harnesspkg.AgentUnifiedConfigRepoPath())
+	}
+	writtenPaths = uniqueAdoptWritePaths(writtenPaths)
 
 	return adoptWriteOutput{
 		SchemaVersion: adoptionCheckSchemaVersion,
@@ -292,6 +309,20 @@ func buildAdoptWriteOutput(cmd *cobra.Command, explicitOrbitID string) (adoptWri
 		Readiness:     readiness,
 		NextActions:   adoptWriteNextActions(writtenPaths),
 	}, nil
+}
+
+func uniqueAdoptWritePaths(paths []string) []string {
+	unique := make([]string, 0, len(paths))
+	seen := map[string]struct{}{}
+	for _, path := range paths {
+		if _, ok := seen[path]; ok {
+			continue
+		}
+		seen[path] = struct{}{}
+		unique = append(unique, path)
+	}
+
+	return unique
 }
 
 func buildAdoptCheckOutput(cmd *cobra.Command, explicitOrbitID string) (adoptCheckOutput, error) {
@@ -326,6 +357,12 @@ func buildAdoptCheckOutput(cmd *cobra.Command, explicitOrbitID string) (adoptChe
 	}
 	candidates = append(candidates, localSkillCandidates...)
 	candidateDiagnostics = append(candidateDiagnostics, localSkillDiagnostics...)
+	hookCandidates, hookDiagnostics, err := inspectAdoptCheckCodexHookHandlerCandidates(cmd, repo.Root)
+	if err != nil {
+		return adoptCheckOutput{}, err
+	}
+	candidates = append(candidates, hookCandidates...)
+	candidateDiagnostics = append(candidateDiagnostics, hookDiagnostics...)
 
 	output := adoptCheckOutput{
 		SchemaVersion:          adoptionCheckSchemaVersion,
@@ -753,6 +790,352 @@ func applyAdoptedCodexLocalSkillCapabilityTruth(spec orbitpkg.OrbitSpec, candida
 	}
 
 	return spec
+}
+
+func applyAdoptedCodexHookHandlerMemberTruth(spec orbitpkg.OrbitSpec, candidates []adoptCheckCandidate) orbitpkg.OrbitSpec {
+	members := []orbitpkg.OrbitMember{}
+	seen := map[string]struct{}{}
+	for _, candidate := range candidates {
+		if candidate.Kind != "codex_hook_handler" {
+			continue
+		}
+		if _, ok := seen[candidate.Path]; ok {
+			continue
+		}
+		seen[candidate.Path] = struct{}{}
+		writeScope := true
+		exportScope := true
+		members = append(members, orbitpkg.OrbitMember{
+			Name: "hook-handler-" + adoptCheckCodexHookCandidateID(candidate),
+			Role: orbitpkg.OrbitMemberProcess,
+			Paths: orbitpkg.OrbitMemberPaths{
+				Include: []string{candidate.Path},
+			},
+			Scopes: &orbitpkg.OrbitMemberScopePatch{
+				Write:  &writeScope,
+				Export: &exportScope,
+			},
+		})
+	}
+	if len(members) == 0 {
+		return spec
+	}
+	sort.Slice(members, func(left, right int) bool {
+		return members[left].Name < members[right].Name
+	})
+	spec.Members = append(spec.Members, members...)
+
+	return spec
+}
+
+func adoptCheckCodexHookCandidateID(candidate adoptCheckCandidate) string {
+	for _, evidence := range candidate.Evidence {
+		if evidence.Kind != "codex_hook_definition" {
+			continue
+		}
+		_, hookID, ok := strings.Cut(evidence.Detail, ":")
+		if ok && ids.ValidateOrbitID(hookID) == nil {
+			return hookID
+		}
+	}
+	fallback := strings.NewReplacer("/", "-", ".", "-", "_", "-").Replace(candidate.Path)
+	fallback = strings.Trim(fallback, "-")
+	if fallback == "" {
+		return "handler"
+	}
+	if ids.ValidateOrbitID(fallback) == nil {
+		return fallback
+	}
+
+	return "handler"
+}
+
+type adoptCheckCodexNativeHook struct {
+	ID          string `json:"id"`
+	Description string `json:"description"`
+	Command     string `json:"command"`
+}
+
+type adoptedCodexNativeHook struct {
+	ID          string
+	Description string
+	NativeEvent string
+	EventKind   string
+	HandlerPath string
+}
+
+func inspectAdoptCheckCodexHookHandlerCandidates(
+	cmd *cobra.Command,
+	repoRoot string,
+) ([]adoptCheckCandidate, []adoptCheckDiagnostic, error) {
+	hooks, diagnostics, err := inspectAdoptableCodexNativeHooks(cmd, repoRoot)
+	if err != nil {
+		return nil, nil, err
+	}
+	candidates := []adoptCheckCandidate{}
+	seenHandlers := map[string]struct{}{}
+	for _, hook := range hooks {
+		if _, seen := seenHandlers[hook.HandlerPath]; seen {
+			continue
+		}
+		seenHandlers[hook.HandlerPath] = struct{}{}
+		candidates = append(candidates, adoptCheckCandidate{
+			Path:                  hook.HandlerPath,
+			Kind:                  "codex_hook_handler",
+			Shape:                 "file",
+			RecommendedMemberRole: "process",
+			RoleConfirmation: adoptCheckRoleConfirmation{
+				Required:               true,
+				BatchAcceptRecommended: true,
+				EditableRoles:          []string{"process", "subject", "ignore"},
+			},
+			Evidence: []adoptCheckEvidence{
+				{Kind: "codex_hook_definition", Path: ".codex/hooks.json", Detail: hook.NativeEvent + ":" + hook.ID},
+			},
+		})
+	}
+
+	return candidates, diagnostics, nil
+}
+
+func inspectAdoptableCodexNativeHooks(
+	cmd *cobra.Command,
+	repoRoot string,
+) ([]adoptedCodexNativeHook, []adoptCheckDiagnostic, error) {
+	hooksPath := filepath.Join(repoRoot, ".codex", "hooks.json")
+	data, err := os.ReadFile(hooksPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return []adoptedCodexNativeHook{}, []adoptCheckDiagnostic{}, nil
+		}
+		return nil, nil, fmt.Errorf("read Codex hooks: %w", err)
+	}
+
+	var nativeHooks map[string][]adoptCheckCodexNativeHook
+	if err := json.Unmarshal(data, &nativeHooks); err != nil {
+		return []adoptedCodexNativeHook{}, []adoptCheckDiagnostic{
+			adoptCheckCodexHookParseDiagnostic(err),
+		}, nil
+	}
+
+	trackedFiles, err := gitpkg.TrackedFiles(cmd.Context(), repoRoot)
+	if err != nil {
+		return nil, nil, fmt.Errorf("load tracked files for Codex hook discovery: %w", err)
+	}
+	tracked := make(map[string]struct{}, len(trackedFiles))
+	for _, path := range trackedFiles {
+		tracked[path] = struct{}{}
+	}
+
+	hooks := []adoptedCodexNativeHook{}
+	diagnostics := []adoptCheckDiagnostic{}
+	events := make([]string, 0, len(nativeHooks))
+	for event := range nativeHooks {
+		events = append(events, event)
+	}
+	sort.Strings(events)
+	for _, event := range events {
+		eventKind, ok := codexNativeHookEventKind(event)
+		if !ok {
+			diagnostics = append(diagnostics, adoptCheckCodexHookUnsupportedEventDiagnostic(event))
+			continue
+		}
+		for _, hook := range nativeHooks[event] {
+			if err := ids.ValidateOrbitID(hook.ID); err != nil {
+				diagnostics = append(diagnostics, adoptCheckCodexHookUnsafeCommandDiagnostic(event, hook, fmt.Errorf("hook id: %w", err)))
+				continue
+			}
+			handlerPath, err := adoptCheckCodexHookCommandHandlerPath(hook.Command)
+			if err != nil {
+				diagnostics = append(diagnostics, adoptCheckCodexHookUnsafeCommandDiagnostic(event, hook, err))
+				continue
+			}
+			if _, ok := tracked[handlerPath]; !ok {
+				diagnostics = append(diagnostics, adoptCheckCodexHookMissingHandlerDiagnostic(event, hook, handlerPath, repoRoot))
+				continue
+			}
+			hooks = append(hooks, adoptedCodexNativeHook{
+				ID:          hook.ID,
+				Description: strings.TrimSpace(hook.Description),
+				NativeEvent: event,
+				EventKind:   eventKind,
+				HandlerPath: handlerPath,
+			})
+		}
+	}
+
+	return hooks, diagnostics, nil
+}
+
+func writeAdoptedCodexNativeHookTruth(repoRoot string, hooks []adoptedCodexNativeHook) error {
+	configFile, hasConfig, err := harnesspkg.LoadOptionalAgentUnifiedConfigFile(repoRoot)
+	if err != nil {
+		return err
+	}
+	if !hasConfig {
+		configFile = harnesspkg.AgentUnifiedConfigFile{
+			Version: 1,
+			Targets: map[string]harnesspkg.AgentUnifiedConfigTarget{},
+			Config:  map[string]any{},
+		}
+	}
+	if configFile.Version == 0 {
+		configFile.Version = 1
+	}
+	if configFile.Targets == nil {
+		configFile.Targets = map[string]harnesspkg.AgentUnifiedConfigTarget{}
+	}
+	if _, ok := configFile.Targets["codex"]; !ok {
+		configFile.Targets["codex"] = harnesspkg.AgentUnifiedConfigTarget{
+			Enabled: true,
+			Scope:   "project",
+		}
+	}
+
+	unifiedHooks := configFile.Hooks
+	unifiedHooks.Enabled = true
+	if unifiedHooks.UnsupportedBehavior == "" {
+		unifiedHooks.UnsupportedBehavior = "skip"
+	}
+	if unifiedHooks.Defaults.TimeoutSeconds == 0 {
+		unifiedHooks.Defaults.TimeoutSeconds = 30
+	}
+	if unifiedHooks.Defaults.Runner == "" {
+		unifiedHooks.Defaults.Runner = "hyard"
+	}
+	seen := map[string]struct{}{}
+	for _, entry := range unifiedHooks.Entries {
+		seen[entry.ID] = struct{}{}
+	}
+	for _, hook := range hooks {
+		if _, exists := seen[hook.ID]; exists {
+			continue
+		}
+		seen[hook.ID] = struct{}{}
+		unifiedHooks.Entries = append(unifiedHooks.Entries, harnesspkg.AgentHookEntry{
+			ID:          hook.ID,
+			Enabled:     true,
+			Description: hook.Description,
+			Event: harnesspkg.AgentHookEvent{
+				Kind: hook.EventKind,
+			},
+			Handler: harnesspkg.AgentHookHandler{
+				Type: "command",
+				Path: hook.HandlerPath,
+			},
+			Targets: map[string]bool{"codex": true},
+		})
+	}
+	sort.Slice(unifiedHooks.Entries, func(left, right int) bool {
+		return unifiedHooks.Entries[left].ID < unifiedHooks.Entries[right].ID
+	})
+	configFile.Hooks = unifiedHooks
+	if _, err := harnesspkg.WriteAgentUnifiedConfigFile(repoRoot, configFile); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func adoptCheckCodexHookCommandHandlerPath(command string) (string, error) {
+	trimmed := strings.TrimSpace(command)
+	if trimmed == "" {
+		return "", fmt.Errorf("command must not be empty")
+	}
+	parts := strings.Fields(trimmed)
+	if len(parts) != 1 {
+		return "", fmt.Errorf("command must be a single repo-relative handler path")
+	}
+	handlerPath := strings.TrimPrefix(parts[0], "./")
+	if strings.HasPrefix(handlerPath, "~") {
+		return "", fmt.Errorf("home-relative handler paths are not supported")
+	}
+	if strings.Contains(handlerPath, "://") {
+		return "", fmt.Errorf("remote handler URLs are not supported")
+	}
+	normalized, err := ids.NormalizeRepoRelativePath(handlerPath)
+	if err != nil {
+		return "", err
+	}
+
+	return normalized, nil
+}
+
+func codexNativeHookEventKind(nativeEvent string) (string, bool) {
+	switch nativeEvent {
+	case "SessionStart":
+		return "session.start", true
+	case "UserPromptSubmit":
+		return "prompt.before_submit", true
+	case "PreToolUse":
+		return "tool.before", true
+	case "PermissionRequest":
+		return "permission.request", true
+	case "PostToolUse":
+		return "tool.after", true
+	case "Stop":
+		return "turn.stop", true
+	default:
+		return "", false
+	}
+}
+
+func adoptCheckCodexHookParseDiagnostic(err error) adoptCheckDiagnostic {
+	return adoptCheckDiagnostic{
+		Code:     "codex_hook_parse_error",
+		Severity: "warning",
+		Message:  "Codex native hooks file is unparseable and will not be adopted",
+		Evidence: []adoptCheckEvidence{
+			{Kind: "codex_hook_file", Path: ".codex/hooks.json", Detail: err.Error()},
+		},
+	}
+}
+
+func adoptCheckCodexHookUnsupportedEventDiagnostic(event string) adoptCheckDiagnostic {
+	return adoptCheckDiagnostic{
+		Code:     "codex_hook_unsupported_event",
+		Severity: "warning",
+		Message:  "Codex native hook event is unsupported and will not be adopted",
+		Evidence: []adoptCheckEvidence{
+			{Kind: "codex_hook_event", Path: ".codex/hooks.json", Detail: event},
+		},
+	}
+}
+
+func adoptCheckCodexHookUnsafeCommandDiagnostic(event string, hook adoptCheckCodexNativeHook, err error) adoptCheckDiagnostic {
+	return adoptCheckDiagnostic{
+		Code:     "codex_hook_unsafe_command",
+		Severity: "warning",
+		Message:  "Codex native hook command is unsafe or unsupported and will not be adopted",
+		Evidence: []adoptCheckEvidence{
+			{Kind: "codex_hook_definition", Path: ".codex/hooks.json", Detail: event + ":" + hook.ID + ": " + err.Error()},
+		},
+	}
+}
+
+func adoptCheckCodexHookMissingHandlerDiagnostic(
+	event string,
+	hook adoptCheckCodexNativeHook,
+	handlerPath string,
+	repoRoot string,
+) adoptCheckDiagnostic {
+	absolutePath := filepath.Join(repoRoot, filepath.FromSlash(handlerPath))
+	code := "codex_hook_handler_missing"
+	message := "Codex native hook handler path is missing"
+	if _, err := os.Lstat(absolutePath); err == nil {
+		code = "codex_hook_handler_untracked"
+		message = "Codex native hook handler path is untracked and will not be adopted"
+	}
+
+	return adoptCheckDiagnostic{
+		Code:     code,
+		Severity: "warning",
+		Message:  message,
+		Evidence: []adoptCheckEvidence{
+			{Kind: "codex_hook_definition", Path: ".codex/hooks.json", Detail: event + ":" + hook.ID},
+			{Kind: "codex_hook_handler", Path: handlerPath},
+		},
+	}
 }
 
 var adoptCheckMarkdownLinkPattern = regexp.MustCompile(`\[[^\]]+\]\(([^)]+)\)`)
