@@ -9,21 +9,27 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/spf13/cobra"
 
 	gitpkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/git"
 	harnesspkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/harness"
+	"github.com/zack-nova/harnessyard/cmd/orbit/cli/ids"
 	orbitpkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/orbit"
+	orbittemplate "github.com/zack-nova/harnessyard/cmd/orbit/cli/template"
 )
 
 const layoutOptimizeSchemaVersion = "1.0"
 
+var errLayoutNoPathRewriteMatch = errors.New("no include pattern matched")
+
 type layoutOptimizeOutput struct {
-	SchemaVersion  string             `json:"schema_version"`
-	RepoRoot       string             `json:"repo_root"`
-	Mode           string             `json:"mode"`
-	RepositoryMode string             `json:"repository_mode"`
-	MovePlan       layoutOptimizePlan `json:"move_plan"`
+	SchemaVersion  string                  `json:"schema_version"`
+	RepoRoot       string                  `json:"repo_root"`
+	Mode           string                  `json:"mode"`
+	RepositoryMode string                  `json:"repository_mode"`
+	MovePlan       layoutOptimizePlan      `json:"move_plan"`
+	Check          *harnesspkg.CheckResult `json:"check,omitempty"`
 }
 
 type layoutOptimizePlan struct {
@@ -69,27 +75,39 @@ func newLayoutCommand() *cobra.Command {
 func newLayoutOptimizeCommand() *cobra.Command {
 	var check bool
 	var orbitID string
+	var yes bool
 
 	cmd := &cobra.Command{
 		Use:   "optimize",
-		Short: "Preview Harness Yard-friendly file placement",
-		Long: "Preview Harness Yard-friendly file placement across adopted member candidates,\n" +
+		Short: "Optimize Harness Yard-friendly file placement",
+		Long: "Optimize Harness Yard-friendly file placement across adopted member candidates,\n" +
 			"agent assets, and existing Harness Runtime truth.",
 		Example: "" +
 			"  hyard layout optimize --check --json\n" +
+			"  hyard layout optimize --yes --json\n" +
 			"  hyard layout optimize --check --json --orbit docs\n",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if !check {
-				return fmt.Errorf("layout optimize currently supports preview mode only; pass --check")
-			}
-
-			output, err := buildLayoutOptimizeCheckOutput(cmd, orbitID)
+			jsonOutput, err := wantHyardJSON(cmd)
 			if err != nil {
 				return err
 			}
+			if check {
+				if yes {
+					return fmt.Errorf("--yes cannot be used with --check")
+				}
+				output, err := buildLayoutOptimizeCheckOutput(cmd, orbitID)
+				if err != nil {
+					return err
+				}
+				if jsonOutput {
+					return emitHyardJSON(cmd, output)
+				}
 
-			jsonOutput, err := wantHyardJSON(cmd)
+				return printLayoutOptimizeText(cmd, output)
+			}
+
+			output, err := runLayoutOptimizeApply(cmd, orbitID, yes)
 			if err != nil {
 				return err
 			}
@@ -101,10 +119,73 @@ func newLayoutOptimizeCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&check, "check", false, "Preview layout recommendations without mutating")
+	cmd.Flags().BoolVar(&yes, "yes", false, "Apply default recommendations without prompting")
 	cmd.Flags().StringVar(&orbitID, "orbit", "", "Orbit id to use for Ordinary Repository preview or to filter a Harness Runtime")
 	addHyardJSONFlag(cmd)
 
 	return cmd
+}
+
+func runLayoutOptimizeApply(cmd *cobra.Command, explicitOrbitID string, yes bool) (layoutOptimizeOutput, error) {
+	output, err := buildLayoutOptimizeCheckOutput(cmd, explicitOrbitID)
+	if err != nil {
+		return layoutOptimizeOutput{}, err
+	}
+	output.Mode = "apply"
+
+	if len(output.MovePlan.Conflicts) > 0 {
+		return layoutOptimizeOutput{}, formatLayoutOptimizeBlockedError(output.MovePlan)
+	}
+	if len(output.MovePlan.Moves) == 0 {
+		return output, nil
+	}
+	if !yes {
+		if err := printLayoutOptimizeText(cmd, output); err != nil {
+			return layoutOptimizeOutput{}, err
+		}
+		prompter := orbittemplate.LineConfirmPrompter{
+			Reader: cmd.InOrStdin(),
+			Writer: cmd.ErrOrStderr(),
+		}
+		confirmed, err := prompter.Confirm(cmd.Context(), "Apply layout optimization moves? [y/N] ")
+		if err != nil {
+			return layoutOptimizeOutput{}, fmt.Errorf("confirm layout optimization: %w", err)
+		}
+		if !confirmed {
+			return layoutOptimizeOutput{}, fmt.Errorf("layout optimize canceled")
+		}
+	}
+
+	if output.RepositoryMode == "ordinary_repository" {
+		if _, err := buildAdoptWriteOutput(cmd, explicitOrbitID); err != nil {
+			return layoutOptimizeOutput{}, fmt.Errorf("adopt ordinary repository before layout optimization: %w", err)
+		}
+	}
+	if err := applyLayoutOptimizePlan(cmd, output); err != nil {
+		return layoutOptimizeOutput{}, err
+	}
+	checkResult, err := harnesspkg.CheckRuntime(cmd.Context(), output.RepoRoot)
+	if err != nil {
+		return layoutOptimizeOutput{}, fmt.Errorf("validate updated Harness Yard truth: %w", err)
+	}
+	if !checkResult.OK {
+		return layoutOptimizeOutput{}, fmt.Errorf("validate updated Harness Yard truth: harness check reported %d findings", checkResult.FindingCount)
+	}
+	output.Check = &checkResult
+
+	return output, nil
+}
+
+func formatLayoutOptimizeBlockedError(plan layoutOptimizePlan) error {
+	if len(plan.Conflicts) == 0 {
+		return nil
+	}
+	first := plan.Conflicts[0]
+	if first.Path != "" {
+		return fmt.Errorf("layout optimize blocked by %d conflict(s): %s at %s: %s", len(plan.Conflicts), first.Code, first.Path, first.Message)
+	}
+
+	return fmt.Errorf("layout optimize blocked by %d conflict(s): %s: %s", len(plan.Conflicts), first.Code, first.Message)
 }
 
 func buildLayoutOptimizeCheckOutput(cmd *cobra.Command, explicitOrbitID string) (layoutOptimizeOutput, error) {
@@ -266,11 +347,41 @@ func buildRuntimeLayoutOptimizePlan(
 			)...)
 		}
 
+		hookHandlerPaths := map[string]struct{}{}
+		hooks, err := orbitpkg.ResolveAgentAddonHooks(spec, trackedFiles, trackedFiles)
+		if err != nil {
+			return layoutOptimizePlan{}, fmt.Errorf("resolve agent add-on hooks for %q: %w", orbitID, err)
+		}
+		for _, hook := range hooks {
+			hookHandlerPaths[hook.HandlerPath] = struct{}{}
+			moves := layoutMoveIfDifferent(
+				hook.HandlerPath,
+				layoutRecommendedHookHandlerPath(orbitID, hook.HandlerPath),
+				"hook_handler_recommended_position",
+				layoutOrbitTruthPath(orbitID),
+				"agent_addons.hooks.entries[].handler.path",
+			)
+			for index := range moves {
+				if layoutSpecMemberIncludesPath(spec, hook.HandlerPath) {
+					moves[index].AffectedTruthUpdates = append(moves[index].AffectedTruthUpdates, layoutTruthUpdate{
+						Path:  layoutOrbitTruthPath(orbitID),
+						Field: "members[].paths.include",
+						From:  hook.HandlerPath,
+						To:    moves[index].To,
+					})
+				}
+			}
+			plan.Moves = append(plan.Moves, moves...)
+		}
+
 		for _, member := range spec.Members {
 			if len(member.Paths.Include) != 1 || len(member.Paths.Exclude) > 0 {
 				continue
 			}
 			fromPath := strings.TrimSuffix(member.Paths.Include[0], "/**")
+			if _, ok := hookHandlerPaths[fromPath]; ok {
+				continue
+			}
 			plan.Moves = append(plan.Moves, layoutMoveIfDifferent(
 				fromPath,
 				layoutRecommendedGuidancePath(orbitID, fromPath),
@@ -329,6 +440,15 @@ func finalizeLayoutOptimizePlan(repoRoot string, plan *layoutOptimizePlan) {
 	seenDestinations := map[string]int{}
 	for index := range plan.Moves {
 		move := &plan.Moves[index]
+		if !layoutSourceExists(repoRoot, move.From) {
+			conflict := layoutOptimizeProblem{
+				Code:    "source_missing",
+				Path:    move.From,
+				Message: "recommended move source is missing",
+			}
+			move.Conflicts = append(move.Conflicts, conflict)
+			plan.Conflicts = append(plan.Conflicts, conflict)
+		}
 		if layoutDestinationExists(repoRoot, move.From, move.To) {
 			conflict := layoutOptimizeProblem{
 				Code:    "destination_exists",
@@ -351,6 +471,33 @@ func finalizeLayoutOptimizePlan(repoRoot string, plan *layoutOptimizePlan) {
 		}
 		seenDestinations[move.To] = index
 	}
+	for left := range plan.Moves {
+		for right := left + 1; right < len(plan.Moves); right++ {
+			if !layoutPathsOverlap(plan.Moves[left].From, plan.Moves[right].From) {
+				continue
+			}
+			pathValue := plan.Moves[right].From
+			if len(plan.Moves[left].From) > len(plan.Moves[right].From) {
+				pathValue = plan.Moves[left].From
+			}
+			conflict := layoutOptimizeProblem{
+				Code:    "overlapping_moves",
+				Path:    pathValue,
+				Message: "multiple recommendations move overlapping source paths",
+			}
+			plan.Moves[left].Conflicts = append(plan.Moves[left].Conflicts, conflict)
+			plan.Moves[right].Conflicts = append(plan.Moves[right].Conflicts, conflict)
+			plan.Conflicts = append(plan.Conflicts, conflict)
+		}
+	}
+}
+
+func layoutSourceExists(repoRoot string, fromPath string) bool {
+	if _, err := os.Stat(filepath.Join(repoRoot, filepath.FromSlash(fromPath))); err == nil {
+		return true
+	}
+
+	return false
 }
 
 func layoutDestinationExists(repoRoot string, fromPath string, toPath string) bool {
@@ -362,6 +509,468 @@ func layoutDestinationExists(repoRoot string, fromPath string, toPath string) bo
 	}
 
 	return false
+}
+
+func layoutPathsOverlap(left string, right string) bool {
+	if left == right {
+		return true
+	}
+	return strings.HasPrefix(left, right+"/") || strings.HasPrefix(right, left+"/")
+}
+
+func layoutSpecMemberIncludesPath(spec orbitpkg.OrbitSpec, pathValue string) bool {
+	for _, member := range spec.Members {
+		if layoutPathsMatchPath(member.Paths.Include, pathValue) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func applyLayoutOptimizePlan(cmd *cobra.Command, output layoutOptimizeOutput) error {
+	allowCreateMissingTruth := output.RepositoryMode == "ordinary_repository"
+	if err := validateLayoutOptimizeTruthUpdates(cmd, output.RepoRoot, output.MovePlan, allowCreateMissingTruth); err != nil {
+		return err
+	}
+	if err := applyLayoutOptimizeMoves(cmd, output); err != nil {
+		return err
+	}
+	if err := applyLayoutOptimizeTruthUpdates(cmd, output.RepoRoot, output.MovePlan, allowCreateMissingTruth); err != nil {
+		return err
+	}
+	if err := applyLayoutOptimizeGuidanceLinks(output.RepoRoot, output.MovePlan); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func validateLayoutOptimizeTruthUpdates(cmd *cobra.Command, repoRoot string, plan layoutOptimizePlan, allowCreateMissingTruth bool) error {
+	if _, err := buildLayoutOptimizeUpdatedSpecs(cmd, repoRoot, plan, allowCreateMissingTruth); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func applyLayoutOptimizeMoves(cmd *cobra.Command, output layoutOptimizeOutput) error {
+	for _, move := range output.MovePlan.Moves {
+		if err := gitpkg.MovePath(cmd.Context(), output.RepoRoot, move.From, move.To); err != nil {
+			return fmt.Errorf("apply layout move %q -> %q: %w", move.From, move.To, err)
+		}
+	}
+
+	return nil
+}
+
+func applyLayoutOptimizeTruthUpdates(cmd *cobra.Command, repoRoot string, plan layoutOptimizePlan, allowCreateMissingTruth bool) error {
+	specs, err := buildLayoutOptimizeUpdatedSpecs(cmd, repoRoot, plan, allowCreateMissingTruth)
+	if err != nil {
+		return err
+	}
+	return writeLayoutOptimizeUpdatedSpecs(repoRoot, specs)
+}
+
+func buildLayoutOptimizeUpdatedSpecs(cmd *cobra.Command, repoRoot string, plan layoutOptimizePlan, allowCreateMissingTruth bool) (map[string]orbitpkg.OrbitSpec, error) {
+	specs := map[string]orbitpkg.OrbitSpec{}
+	for _, move := range plan.Moves {
+		for _, update := range move.AffectedTruthUpdates {
+			orbitID, err := layoutOrbitIDFromTruthPath(update.Path)
+			if err != nil {
+				return nil, err
+			}
+			spec, ok := specs[orbitID]
+			if !ok {
+				loaded, err := orbitpkg.LoadHostedOrbitSpec(cmd.Context(), repoRoot, orbitID)
+				if err != nil {
+					return nil, fmt.Errorf("load hosted orbit spec %q for layout update: %w", orbitID, err)
+				}
+				spec = loaded
+			}
+			updated, err := applyLayoutTruthUpdateToSpec(spec, update, allowCreateMissingTruth)
+			if err != nil {
+				return nil, fmt.Errorf("update %s %s: %w", update.Path, update.Field, err)
+			}
+			specs[orbitID] = updated
+		}
+	}
+
+	return specs, nil
+}
+
+func writeLayoutOptimizeUpdatedSpecs(repoRoot string, specs map[string]orbitpkg.OrbitSpec) error {
+	orbitIDs := make([]string, 0, len(specs))
+	for orbitID := range specs {
+		orbitIDs = append(orbitIDs, orbitID)
+	}
+	sort.Strings(orbitIDs)
+	for _, orbitID := range orbitIDs {
+		if _, err := orbitpkg.WriteHostedOrbitSpec(repoRoot, specs[orbitID]); err != nil {
+			return fmt.Errorf("write hosted orbit spec %q after layout optimization: %w", orbitID, err)
+		}
+	}
+
+	return nil
+}
+
+func applyLayoutOptimizeGuidanceLinks(repoRoot string, plan layoutOptimizePlan) error {
+	for _, guidancePath := range layoutRootGuidancePaths() {
+		filename := filepath.Join(repoRoot, filepath.FromSlash(guidancePath))
+		data, err := os.ReadFile(filename)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return fmt.Errorf("read guidance links in %s: %w", guidancePath, err)
+		}
+		info, err := os.Stat(filename)
+		if err != nil {
+			return fmt.Errorf("stat guidance links in %s: %w", guidancePath, err)
+		}
+
+		updated := string(data)
+		changed := false
+		for _, move := range plan.Moves {
+			next, moveChanged := layoutRewriteMarkdownLinkTargets(updated, move.From, move.To)
+			if moveChanged {
+				updated = next
+				changed = true
+			}
+		}
+		if !changed {
+			continue
+		}
+		if err := os.WriteFile(filename, []byte(updated), info.Mode().Perm()); err != nil {
+			return fmt.Errorf("write guidance links in %s: %w", guidancePath, err)
+		}
+	}
+
+	return nil
+}
+
+func layoutRootGuidancePaths() []string {
+	return []string{
+		"AGENTS.md",
+		"CLAUDE.md",
+		"GEMINI.md",
+		"HUMANS.md",
+		"BOOTSTRAP.md",
+	}
+}
+
+func layoutRewriteMarkdownLinkTargets(content string, fromPath string, toPath string) (string, bool) {
+	rewritten := content
+	for _, prefix := range []string{"", "./"} {
+		rewritten = strings.ReplaceAll(rewritten, "]("+prefix+fromPath+")", "]("+toPath+")")
+	}
+
+	return rewritten, rewritten != content
+}
+
+func layoutOrbitIDFromTruthPath(truthPath string) (string, error) {
+	const prefix = ".harness/orbits/"
+	if !strings.HasPrefix(truthPath, prefix) || !strings.HasSuffix(truthPath, ".yaml") {
+		return "", fmt.Errorf("unsupported layout truth path %q", truthPath)
+	}
+	orbitID := strings.TrimSuffix(strings.TrimPrefix(truthPath, prefix), ".yaml")
+	if err := ids.ValidateOrbitID(orbitID); err != nil {
+		return "", fmt.Errorf("unsupported layout truth path %q: %w", truthPath, err)
+	}
+
+	return orbitID, nil
+}
+
+func applyLayoutTruthUpdateToSpec(spec orbitpkg.OrbitSpec, update layoutTruthUpdate, allowCreateMissingTruth bool) (orbitpkg.OrbitSpec, error) {
+	switch update.Field {
+	case "capabilities.commands.paths.include":
+		if spec.Capabilities == nil {
+			if !allowCreateMissingTruth {
+				return spec, fmt.Errorf("command capability paths are not present")
+			}
+			spec.Capabilities = &orbitpkg.OrbitCapabilities{}
+		}
+		if spec.Capabilities.Commands == nil {
+			if !allowCreateMissingTruth {
+				return spec, fmt.Errorf("command capability paths are not present")
+			}
+			spec.Capabilities.Commands = &orbitpkg.OrbitCommandCapabilityPaths{
+				Paths: orbitpkg.OrbitMemberPaths{
+					Include: []string{update.To},
+				},
+			}
+			return spec, nil
+		}
+		if len(spec.Capabilities.Commands.Paths.Include) == 0 && allowCreateMissingTruth {
+			spec.Capabilities.Commands.Paths.Include = []string{update.To}
+			return spec, nil
+		}
+		if len(spec.Capabilities.Commands.Paths.Include) == 0 {
+			return spec, fmt.Errorf("command capability paths are not present")
+		}
+		paths, err := layoutRewritePaths(spec.Capabilities.Commands.Paths, update.From, update.To)
+		if err != nil {
+			if allowCreateMissingTruth && errors.Is(err, errLayoutNoPathRewriteMatch) {
+				spec.Capabilities.Commands.Paths.Include = layoutAppendUniqueString(spec.Capabilities.Commands.Paths.Include, update.To)
+				return spec, nil
+			}
+			return spec, err
+		}
+		spec.Capabilities.Commands.Paths = paths
+	case "capabilities.skills.local.paths.include":
+		if spec.Capabilities == nil {
+			if !allowCreateMissingTruth {
+				return spec, fmt.Errorf("local skill capability paths are not present")
+			}
+			spec.Capabilities = &orbitpkg.OrbitCapabilities{}
+		}
+		if spec.Capabilities.Skills == nil {
+			if !allowCreateMissingTruth {
+				return spec, fmt.Errorf("local skill capability paths are not present")
+			}
+			spec.Capabilities.Skills = &orbitpkg.OrbitSkillCapabilities{}
+		}
+		if spec.Capabilities.Skills.Local == nil {
+			if !allowCreateMissingTruth {
+				return spec, fmt.Errorf("local skill capability paths are not present")
+			}
+			spec.Capabilities.Skills.Local = &orbitpkg.OrbitLocalSkillCapabilityPaths{
+				Paths: orbitpkg.OrbitMemberPaths{
+					Include: []string{update.To},
+				},
+			}
+			return spec, nil
+		}
+		if len(spec.Capabilities.Skills.Local.Paths.Include) == 0 && allowCreateMissingTruth {
+			spec.Capabilities.Skills.Local.Paths.Include = []string{update.To}
+			return spec, nil
+		}
+		if len(spec.Capabilities.Skills.Local.Paths.Include) == 0 {
+			return spec, fmt.Errorf("local skill capability paths are not present")
+		}
+		paths, err := layoutRewritePaths(spec.Capabilities.Skills.Local.Paths, update.From, update.To)
+		if err != nil {
+			if allowCreateMissingTruth && errors.Is(err, errLayoutNoPathRewriteMatch) {
+				spec.Capabilities.Skills.Local.Paths.Include = layoutAppendUniqueString(spec.Capabilities.Skills.Local.Paths.Include, update.To)
+				return spec, nil
+			}
+			return spec, err
+		}
+		spec.Capabilities.Skills.Local.Paths = paths
+	case "members[].paths.include":
+		updatedAny := false
+		for index := range spec.Members {
+			include, changed, err := layoutRewritePathPatterns(spec.Members[index].Paths.Include, update.From, update.To)
+			if err != nil {
+				return spec, err
+			}
+			if !changed {
+				continue
+			}
+			updatedAny = true
+			spec.Members[index].Paths.Include = include
+		}
+		if !updatedAny && !layoutAnyMemberPathMatches(spec.Members, update.To) {
+			if allowCreateMissingTruth {
+				spec.Members = append(spec.Members, layoutMemberFromMoveDestination(update.To))
+				return spec, nil
+			}
+			return spec, fmt.Errorf("no member path includes matched %q", update.From)
+		}
+	case "agent_addons.hooks.entries[].handler.path":
+		if spec.AgentAddons == nil || spec.AgentAddons.Hooks == nil {
+			return spec, fmt.Errorf("agent add-on hooks are not present")
+		}
+		updatedAny := false
+		for index := range spec.AgentAddons.Hooks.Entries {
+			rewritten, changed, err := layoutRewritePathPattern(spec.AgentAddons.Hooks.Entries[index].Handler.Path, update.From, update.To)
+			if err != nil {
+				return spec, err
+			}
+			if !changed {
+				continue
+			}
+			spec.AgentAddons.Hooks.Entries[index].Handler.Path = rewritten
+			updatedAny = true
+		}
+		if !updatedAny {
+			for _, entry := range spec.AgentAddons.Hooks.Entries {
+				if entry.Handler.Path == update.To {
+					return spec, nil
+				}
+			}
+			return spec, fmt.Errorf("no hook handler path matched %q", update.From)
+		}
+	default:
+		return spec, fmt.Errorf("unsupported truth field %q", update.Field)
+	}
+
+	return spec, nil
+}
+
+func layoutRewritePaths(paths orbitpkg.OrbitMemberPaths, fromPath string, toPath string) (orbitpkg.OrbitMemberPaths, error) {
+	include, changed, err := layoutRewritePathPatterns(paths.Include, fromPath, toPath)
+	if err != nil {
+		return paths, err
+	}
+	if !changed {
+		if layoutPathsMatchPath(paths.Include, toPath) {
+			return paths, nil
+		}
+		return paths, fmt.Errorf("%w %q", errLayoutNoPathRewriteMatch, fromPath)
+	}
+
+	updated := paths
+	updated.Include = include
+
+	return updated, nil
+}
+
+func layoutRewritePathPatterns(patterns []string, fromPath string, toPath string) ([]string, bool, error) {
+	updated := append([]string(nil), patterns...)
+	changed := false
+	for index, pattern := range updated {
+		nextPattern, patternChanged, err := layoutRewritePathPattern(pattern, fromPath, toPath)
+		if err != nil {
+			return nil, false, err
+		}
+		if !patternChanged {
+			continue
+		}
+		updated[index] = nextPattern
+		changed = true
+	}
+	if changed {
+		updated = layoutUniqueStrings(updated)
+	}
+
+	return updated, changed, nil
+}
+
+func layoutRewritePathPattern(pattern string, fromPath string, toPath string) (string, bool, error) {
+	normalizedPattern, err := ids.NormalizeRepoRelativePath(pattern)
+	if err != nil {
+		return "", false, fmt.Errorf("normalize pattern %q: %w", pattern, err)
+	}
+	normalizedFrom, err := ids.NormalizeRepoRelativePath(fromPath)
+	if err != nil {
+		return "", false, fmt.Errorf("normalize source path %q: %w", fromPath, err)
+	}
+	normalizedTo, err := ids.NormalizeRepoRelativePath(toPath)
+	if err != nil {
+		return "", false, fmt.Errorf("normalize destination path %q: %w", toPath, err)
+	}
+	matched, err := doublestar.Match(normalizedPattern, normalizedFrom)
+	if err != nil {
+		return "", false, fmt.Errorf("match pattern %q: %w", normalizedPattern, err)
+	}
+	if !matched {
+		return pattern, false, nil
+	}
+	if normalizedPattern == normalizedFrom {
+		return normalizedTo, true, nil
+	}
+	if strings.HasSuffix(normalizedPattern, "/**") {
+		root := strings.TrimSuffix(normalizedPattern, "/**")
+		if root == normalizedFrom {
+			return normalizedTo + "/**", true, nil
+		}
+	}
+	globIndex := strings.IndexAny(normalizedPattern, "*?[")
+	if globIndex < 0 {
+		return normalizedTo, true, nil
+	}
+	lastSlashBeforeGlob := strings.LastIndex(normalizedPattern[:globIndex], "/")
+	if lastSlashBeforeGlob < 0 {
+		return "", false, fmt.Errorf("unsafe_path_rewrite: pattern %q matches %q but cannot be safely rewritten to %q", normalizedPattern, normalizedFrom, normalizedTo)
+	}
+	suffix := normalizedPattern[lastSlashBeforeGlob+1:]
+	if strings.Contains(suffix, "/") {
+		return "", false, fmt.Errorf("unsafe_path_rewrite: pattern %q matches %q but cannot be safely rewritten to %q", normalizedPattern, normalizedFrom, normalizedTo)
+	}
+	return path.Join(path.Dir(normalizedTo), suffix), true, nil
+}
+
+func layoutPathsMatchPath(patterns []string, pathValue string) bool {
+	normalizedPath, err := ids.NormalizeRepoRelativePath(pathValue)
+	if err != nil {
+		return false
+	}
+	for _, pattern := range patterns {
+		normalizedPattern, err := ids.NormalizeRepoRelativePath(pattern)
+		if err != nil {
+			continue
+		}
+		matched, err := doublestar.Match(normalizedPattern, normalizedPath)
+		if err == nil && matched {
+			return true
+		}
+	}
+
+	return false
+}
+
+func layoutAnyMemberPathMatches(members []orbitpkg.OrbitMember, pathValue string) bool {
+	for _, member := range members {
+		if layoutPathsMatchPath(member.Paths.Include, pathValue) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func layoutMemberFromMoveDestination(toPath string) orbitpkg.OrbitMember {
+	base := path.Base(strings.TrimSuffix(toPath, "/**"))
+	name := strings.TrimSuffix(base, path.Ext(base))
+	if err := ids.ValidateOrbitID(name); err != nil {
+		name = "moved-member"
+	}
+
+	return orbitpkg.OrbitMember{
+		Name: name,
+		Role: orbitpkg.OrbitMemberRule,
+		Paths: orbitpkg.OrbitMemberPaths{
+			Include: []string{toPath},
+		},
+	}
+}
+
+func layoutSameStringSlice(left []string, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+
+	return true
+}
+
+func layoutUniqueStrings(values []string) []string {
+	seen := map[string]struct{}{}
+	unique := make([]string, 0, len(values))
+	for _, value := range values {
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		unique = append(unique, value)
+	}
+
+	return unique
+}
+
+func layoutAppendUniqueString(values []string, value string) []string {
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+
+	return append(values, value)
 }
 
 func layoutRuntimeOrbitIDs(manifest harnesspkg.ManifestFile, explicitOrbitID string) []string {
@@ -463,10 +1072,15 @@ func layoutProblemPathFromAdoptEvidence(evidence []adoptCheckEvidence) string {
 }
 
 func printLayoutOptimizeText(cmd *cobra.Command, output layoutOptimizeOutput) error {
+	mode := output.Mode
+	if mode == "check" {
+		mode = "preview"
+	}
 	if _, err := fmt.Fprintf(
 		cmd.OutOrStdout(),
-		"layout optimize %s preview: %d moves, %d conflicts, %d warnings\n",
+		"layout optimize %s %s: %d moves, %d conflicts, %d warnings\n",
 		output.RepositoryMode,
+		mode,
 		len(output.MovePlan.Moves),
 		len(output.MovePlan.Conflicts),
 		len(output.MovePlan.Warnings),
