@@ -192,6 +192,14 @@ func TestParseRuntimeAgentsDocumentRejectsInvalidContracts(t *testing.T) {
 			contains: "malformed workflow marker",
 		},
 		{
+			name: "legacy quoted orbit_id attribute fails closed",
+			input: "" +
+				"<!-- orbit:begin orbit_id=\"docs\" -->\n" +
+				"docs guidance\n" +
+				"<!-- orbit:end orbit_id=\"docs\" -->\n",
+			contains: "malformed workflow marker",
+		},
+		{
 			name: "duplicate workflow attribute fails closed",
 			input: "" +
 				"<!-- orbit:begin workflow=\"docs\" workflow=\"api\" -->\n",
