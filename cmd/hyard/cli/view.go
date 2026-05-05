@@ -23,8 +23,58 @@ func newViewCommand() *cobra.Command {
 
 	cmd.AddCommand(
 		newViewAuthorCommand(),
+		newViewRunCommand(),
 		newViewStatusCommand(),
 	)
+
+	return cmd
+}
+
+func newViewRunCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "run",
+		Short: "Preview Run View cleanup",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			check, err := cmd.Flags().GetBool("check")
+			if err != nil {
+				return fmt.Errorf("read --check flag: %w", err)
+			}
+			if !check {
+				return fmt.Errorf("hyard view run cleanup is only available with --check in this slice")
+			}
+
+			workingDir, err := hyardWorkingDirFromCommand(cmd)
+			if err != nil {
+				return err
+			}
+			repo, err := gitpkg.DiscoverRepo(cmd.Context(), workingDir)
+			if err != nil {
+				return fmt.Errorf("discover git repository: %w", err)
+			}
+			store, err := statepkg.NewFSStore(repo.GitDir)
+			if err != nil {
+				return fmt.Errorf("create state store: %w", err)
+			}
+
+			result, err := harnesspkg.RuntimeViewCleanupPlan(cmd.Context(), repo, store, check)
+			if err != nil {
+				return fmt.Errorf("plan Run View cleanup: %w", err)
+			}
+
+			jsonOutput, err := cmd.Flags().GetBool("json")
+			if err != nil {
+				return fmt.Errorf("read --json flag: %w", err)
+			}
+			if jsonOutput {
+				return emitHyardJSON(cmd, result)
+			}
+
+			return renderHyardViewRun(cmd, result)
+		},
+	}
+	cmd.Flags().Bool("check", false, "Preview Run View cleanup without writing files")
+	cmd.Flags().Bool("json", false, "Output machine-readable JSON")
 
 	return cmd
 }
@@ -260,6 +310,91 @@ func renderHyardViewStatusList(cmd *cobra.Command, title string, values []string
 		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "  %s\n", value); err != nil {
 			return fmt.Errorf("write command output: %w", err)
 		}
+	}
+
+	return nil
+}
+
+func renderHyardViewRun(cmd *cobra.Command, result harnesspkg.RuntimeViewCleanupPlanResult) error {
+	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "check: %t\n", result.Check); err != nil {
+		return fmt.Errorf("write command output: %w", err)
+	}
+	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "ready: %t\n", result.Ready); err != nil {
+		return fmt.Errorf("write command output: %w", err)
+	}
+	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "changed: %t\n", result.Changed); err != nil {
+		return fmt.Errorf("write command output: %w", err)
+	}
+
+	if _, err := fmt.Fprintln(cmd.OutOrStdout(), "cleanup_candidates:"); err != nil {
+		return fmt.Errorf("write command output: %w", err)
+	}
+	if len(result.CleanupCandidates) == 0 {
+		if _, err := fmt.Fprintln(cmd.OutOrStdout(), "  none"); err != nil {
+			return fmt.Errorf("write command output: %w", err)
+		}
+	}
+	for _, candidate := range result.CleanupCandidates {
+		if _, err := fmt.Fprintf(
+			cmd.OutOrStdout(),
+			"  %s %s action=%s",
+			candidate.Kind,
+			candidate.Path,
+			candidate.Action,
+		); err != nil {
+			return fmt.Errorf("write command output: %w", err)
+		}
+		if candidate.Target != "" {
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), " target=%s", candidate.Target); err != nil {
+				return fmt.Errorf("write command output: %w", err)
+			}
+		}
+		if candidate.OrbitID != "" {
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), " orbit=%s", candidate.OrbitID); err != nil {
+				return fmt.Errorf("write command output: %w", err)
+			}
+		}
+		if _, err := fmt.Fprintln(cmd.OutOrStdout()); err != nil {
+			return fmt.Errorf("write command output: %w", err)
+		}
+	}
+
+	if err := renderHyardViewStatusList(cmd, "blockers", result.Blockers); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(cmd.OutOrStdout(), "drift_diagnostics:"); err != nil {
+		return fmt.Errorf("write command output: %w", err)
+	}
+	if len(result.DriftDiagnostics) == 0 {
+		if _, err := fmt.Fprintln(cmd.OutOrStdout(), "  none"); err != nil {
+			return fmt.Errorf("write command output: %w", err)
+		}
+	}
+	for _, diagnostic := range result.DriftDiagnostics {
+		if _, err := fmt.Fprintf(
+			cmd.OutOrStdout(),
+			"  %s %s",
+			diagnostic.Kind,
+			diagnostic.Path,
+		); err != nil {
+			return fmt.Errorf("write command output: %w", err)
+		}
+		if diagnostic.OrbitID != "" {
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), " orbit=%s", diagnostic.OrbitID); err != nil {
+				return fmt.Errorf("write command output: %w", err)
+			}
+		}
+		if diagnostic.RecoveryCommand != "" {
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), " recovery=%q", diagnostic.RecoveryCommand); err != nil {
+				return fmt.Errorf("write command output: %w", err)
+			}
+		}
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), " %s\n", diagnostic.Message); err != nil {
+			return fmt.Errorf("write command output: %w", err)
+		}
+	}
+	if err := renderHyardViewStatusList(cmd, "next_actions", result.NextActions); err != nil {
+		return err
 	}
 
 	return nil

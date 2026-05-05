@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	harnesspkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/harness"
+	orbitpkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/orbit"
 	statepkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/state"
 	orbittemplate "github.com/zack-nova/harnessyard/cmd/orbit/cli/template"
 	"github.com/zack-nova/harnessyard/cmd/orbit/cli/testutil"
@@ -114,6 +116,181 @@ func TestHyardViewStatusJSONReportsDefaultRunViewAndAuthoringPresentation(t *tes
 	require.Equal(t, []string{"current_runtime_harness_package"}, payload.AllowedPublicationActions)
 	require.Contains(t, payload.NextActions, "publish current runtime as a Harness Package")
 	require.NoFileExists(t, filepath.Join(repo.GitDir(t), "orbit", "state", "runtime_view_selection.json"))
+}
+
+func TestHyardViewRunCheckJSONReportsCleanupCandidatesWithoutMutation(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardViewRunNoDriftRuntimeRepo(t)
+	agentsBefore, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoError(t, err)
+	hintBefore, err := os.ReadFile(filepath.Join(repo.Root, "docs", "process", ".orbit-member.yaml"))
+	require.NoError(t, err)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "view", "run", "--check", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Check             bool `json:"check"`
+		Ready             bool `json:"ready"`
+		Changed           bool `json:"changed"`
+		CleanupCandidates []struct {
+			Kind    string `json:"kind"`
+			Path    string `json:"path"`
+			Target  string `json:"target,omitempty"`
+			OrbitID string `json:"orbit_id,omitempty"`
+			Action  string `json:"action"`
+		} `json:"cleanup_candidates"`
+		Blockers         []string `json:"blockers"`
+		DriftDiagnostics []struct {
+			Kind            string `json:"kind"`
+			Path            string `json:"path"`
+			OrbitID         string `json:"orbit_id,omitempty"`
+			RecoveryCommand string `json:"recovery_command,omitempty"`
+		} `json:"drift_diagnostics"`
+		NextActions []string `json:"next_actions"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+
+	require.True(t, payload.Check)
+	require.True(t, payload.Ready)
+	require.False(t, payload.Changed)
+	require.Empty(t, payload.Blockers)
+	require.Empty(t, payload.DriftDiagnostics)
+	require.Contains(t, payload.CleanupCandidates, struct {
+		Kind    string `json:"kind"`
+		Path    string `json:"path"`
+		Target  string `json:"target,omitempty"`
+		OrbitID string `json:"orbit_id,omitempty"`
+		Action  string `json:"action"`
+	}{
+		Kind:    "root_guidance_marker_lines",
+		Path:    "AGENTS.md",
+		Target:  "agents",
+		OrbitID: "docs",
+		Action:  "strip_marker_lines_preserve_content",
+	})
+	require.Contains(t, payload.CleanupCandidates, struct {
+		Kind    string `json:"kind"`
+		Path    string `json:"path"`
+		Target  string `json:"target,omitempty"`
+		OrbitID string `json:"orbit_id,omitempty"`
+		Action  string `json:"action"`
+	}{
+		Kind:    "member_hint",
+		Path:    "docs/process/.orbit-member.yaml",
+		OrbitID: "docs",
+		Action:  "remove_consumed_hint",
+	})
+	require.Contains(t, payload.NextActions, "run `hyard view run` to apply Run View cleanup")
+
+	agentsAfter, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoError(t, err)
+	hintAfter, err := os.ReadFile(filepath.Join(repo.Root, "docs", "process", ".orbit-member.yaml"))
+	require.NoError(t, err)
+	require.Equal(t, agentsBefore, agentsAfter)
+	require.Equal(t, hintBefore, hintAfter)
+}
+
+func TestHyardViewRunCheckJSONBlocksOnAuthoredTruthDrift(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardViewRunDriftRuntimeRepo(t)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "view", "run", "--check", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Ready            bool     `json:"ready"`
+		Blockers         []string `json:"blockers"`
+		DriftDiagnostics []struct {
+			Kind            string `json:"kind"`
+			Path            string `json:"path"`
+			Target          string `json:"target,omitempty"`
+			OrbitID         string `json:"orbit_id,omitempty"`
+			State           string `json:"state,omitempty"`
+			RecoveryCommand string `json:"recovery_command,omitempty"`
+		} `json:"drift_diagnostics"`
+		NextActions []string `json:"next_actions"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+
+	require.False(t, payload.Ready)
+	require.Contains(t, payload.Blockers, "AGENTS.md agents block \"docs\" has authored truth drift; run `hyard guide save --orbit docs --target agents`")
+	require.Contains(t, payload.Blockers, "docs docs/process/.orbit-member.yaml has pending member hint drift; run `hyard orbit content apply docs --check --json`")
+	require.Contains(t, payload.Blockers, "docs docs/rules/style.md has unapplied member hint action \"create_new\"; run `hyard orbit content apply docs --check --json`")
+	require.Contains(t, payload.DriftDiagnostics, struct {
+		Kind            string `json:"kind"`
+		Path            string `json:"path"`
+		Target          string `json:"target,omitempty"`
+		OrbitID         string `json:"orbit_id,omitempty"`
+		State           string `json:"state,omitempty"`
+		RecoveryCommand string `json:"recovery_command,omitempty"`
+	}{
+		Kind:            "root_guidance_drift",
+		Path:            "AGENTS.md",
+		Target:          "agents",
+		OrbitID:         "docs",
+		State:           "materialized_drifted",
+		RecoveryCommand: "hyard guide save --orbit docs --target agents",
+	})
+	require.Contains(t, payload.DriftDiagnostics, struct {
+		Kind            string `json:"kind"`
+		Path            string `json:"path"`
+		Target          string `json:"target,omitempty"`
+		OrbitID         string `json:"orbit_id,omitempty"`
+		State           string `json:"state,omitempty"`
+		RecoveryCommand string `json:"recovery_command,omitempty"`
+	}{
+		Kind:            "member_hint_drift",
+		Path:            "docs/process/.orbit-member.yaml",
+		OrbitID:         "docs",
+		State:           "match_existing",
+		RecoveryCommand: "hyard orbit content apply docs --check --json",
+	})
+	require.Contains(t, payload.DriftDiagnostics, struct {
+		Kind            string `json:"kind"`
+		Path            string `json:"path"`
+		Target          string `json:"target,omitempty"`
+		OrbitID         string `json:"orbit_id,omitempty"`
+		State           string `json:"state,omitempty"`
+		RecoveryCommand string `json:"recovery_command,omitempty"`
+	}{
+		Kind:            "member_hint_drift",
+		Path:            "docs/rules/style.md",
+		OrbitID:         "docs",
+		State:           "create_new",
+		RecoveryCommand: "hyard orbit content apply docs --check --json",
+	})
+	require.Contains(t, payload.NextActions, "hyard guide save --orbit docs --target agents")
+	require.Contains(t, payload.NextActions, "hyard orbit content apply docs --check --json")
+	require.FileExists(t, filepath.Join(repo.Root, "docs", "process", ".orbit-member.yaml"))
+}
+
+func TestHyardViewRunCheckTextToleratesDirtyWorktreeAndRendersNextActions(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardViewRunNoDriftRuntimeRepo(t)
+	repo.WriteFile(t, "README.md", "local runtime notes\n")
+	require.NotEmpty(t, repo.Run(t, "status", "--short"))
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "view", "run", "--check")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	require.Contains(t, stdout, "check: true\n")
+	require.Contains(t, stdout, "ready: true\n")
+	require.Contains(t, stdout, "changed: false\n")
+	require.Contains(t, stdout, "cleanup_candidates:\n")
+	require.Contains(t, stdout, "  root_guidance_marker_lines AGENTS.md action=strip_marker_lines_preserve_content target=agents orbit=docs\n")
+	require.Contains(t, stdout, "  member_hint docs/process/.orbit-member.yaml action=remove_consumed_hint orbit=docs\n")
+	require.Contains(t, stdout, "blockers:\n")
+	require.Contains(t, stdout, "  none\n")
+	require.Contains(t, stdout, "next_actions:\n")
+	require.Contains(t, stdout, "  run `hyard view run` to apply Run View cleanup\n")
+	require.FileExists(t, filepath.Join(repo.Root, "docs", "process", ".orbit-member.yaml"))
 }
 
 func TestHyardViewStatusJSONReportsAuthorViewPublicationActions(t *testing.T) {
@@ -273,6 +450,129 @@ func seedHyardViewStatusRuntimeRepo(t *testing.T) *testutil.Repo {
 	require.NoError(t, err)
 
 	repo.AddAndCommit(t, "seed runtime view status repo")
+
+	return repo
+}
+
+func seedHyardViewRunNoDriftRuntimeRepo(t *testing.T) *testutil.Repo {
+	t.Helper()
+
+	repo := testutil.NewRepo(t)
+	now := time.Date(2026, time.May, 5, 8, 0, 0, 0, time.UTC)
+
+	spec, err := orbitpkg.DefaultHostedMemberSchemaSpec("docs")
+	require.NoError(t, err)
+	spec.Description = "Docs orbit"
+	require.NotNil(t, spec.Meta)
+	spec.Meta.AgentsTemplate = "Docs orbit guidance\n"
+	spec.Members = append(spec.Members, orbitpkg.OrbitMember{
+		Name:        "process",
+		Description: "Review workflow",
+		Role:        orbitpkg.OrbitMemberProcess,
+		Paths: orbitpkg.OrbitMemberPaths{
+			Include: []string{"docs/process/**"},
+		},
+	})
+	_, err = orbitpkg.WriteHostedOrbitSpec(repo.Root, spec)
+	require.NoError(t, err)
+
+	repo.WriteFile(t, "docs/guide.md", "Docs guide\n")
+	repo.WriteFile(t, "docs/process/review.md", "# Review\n")
+	repo.WriteFile(t, "docs/process/.orbit-member.yaml", ""+
+		"orbit_member:\n"+
+		"  description: Review workflow\n")
+
+	agentsBlock, err := orbittemplate.WrapRuntimeAgentsBlock("docs", []byte("Docs orbit guidance\n"))
+	require.NoError(t, err)
+	repo.WriteFile(t, "AGENTS.md", string(agentsBlock))
+
+	_, err = harnesspkg.WriteManifestFile(repo.Root, harnesspkg.ManifestFile{
+		SchemaVersion: 1,
+		Kind:          harnesspkg.ManifestKindRuntime,
+		Runtime: &harnesspkg.ManifestRuntimeMetadata{
+			ID:        "workspace",
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+		Members: []harnesspkg.ManifestMember{
+			{
+				OrbitID: "docs",
+				Source:  harnesspkg.ManifestMemberSourceManual,
+				AddedAt: now,
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	repo.AddAndCommit(t, "seed run view cleanup repo")
+
+	return repo
+}
+
+func seedHyardViewRunDriftRuntimeRepo(t *testing.T) *testutil.Repo {
+	t.Helper()
+
+	repo := testutil.NewRepo(t)
+	now := time.Date(2026, time.May, 5, 8, 0, 0, 0, time.UTC)
+
+	spec, err := orbitpkg.DefaultHostedMemberSchemaSpec("docs")
+	require.NoError(t, err)
+	spec.Description = "Docs orbit"
+	require.NotNil(t, spec.Meta)
+	spec.Meta.AgentsTemplate = "Docs orbit guidance\n"
+	spec.Members = append(spec.Members, orbitpkg.OrbitMember{
+		Name: "content",
+		Role: orbitpkg.OrbitMemberSubject,
+		Paths: orbitpkg.OrbitMemberPaths{
+			Include: []string{"docs/**"},
+		},
+	}, orbitpkg.OrbitMember{
+		Name:        "process",
+		Description: "Old review workflow",
+		Role:        orbitpkg.OrbitMemberProcess,
+		Paths: orbitpkg.OrbitMemberPaths{
+			Include: []string{"docs/process/**"},
+		},
+	})
+	_, err = orbitpkg.WriteHostedOrbitSpec(repo.Root, spec)
+	require.NoError(t, err)
+
+	repo.WriteFile(t, "docs/guide.md", "Docs guide\n")
+	repo.WriteFile(t, "docs/process/review.md", "# Review\n")
+	repo.WriteFile(t, "docs/process/.orbit-member.yaml", ""+
+		"orbit_member:\n"+
+		"  description: Review workflow\n")
+	repo.WriteFile(t, "docs/rules/style.md", ""+
+		"---\n"+
+		"orbit_member:\n"+
+		"  description: Style rules\n"+
+		"---\n"+
+		"\n"+
+		"# Style\n")
+
+	agentsBlock, err := orbittemplate.WrapRuntimeAgentsBlock("docs", []byte("Edited docs guidance\n"))
+	require.NoError(t, err)
+	repo.WriteFile(t, "AGENTS.md", string(agentsBlock))
+
+	_, err = harnesspkg.WriteManifestFile(repo.Root, harnesspkg.ManifestFile{
+		SchemaVersion: 1,
+		Kind:          harnesspkg.ManifestKindRuntime,
+		Runtime: &harnesspkg.ManifestRuntimeMetadata{
+			ID:        "workspace",
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+		Members: []harnesspkg.ManifestMember{
+			{
+				OrbitID: "docs",
+				Source:  harnesspkg.ManifestMemberSourceManual,
+				AddedAt: now,
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	repo.AddAndCommit(t, "seed drifted run view cleanup repo")
 
 	return repo
 }
