@@ -921,6 +921,18 @@ func TestHyardRemoveHelpShowsPackageDisambiguationSubcommands(t *testing.T) {
 	require.Contains(t, stdout, "--dry-run")
 }
 
+func TestHyardUninstallHelpShowsPackageDisambiguationSubcommands(t *testing.T) {
+	t.Parallel()
+
+	stdout, stderr, err := executeHyardCLI(t, t.TempDir(), "uninstall", "--help")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+	require.Contains(t, stdout, "orbit")
+	require.Contains(t, stdout, "harness")
+	require.Contains(t, stdout, "--yes")
+	require.Contains(t, stdout, "--dry-run")
+}
+
 func TestHyardAssignOrbitAssignsStandaloneManualMemberToExistingHarness(t *testing.T) {
 	t.Parallel()
 

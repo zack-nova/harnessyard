@@ -434,6 +434,26 @@ func TestHyardRemoveHarnessDryRunJSONListsOwnedOrbits(t *testing.T) {
 	require.Len(t, runtimeFile.Members, 1)
 }
 
+func TestHyardUninstallHarnessDryRunTextUsesUninstallLanguage(t *testing.T) {
+	t.Parallel()
+
+	runtimeRoot, harnessID := cloneHyardHarnessRuntime(t)
+
+	stdout, stderr, err := executeHyardCLI(t, runtimeRoot, "uninstall", "harness", harnessID, "--dry-run")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+	require.Contains(t, stdout, "Uninstall harness package "+harnessID+"?")
+	require.Contains(t, stdout, "dry_run: true")
+	require.Contains(t, stdout, "Orbits to uninstall:")
+	require.Contains(t, stdout, "  - docs")
+	require.NotContains(t, stdout, "Remove harness package")
+	require.NotContains(t, stdout, "Orbits to remove:")
+
+	runtimeFile, err := harnesspkg.LoadRuntimeFile(runtimeRoot)
+	require.NoError(t, err)
+	require.Len(t, runtimeFile.Members, 1)
+}
+
 func TestHyardRemoveHarnessRequiresConfirmationAndDefaultNoCancels(t *testing.T) {
 	t.Parallel()
 
@@ -452,6 +472,26 @@ func TestHyardRemoveHarnessRequiresConfirmationAndDefaultNoCancels(t *testing.T)
 	require.Len(t, runtimeFile.Members, 1)
 }
 
+func TestHyardUninstallHarnessRequiresConfirmationAndDefaultNoCancels(t *testing.T) {
+	t.Parallel()
+
+	runtimeRoot, harnessID := cloneHyardHarnessRuntime(t)
+
+	stdout, stderr, err := executeHyardCLIWithInput(t, runtimeRoot, "\n", "uninstall", "harness", harnessID)
+	require.Error(t, err)
+	require.Contains(t, stdout, "Uninstall harness package "+harnessID+"?")
+	require.Contains(t, stdout, "Orbits to uninstall:")
+	require.Contains(t, stdout, "  - docs")
+	require.NotContains(t, stdout, "Remove harness package")
+	require.NotContains(t, stdout, "Orbits to remove:")
+	require.Contains(t, stderr, "Continue? [y/N]")
+	require.ErrorContains(t, err, `uninstall canceled for harness package "`+harnessID+`"`)
+
+	runtimeFile, err := harnesspkg.LoadRuntimeFile(runtimeRoot)
+	require.NoError(t, err)
+	require.Len(t, runtimeFile.Members, 1)
+}
+
 func TestHyardRemoveHarnessAppliesAfterConfirmation(t *testing.T) {
 	t.Parallel()
 
@@ -461,6 +501,31 @@ func TestHyardRemoveHarnessAppliesAfterConfirmation(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, stdout, "Remove harness package "+harnessID+"?")
 	require.Contains(t, stdout, "removed harness package "+harnessID)
+	require.Contains(t, stderr, "Continue? [y/N]")
+
+	runtimeFile, err := harnesspkg.LoadRuntimeFile(runtimeRoot)
+	require.NoError(t, err)
+	require.Empty(t, runtimeFile.Members)
+
+	_, err = harnesspkg.LoadBundleRecord(runtimeRoot, harnessID)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "no such file")
+
+	_, err = os.Stat(filepath.Join(runtimeRoot, "docs", "guide.md"))
+	require.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestHyardUninstallHarnessAppliesAfterConfirmation(t *testing.T) {
+	t.Parallel()
+
+	runtimeRoot, harnessID := cloneHyardHarnessRuntime(t)
+
+	stdout, stderr, err := executeHyardCLIWithInput(t, runtimeRoot, "y\n", "uninstall", "harness", harnessID)
+	require.NoError(t, err)
+	require.Contains(t, stdout, "Uninstall harness package "+harnessID+"?")
+	require.Contains(t, stdout, "uninstalled harness package "+harnessID)
+	require.Contains(t, stdout, "uninstalled_orbits: docs")
+	require.NotContains(t, stdout, "removed harness package")
 	require.Contains(t, stderr, "Continue? [y/N]")
 
 	runtimeFile, err := harnesspkg.LoadRuntimeFile(runtimeRoot)
@@ -498,6 +563,45 @@ func TestHyardRemoveHarnessYesSkipsPrompt(t *testing.T) {
 	require.Equal(t, []string{"docs"}, payload.OrbitPackages)
 	require.False(t, payload.DryRun)
 	require.Contains(t, payload.RemovedPaths, ".harness/bundles/"+harnessID+".yaml")
+	require.Equal(t, 0, payload.RemainingMemberCount)
+}
+
+func TestHyardUninstallHarnessYesJSONPreservesRemoveShapedPayload(t *testing.T) {
+	t.Parallel()
+
+	runtimeRoot, harnessID := cloneHyardHarnessRuntime(t)
+
+	stdout, stderr, err := executeHyardCLI(t, runtimeRoot, "uninstall", "harness", harnessID, "--yes", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Action               string   `json:"action"`
+		TargetType           string   `json:"target_type"`
+		HarnessPackage       string   `json:"harness_package"`
+		HarnessID            string   `json:"harness_id"`
+		RemoveMode           string   `json:"remove_mode"`
+		OrbitPackages        []string `json:"orbit_packages"`
+		OrbitIDs             []string `json:"orbit_ids"`
+		DryRun               bool     `json:"dry_run"`
+		RemovedPaths         []string `json:"removed_paths"`
+		RemovedPathCount     int      `json:"removed_path_count"`
+		DeletedBundleRecord  bool     `json:"deleted_bundle_record"`
+		RemainingMemberCount int      `json:"remaining_member_count"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "uninstall", payload.Action)
+	require.Equal(t, "harness", payload.TargetType)
+	require.Equal(t, harnessID, payload.HarnessPackage)
+	require.Equal(t, harnessID, payload.HarnessID)
+	require.Equal(t, "harness_package_remove", payload.RemoveMode)
+	require.Equal(t, []string{"docs"}, payload.OrbitPackages)
+	require.Equal(t, []string{"docs"}, payload.OrbitIDs)
+	require.False(t, payload.DryRun)
+	require.Contains(t, payload.RemovedPaths, ".harness/bundles/"+harnessID+".yaml")
+	require.Contains(t, payload.RemovedPaths, ".harness/orbits/docs.yaml")
+	require.Equal(t, len(payload.RemovedPaths), payload.RemovedPathCount)
+	require.True(t, payload.DeletedBundleRecord)
 	require.Equal(t, 0, payload.RemainingMemberCount)
 }
 

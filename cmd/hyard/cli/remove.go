@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/spf13/cobra"
 
@@ -103,16 +104,19 @@ func newUninstallCommand() *cobra.Command {
 		Use:   "uninstall",
 		Short: "Uninstall a package from the current runtime",
 		Long: "Uninstall a package from the current runtime through the canonical hyard package lifecycle surface.\n" +
-			"Use `hyard uninstall orbit <name>` to uninstall one Orbit Package.",
+			"Use `hyard uninstall orbit <name>` or `hyard uninstall harness <name>` when a package name is ambiguous.",
 		Example: "" +
 			"  hyard uninstall orbit docs\n" +
+			"  hyard uninstall harness frontend-lab\n" +
+			"  hyard uninstall harness frontend-lab --dry-run\n" +
+			"  hyard uninstall harness frontend-lab --yes --json\n" +
 			"  hyard uninstall orbit docs --json\n",
 		Args: cobra.NoArgs,
 	}
 	cmd.PersistentFlags().Bool("json", false, "Output machine-readable JSON")
 	cmd.PersistentFlags().Bool("dry-run", false, "Preview package uninstallation without applying when supported")
 	cmd.PersistentFlags().Bool("yes", false, "Confirm package uninstallation and user-level agent cleanup without prompting")
-	cmd.AddCommand(newUninstallOrbitCommand())
+	cmd.AddCommand(newUninstallOrbitCommand(), newUninstallHarnessCommand())
 
 	return cmd
 }
@@ -157,7 +161,22 @@ func newRemoveHarnessCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return runHyardRemoveHarness(cmd, harnessPackage)
+			return runHyardRemoveHarness(cmd, harnessPackage, hyardRemoveSurface)
+		},
+	}
+}
+
+func newUninstallHarnessCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "harness <harness-package>",
+		Short: "Uninstall one Harness Package from the current runtime",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			harnessPackage, err := parseHyardPackageRemovalName(args[0], hyardUninstallSurface.Command)
+			if err != nil {
+				return err
+			}
+			return runHyardRemoveHarness(cmd, harnessPackage, hyardUninstallSurface)
 		},
 	}
 }
@@ -192,7 +211,7 @@ func runHyardRemoveAuto(cmd *cobra.Command, rawPackage string) error {
 	case matchesOrbit:
 		return runHyardRemoveOrbitWithResolvedRoot(cmd, resolved, packageName, hyardRemoveSurface)
 	case matchesHarness:
-		return runHyardRemoveHarnessWithResolvedRoot(cmd, resolved, packageName)
+		return runHyardRemoveHarnessWithResolvedRoot(cmd, resolved, packageName, hyardRemoveSurface)
 	default:
 		return fmt.Errorf("remove target %q was not found in the current runtime", packageName)
 	}
@@ -216,7 +235,7 @@ func runHyardRemoveOrbitWithResolvedRoot(cmd *cobra.Command, resolved harnesspkg
 		return fmt.Errorf("read --dry-run flag: %w", err)
 	}
 	if dryRun {
-		return fmt.Errorf("%s orbit --dry-run is not supported; use `hyard remove harness <name> --dry-run` for harness package previews", surface.Command)
+		return fmt.Errorf("%s orbit --dry-run is not supported; use `hyard %s harness <name> --dry-run` for harness package previews", surface.Command, surface.Command)
 	}
 	jsonOutput, err := wantHyardJSON(cmd)
 	if err != nil {
@@ -277,7 +296,7 @@ func runHyardRemoveOrbitWithResolvedRoot(cmd *cobra.Command, resolved harnesspkg
 	return nil
 }
 
-func runHyardRemoveHarness(cmd *cobra.Command, harnessPackage string) error {
+func runHyardRemoveHarness(cmd *cobra.Command, harnessPackage string, surface hyardPackageRemovalSurface) error {
 	workingDir, err := hyardWorkingDirFromCommand(cmd)
 	if err != nil {
 		return err
@@ -286,10 +305,10 @@ func runHyardRemoveHarness(cmd *cobra.Command, harnessPackage string) error {
 	if err != nil {
 		return fmt.Errorf("resolve harness root: %w", err)
 	}
-	return runHyardRemoveHarnessWithResolvedRoot(cmd, resolved, harnessPackage)
+	return runHyardRemoveHarnessWithResolvedRoot(cmd, resolved, harnessPackage, surface)
 }
 
-func runHyardRemoveHarnessWithResolvedRoot(cmd *cobra.Command, resolved harnesspkg.ResolvedRoot, harnessPackage string) error {
+func runHyardRemoveHarnessWithResolvedRoot(cmd *cobra.Command, resolved harnesspkg.ResolvedRoot, harnessPackage string, surface hyardPackageRemovalSurface) error {
 	jsonOutput, err := wantHyardJSON(cmd)
 	if err != nil {
 		return err
@@ -303,26 +322,27 @@ func runHyardRemoveHarnessWithResolvedRoot(cmd *cobra.Command, resolved harnessp
 		return fmt.Errorf("read --yes flag: %w", err)
 	}
 	if jsonOutput && !dryRun && !yes {
-		return fmt.Errorf("remove harness --json requires --yes or --dry-run")
+		return fmt.Errorf("%s harness --json requires --yes or --dry-run", surface.Command)
 	}
 
 	plan, err := harnesspkg.BuildRemoveRuntimeHarnessPackagePlanWithOptions(cmd.Context(), resolved.Repo, harnessPackage, harnesspkg.RemoveRuntimeHarnessPackageOptions{
 		AllowGlobalAgentCleanup: yes,
 	})
 	if err != nil {
-		return fmt.Errorf("plan harness package remove: %w", err)
+		return fmt.Errorf("plan harness package %s: %w", surface.Command, err)
 	}
 	if dryRun {
 		output := hyardRemoveOutputFromHarnessPlan(resolved.Repo.Root, plan, true)
+		applyHyardRemoveSurface(&output, surface)
 		if jsonOutput {
 			return emitHyardJSON(cmd, output)
 		}
-		return writeHyardRemoveHarnessPlan(cmd, plan, true)
+		return writeHyardRemoveHarnessPlan(cmd, plan, true, surface)
 	}
 
 	allowGlobalAgentCleanup := yes
 	if !yes {
-		if err := writeHyardRemoveHarnessPlan(cmd, plan, false); err != nil {
+		if err := writeHyardRemoveHarnessPlan(cmd, plan, false, surface); err != nil {
 			return err
 		}
 		prompter := orbittemplate.LineConfirmPrompter{
@@ -331,10 +351,10 @@ func runHyardRemoveHarnessWithResolvedRoot(cmd *cobra.Command, resolved harnessp
 		}
 		confirmed, err := prompter.Confirm(cmd.Context(), "Continue? [y/N] ")
 		if err != nil {
-			return fmt.Errorf("confirm harness package remove: %w", err)
+			return fmt.Errorf("confirm harness package %s: %w", surface.Command, err)
 		}
 		if !confirmed {
-			return fmt.Errorf("remove canceled for harness package %q", harnessPackage)
+			return fmt.Errorf("%s canceled for harness package %q", surface.Command, harnessPackage)
 		}
 		allowGlobalAgentCleanup = true
 	}
@@ -343,9 +363,10 @@ func runHyardRemoveHarnessWithResolvedRoot(cmd *cobra.Command, resolved harnessp
 		AllowGlobalAgentCleanup: allowGlobalAgentCleanup,
 	})
 	if err != nil {
-		return fmt.Errorf("remove harness package: %w", err)
+		return fmt.Errorf("%s harness package: %w", surface.Command, err)
 	}
 	output := hyardRemoveOutputFromHarnessResult(resolved.Repo.Root, result)
+	applyHyardRemoveSurface(&output, surface)
 	readiness, err := harnesspkg.EvaluateRuntimeReadiness(cmd.Context(), resolved.Repo.Root)
 	if err != nil {
 		return fmt.Errorf("evaluate harness readiness: %w", err)
@@ -356,9 +377,11 @@ func runHyardRemoveHarnessWithResolvedRoot(cmd *cobra.Command, resolved harnessp
 	}
 	if _, err := fmt.Fprintf(
 		cmd.OutOrStdout(),
-		"removed harness package %s from %s\nremoved_orbits: %s\n",
+		"%s harness package %s from %s\n%s_orbits: %s\n",
+		surface.ResultVerb,
 		harnessPackage,
 		resolved.Repo.Root,
+		surface.ResultVerb,
 		strings.Join(result.OrbitIDs, ", "),
 	); err != nil {
 		return fmt.Errorf("write command output: %w", err)
@@ -418,6 +441,12 @@ func hyardRemoveOutputFromHarnessResult(repoRoot string, result harnesspkg.Remov
 	}
 }
 
+func applyHyardRemoveSurface(output *hyardRemoveOutput, surface hyardPackageRemovalSurface) {
+	if surface.Action != "" {
+		output.Action = surface.Action
+	}
+}
+
 func hyardAgentCleanupFromHarness(cleanup harnesspkg.AgentCleanupResult) hyardAgentCleanupOutput {
 	status := cleanup.Status
 	if status == "" {
@@ -452,8 +481,9 @@ func writeHyardPostActionReadinessText(cmd *cobra.Command, report harnesspkg.Rea
 	return nil
 }
 
-func writeHyardRemoveHarnessPlan(cmd *cobra.Command, plan harnesspkg.RemoveRuntimeHarnessPackagePlan, dryRun bool) error {
-	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Remove harness package %s?\n", plan.HarnessID); err != nil {
+func writeHyardRemoveHarnessPlan(cmd *cobra.Command, plan harnesspkg.RemoveRuntimeHarnessPackagePlan, dryRun bool, surface hyardPackageRemovalSurface) error {
+	verbTitle := titleHyardSurfaceCommand(surface)
+	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "%s harness package %s?\n", verbTitle, plan.HarnessID); err != nil {
 		return fmt.Errorf("write harness remove preview: %w", err)
 	}
 	if dryRun {
@@ -461,7 +491,7 @@ func writeHyardRemoveHarnessPlan(cmd *cobra.Command, plan harnesspkg.RemoveRunti
 			return fmt.Errorf("write harness remove preview: %w", err)
 		}
 	}
-	if _, err := fmt.Fprintln(cmd.OutOrStdout(), "Orbits to remove:"); err != nil {
+	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Orbits to %s:\n", surface.Command); err != nil {
 		return fmt.Errorf("write harness remove preview: %w", err)
 	}
 	for _, orbitID := range plan.OrbitIDs {
@@ -469,7 +499,7 @@ func writeHyardRemoveHarnessPlan(cmd *cobra.Command, plan harnesspkg.RemoveRunti
 			return fmt.Errorf("write harness remove preview: %w", err)
 		}
 	}
-	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "paths_to_remove: %d\n", len(plan.RemovedPaths)); err != nil {
+	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "paths_to_%s: %d\n", surface.Command, len(plan.RemovedPaths)); err != nil {
 		return fmt.Errorf("write harness remove preview: %w", err)
 	}
 	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "delete_bundle_record: %t\n", plan.DeleteBundleRecord); err != nil {
@@ -487,6 +517,16 @@ func writeHyardRemoveHarnessPlan(cmd *cobra.Command, plan harnesspkg.RemoveRunti
 	}
 
 	return nil
+}
+
+func titleHyardSurfaceCommand(surface hyardPackageRemovalSurface) string {
+	if surface.Command == "" {
+		return ""
+	}
+	runes := []rune(surface.Command)
+	runes[0] = unicode.ToUpper(runes[0])
+
+	return string(runes)
 }
 
 func parseHyardRemovePackageName(raw string) (string, error) {
