@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	gitpkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/git"
 	harnesspkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/harness"
 	statepkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/state"
 	"github.com/zack-nova/harnessyard/cmd/orbit/cli/testutil"
@@ -77,6 +79,36 @@ func TestHarnessTemplateSaveDryRunIncludesCompletedBootstrapMembersWhenExplicitl
 	require.Contains(t, payload.Files, "docs/guide.md")
 	require.Contains(t, payload.Files, "bootstrap/docs/setup.md")
 	require.Empty(t, payload.Warnings)
+}
+
+func TestHarnessTemplatePublishIncludesCompletedBootstrapMembersWhenExplicitlyRequested(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHarnessBootstrapTemplateSaveRepo(t)
+	repo.WriteFile(t, "BOOTSTRAP.md", "Direct bootstrap guidance edit\n")
+
+	store, err := statepkg.NewFSStore(repo.GitDir(t))
+	require.NoError(t, err)
+	require.NoError(t, store.WriteRuntimeStateSnapshot(statepkg.RuntimeStateSnapshot{
+		Orbit: "docs",
+		Bootstrap: &statepkg.RuntimeBootstrapState{
+			Completed:   true,
+			CompletedAt: time.Date(2026, time.April, 19, 9, 0, 0, 0, time.UTC),
+		},
+	}))
+
+	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "template", "publish", "--to", "harness-template/workspace", "--include-bootstrap", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+	require.NotEmpty(t, stdout)
+
+	bootstrapMember, err := gitpkg.ReadFileAtRev(context.Background(), repo.Root, "harness-template/workspace", "bootstrap/docs/setup.md")
+	require.NoError(t, err)
+	require.Equal(t, "Docs bootstrap setup\n", string(bootstrapMember))
+
+	rootBootstrap, err := gitpkg.ReadFileAtRev(context.Background(), repo.Root, "harness-template/workspace", "BOOTSTRAP.md")
+	require.NoError(t, err)
+	require.Equal(t, "Direct bootstrap guidance edit\n", string(rootBootstrap))
 }
 
 func seedHarnessBootstrapTemplateSaveRepo(t *testing.T) *testutil.Repo {

@@ -233,12 +233,8 @@ func publishTemplateLocally(ctx context.Context, preview TemplatePublishPreview,
 		}
 	}
 
-	saveResult, err := SaveTemplateBranch(ctx, TemplateSaveInput{
-		Preview: TemplateSavePreviewInput{
-			RepoRoot:        preview.RepoRoot,
-			TargetBranch:    preview.PublishBranch,
-			DefaultTemplate: preview.DefaultTemplate,
-		},
+	saveResult, err := WriteTemplateSavePreview(ctx, TemplateSaveWriteInput{
+		Preview:      preview.SavePreview,
 		Overwrite:    true,
 		ParentCommit: parentCommit,
 	})

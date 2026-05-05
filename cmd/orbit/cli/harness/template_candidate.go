@@ -63,8 +63,13 @@ func BuildTemplateMemberCandidateWithOptions(
 	if err != nil {
 		return TemplateMemberCandidate{}, fmt.Errorf("load tracked files: %w", err)
 	}
+	worktreeFiles, err := gitpkg.WorktreeFiles(ctx, repoRoot)
+	if err != nil {
+		return TemplateMemberCandidate{}, fmt.Errorf("load worktree files: %w", err)
+	}
+	candidateScopeFiles := sortedUniqueStrings(append(trackedFiles, worktreeFiles...))
 
-	spec, plan, err := orbit.LoadOrbitSpecAndProjectionPlan(ctx, repoRoot, repoConfig, definition.ID, trackedFiles)
+	spec, plan, err := orbit.LoadOrbitSpecAndProjectionPlan(ctx, repoRoot, repoConfig, definition.ID, candidateScopeFiles)
 	if err != nil {
 		return TemplateMemberCandidate{}, fmt.Errorf("resolve orbit export plan: %w", err)
 	}

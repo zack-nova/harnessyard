@@ -1,10 +1,15 @@
 package cli_test
 
 import (
+	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	gitpkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/git"
 )
 
 func TestHyardPublishOrbitRunViewBlocksOrbitPackageJSON(t *testing.T) {
@@ -132,6 +137,77 @@ func TestHyardPublishHarnessAllowedFromRunAndAuthorViewsJSON(t *testing.T) {
 			require.True(t, payload.LocalPublish.Success)
 			require.True(t, payload.LocalPublish.Changed)
 			require.NotEmpty(t, payload.LocalPublish.Commit)
+		})
+	}
+}
+
+func TestHyardPublishHarnessPackagesVisibleRuntimeContentFromRunAndAuthorViews(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name       string
+		selectView []string
+		packageArg string
+	}{
+		{
+			name:       "run view",
+			packageArg: "visible-run",
+		},
+		{
+			name:       "author view",
+			selectView: []string{"view", "author", "--json"},
+			packageArg: "visible-author",
+		},
+	} {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			repo := seedCommittedHyardRuntimeRepo(t)
+			addHyardHostedOrbitDefinition(t, repo, "ops")
+			err := executeHarnessCLIForHyardTest(t, repo.Root, "add", "ops")
+			require.NoError(t, err)
+
+			repo.WriteFile(t, "AGENTS.md", "Direct runtime guidance edit\n")
+			repo.WriteFile(t, "docs/live-note.md", "Visible docs note\n")
+			repo.WriteFile(t, "ops/runbook.sh", "#!/bin/sh\nprintf 'ok\\n'\n")
+			require.NoError(t, os.Chmod(filepath.Join(repo.Root, "ops", "runbook.sh"), 0o755))
+			repo.WriteFile(t, "scratch/outside.md", "Out of scope\n")
+
+			if len(tt.selectView) > 0 {
+				_, stderr, err := executeHyardCLI(t, repo.Root, tt.selectView...)
+				require.NoError(t, err)
+				require.Empty(t, stderr)
+			}
+
+			stdout, stderr, err := executeHyardCLI(t, repo.Root, "publish", "harness", tt.packageArg, "--json")
+			require.NoError(t, err)
+			require.Empty(t, stderr)
+			require.NotEmpty(t, stdout)
+
+			branch := "harness-template/" + tt.packageArg
+			agentsData, err := gitpkg.ReadFileAtRev(context.Background(), repo.Root, branch, "AGENTS.md")
+			require.NoError(t, err)
+			require.Equal(t, "Direct runtime guidance edit\n", string(agentsData))
+
+			docsNote, err := gitpkg.ReadFileAtRev(context.Background(), repo.Root, branch, "docs/live-note.md")
+			require.NoError(t, err)
+			require.Equal(t, "Visible docs note\n", string(docsNote))
+
+			opsRunbook, err := gitpkg.ReadFileAtRev(context.Background(), repo.Root, branch, "ops/runbook.sh")
+			require.NoError(t, err)
+			require.Equal(t, "#!/bin/sh\nprintf 'ok\\n'\n", string(opsRunbook))
+			opsMode, err := gitpkg.FileModeAtRev(context.Background(), repo.Root, branch, "ops/runbook.sh")
+			require.NoError(t, err)
+			require.Equal(t, gitpkg.FileModeExecutable, opsMode)
+
+			_, err = gitpkg.ReadFileAtRev(context.Background(), repo.Root, branch, "scratch/outside.md")
+			require.Error(t, err)
+
+			templateManifest, err := gitpkg.ReadFileAtRev(context.Background(), repo.Root, branch, ".harness/template.yaml")
+			require.NoError(t, err)
+			require.Contains(t, string(templateManifest), "orbit_id: docs")
+			require.Contains(t, string(templateManifest), "orbit_id: ops")
 		})
 	}
 }
