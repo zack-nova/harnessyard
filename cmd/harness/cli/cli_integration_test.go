@@ -9030,7 +9030,7 @@ func TestHarnessInstallDryRunHarnessTemplateConflictsOnInvalidAgentsLane(t *test
 	runtimeRepo.Run(t, "remote", "add", "source", remoteURL)
 	runtimeRepo.Run(t, "fetch", "source", "harness-template/workspace:harness-template/workspace")
 
-	runtimeRepo.WriteFile(t, "AGENTS.md", "<<broken>>\n<!-- orbit:block:docs -->\n")
+	runtimeRepo.WriteFile(t, "AGENTS.md", "<<broken>>\n<!-- orbit:begin workflow='docs' -->\n")
 	runtimeRepo.AddAndCommit(t, "seed invalid agents")
 
 	stdout, stderr, err := executeHarnessCLI(t, runtimeRepo.Root, "install", "harness-template/workspace", "--dry-run", "--json")

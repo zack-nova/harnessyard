@@ -934,7 +934,7 @@ func TestHyardAdoptWriteRefusesMalformedExistingRootGuidanceMarkersBeforeWriting
 	t.Parallel()
 
 	repo := testutil.NewRepo(t)
-	originalGuidance := "<!-- orbit:begin orbit_id=\"docs\" -->\nUnclosed adopted guidance.\n"
+	originalGuidance := "<!-- orbit:begin workflow='docs' -->\nUnclosed adopted guidance.\n"
 	repo.WriteFile(t, "AGENTS.md", originalGuidance)
 	repo.AddAndCommit(t, "seed malformed root marker")
 

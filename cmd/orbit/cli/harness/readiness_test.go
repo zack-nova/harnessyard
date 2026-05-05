@@ -345,7 +345,7 @@ func TestEvaluateRuntimeReadinessInvalidAgentsContainerIsBroken(t *testing.T) {
 	_, err = orbitpkg.WriteHostedOrbitSpec(repo.Root, spec)
 	require.NoError(t, err)
 
-	require.NoError(t, os.WriteFile(filepath.Join(repo.Root, "AGENTS.md"), []byte("<<broken>>\n<!-- orbit:block:docs -->\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(repo.Root, "AGENTS.md"), []byte("<<broken>>\n<!-- orbit:begin workflow='docs' -->\n"), 0o600))
 
 	report, err := EvaluateRuntimeReadiness(context.Background(), repo.Root)
 	require.NoError(t, err)

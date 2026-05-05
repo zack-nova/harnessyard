@@ -67,6 +67,28 @@ Scoped member-editing documentation may continue to use add/remove language, suc
 `hyard orbit member add` and `hyard orbit member remove`, when it describes collection
 membership rather than installed package lifecycle.
 
+## Root Guidance Marker Surface
+
+Root guidance blocks use owner-specific marker namespaces with a single double-quoted
+`workflow` attribute.
+
+Orbit package guidance uses `orbit:` markers:
+
+```html
+<!-- orbit:begin workflow="docs" -->
+<!-- orbit:end workflow="docs" -->
+```
+
+Harness package guidance uses `harness:` markers:
+
+```html
+<!-- harness:begin workflow="workspace" -->
+<!-- harness:end workflow="workspace" -->
+```
+
+Root guidance marker workflow language does not rename OrbitSpec, manifest fields,
+storage paths, member hints, package identity, or template branch contracts.
+
 ## Release Assets
 
 Each release should publish platform archives that contain the `hyard` binary.

@@ -138,7 +138,7 @@ func TestParseRuntimeAgentsDocumentIgnoresFormatterPaddingAroundMarkers(t *testi
 func TestParseRuntimeAgentsDocumentNamesOwnerKindForMalformedKnownNamespaceMarker(t *testing.T) {
 	t.Parallel()
 
-	_, err := ParseRuntimeAgentsDocument([]byte("<!-- harness:begin orbit_id=\"docs\" -->\n"))
+	_, err := ParseRuntimeAgentsDocument([]byte("<!-- harness:begin workflow='docs' -->\n"))
 	require.Error(t, err)
 	require.ErrorContains(t, err, "malformed harness block marker")
 }
