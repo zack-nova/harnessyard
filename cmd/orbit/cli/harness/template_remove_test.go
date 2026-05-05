@@ -83,8 +83,8 @@ func TestRemoveTemplateMemberRemovesAgentsBlockWhenPresent(t *testing.T) {
 
 	agentsData, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
 	require.NoError(t, err)
-	require.NotContains(t, string(agentsData), `orbit_id="docs"`)
-	require.Contains(t, string(agentsData), `orbit_id="shared"`)
+	require.NotContains(t, string(agentsData), `workflow="docs"`)
+	require.Contains(t, string(agentsData), `workflow="shared"`)
 
 	templateManifest, err := LoadTemplateManifest(repo.Root)
 	require.NoError(t, err)

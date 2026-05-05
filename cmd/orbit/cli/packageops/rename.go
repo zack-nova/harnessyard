@@ -23,7 +23,7 @@ import (
 
 const manifestRelativePath = ".harness/manifest.yaml"
 
-var runtimeGuidanceMarkerLinePattern = regexp.MustCompile(`^<!--\s*orbit:(begin|end)\s+orbit_id="([^"]+)"\s*-->$`)
+var runtimeGuidanceMarkerLinePattern = regexp.MustCompile(`^<!--\s*orbit:(begin|end)\s+workflow="([^"]+)"\s*-->$`)
 
 // RenameHostedOrbitPackageResult summarizes a hosted orbit package rename.
 type RenameHostedOrbitPackageResult struct {
@@ -692,7 +692,7 @@ func renamedRuntimeGuidanceMarkerData(data []byte, label string, oldPackage stri
 		body, ending := splitLineEnding(line)
 		matches := runtimeGuidanceMarkerLinePattern.FindStringSubmatch(strings.TrimSpace(string(body)))
 		if matches != nil && matches[2] == oldPackage {
-			if _, err := fmt.Fprintf(&output, "<!-- orbit:%s orbit_id=%q -->", matches[1], newPackage); err != nil {
+			if _, err := fmt.Fprintf(&output, "<!-- orbit:%s workflow=%q -->", matches[1], newPackage); err != nil {
 				return nil, false, fmt.Errorf("write renamed %s marker: %w", label, err)
 			}
 			output.Write(ending)

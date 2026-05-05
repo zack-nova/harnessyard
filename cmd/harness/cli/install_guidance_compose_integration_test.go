@@ -182,7 +182,7 @@ func TestHarnessInstallScopedGuidanceIgnoresUnrelatedDriftedBlocks(t *testing.T)
 	humansData, err := os.ReadFile(filepath.Join(repo.Root, "HUMANS.md"))
 	require.NoError(t, err)
 	require.Contains(t, string(humansData), "Run the Drifted cmd workflow.\n")
-	require.Contains(t, string(humansData), "<!-- orbit:begin orbit_id=\"docs\" -->\nRun the Installed Orbit docs workflow.\n<!-- orbit:end orbit_id=\"docs\" -->\n")
+	require.Contains(t, string(humansData), "<!-- orbit:begin workflow=\"docs\" -->\nRun the Installed Orbit docs workflow.\n<!-- orbit:end workflow=\"docs\" -->\n")
 }
 
 func TestHarnessInstallOverwriteExistingOverwritesTouchedGuidanceDrift(t *testing.T) {
@@ -321,8 +321,8 @@ func TestHarnessInstallBatchScopedGuidanceIgnoresUnrelatedDriftedBlocks(t *testi
 	humansData, err := os.ReadFile(filepath.Join(repo.Root, "HUMANS.md"))
 	require.NoError(t, err)
 	require.Contains(t, string(humansData), "Run the Drifted cmd workflow.\n")
-	require.Contains(t, string(humansData), "<!-- orbit:begin orbit_id=\"docs\" -->\nRun the Installed Orbit docs workflow.\n<!-- orbit:end orbit_id=\"docs\" -->\n")
-	require.Contains(t, string(humansData), "<!-- orbit:begin orbit_id=\"ops\" -->\nRun the Installed Orbit ops workflow.\n<!-- orbit:end orbit_id=\"ops\" -->\n")
+	require.Contains(t, string(humansData), "<!-- orbit:begin workflow=\"docs\" -->\nRun the Installed Orbit docs workflow.\n<!-- orbit:end workflow=\"docs\" -->\n")
+	require.Contains(t, string(humansData), "<!-- orbit:begin workflow=\"ops\" -->\nRun the Installed Orbit ops workflow.\n<!-- orbit:end workflow=\"ops\" -->\n")
 }
 
 func TestHarnessInstallBatchOverwriteExistingOverwritesTouchedGuidanceDrift(t *testing.T) {

@@ -40,7 +40,7 @@ func TestComposeRuntimeGuidanceScopedIgnoresUnrelatedDriftedOrbitBlocks(t *testi
 	humansData, err := os.ReadFile(filepath.Join(repo.Root, "HUMANS.md"))
 	require.NoError(t, err)
 	require.Contains(t, string(humansData), "Run the Drifted Acme cmd workflow.\n")
-	require.Contains(t, string(humansData), "<!-- orbit:begin orbit_id=\"docs\" -->\nRun the Acme docs workflow.\n<!-- orbit:end orbit_id=\"docs\" -->\n")
+	require.Contains(t, string(humansData), "<!-- orbit:begin workflow=\"docs\" -->\nRun the Acme docs workflow.\n<!-- orbit:end workflow=\"docs\" -->\n")
 }
 
 func TestComposeRuntimeGuidanceScopedRejectsUnknownOrbitID(t *testing.T) {

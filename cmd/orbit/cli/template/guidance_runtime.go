@@ -28,13 +28,13 @@ func replaceOrAppendRuntimeGuidanceBlock(existing []byte, orbitID string, wrappe
 	replaced := false
 
 	for _, line := range lines {
-		markerKind, markerOrbitID, isMarker, err := parseRuntimeAgentsMarkerLine(line)
+		ownerKind, markerKind, workflowID, isMarker, err := parseRuntimeAgentsMarkerLine(line)
 		if err != nil {
 			return nil, err
 		}
 
 		if replacing {
-			if isMarker && markerKind == "end" && markerOrbitID == orbitID {
+			if isMarker && ownerKind == RuntimeGuidanceOwnerKindOrbit && markerKind == "end" && workflowID == orbitID {
 				output = append(output, wrappedBlock...)
 				replacing = false
 				replaced = true
@@ -42,7 +42,7 @@ func replaceOrAppendRuntimeGuidanceBlock(existing []byte, orbitID string, wrappe
 			continue
 		}
 
-		if isMarker && markerKind == "begin" && markerOrbitID == orbitID {
+		if isMarker && ownerKind == RuntimeGuidanceOwnerKindOrbit && markerKind == "begin" && workflowID == orbitID {
 			replacing = true
 			continue
 		}
@@ -83,20 +83,20 @@ func RemoveRuntimeGuidanceBlockData(existing []byte, orbitID string, containerLa
 	removed := false
 
 	for _, line := range lines {
-		markerKind, markerOrbitID, isMarker, err := parseRuntimeAgentsMarkerLine(line)
+		ownerKind, markerKind, workflowID, isMarker, err := parseRuntimeAgentsMarkerLine(line)
 		if err != nil {
 			return nil, false, err
 		}
 
 		if removing {
-			if isMarker && markerKind == "end" && markerOrbitID == orbitID {
+			if isMarker && ownerKind == RuntimeGuidanceOwnerKindOrbit && markerKind == "end" && workflowID == orbitID {
 				removing = false
 				removed = true
 			}
 			continue
 		}
 
-		if isMarker && markerKind == "begin" && markerOrbitID == orbitID {
+		if isMarker && ownerKind == RuntimeGuidanceOwnerKindOrbit && markerKind == "begin" && workflowID == orbitID {
 			removing = true
 			continue
 		}

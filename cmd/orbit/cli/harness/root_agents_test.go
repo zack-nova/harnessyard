@@ -26,9 +26,9 @@ func TestBuildRootAgentsTemplateFileAppliesWholeFileReplacementAndStripsRuntimeM
 		"    description: Service URL\n")
 	repo.WriteFile(t, "AGENTS.md", ""+
 		"# Rules for Orbit\n"+
-		"<!-- orbit:begin orbit_id=\"docs\" -->\n"+
+		"<!-- orbit:begin workflow=\"docs\" -->\n"+
 		"Use Orbit docs at https://example.test\n"+
-		"<!-- orbit:end orbit_id=\"docs\" -->\n"+
+		"<!-- orbit:end workflow=\"docs\" -->\n"+
 		"<!-- keep this comment -->\n")
 	repo.AddAndCommit(t, "seed root AGENTS whole-file content")
 

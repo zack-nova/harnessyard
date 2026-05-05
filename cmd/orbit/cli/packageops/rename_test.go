@@ -202,9 +202,9 @@ func TestRenameHostedOrbitPackageUpdatesRuntimeGuidanceMarkers(t *testing.T) {
 	for _, path := range []string{"AGENTS.md", "HUMANS.md", "BOOTSTRAP.md"} {
 		repo.WriteFile(t, path, ""+
 			"Workspace guidance.\n"+
-			"<!-- orbit:begin orbit_id=\"docs\" -->\n"+
+			"<!-- orbit:begin workflow=\"docs\" -->\n"+
 			"Docs block.\n"+
-			"<!-- orbit:end orbit_id=\"docs\" -->\n")
+			"<!-- orbit:end workflow=\"docs\" -->\n")
 	}
 
 	result, err := packageops.RenameHostedOrbitPackage(context.Background(), repo.Root, "docs", "api")
@@ -214,9 +214,9 @@ func TestRenameHostedOrbitPackageUpdatesRuntimeGuidanceMarkers(t *testing.T) {
 	for _, path := range []string{"AGENTS.md", "HUMANS.md", "BOOTSTRAP.md"} {
 		data, err := os.ReadFile(filepath.Join(repo.Root, path))
 		require.NoError(t, err)
-		require.Contains(t, string(data), `<!-- orbit:begin orbit_id="api" -->`)
-		require.Contains(t, string(data), `<!-- orbit:end orbit_id="api" -->`)
-		require.NotContains(t, string(data), `orbit_id="docs"`)
+		require.Contains(t, string(data), `<!-- orbit:begin workflow="api" -->`)
+		require.Contains(t, string(data), `<!-- orbit:end workflow="api" -->`)
+		require.NotContains(t, string(data), `workflow="docs"`)
 	}
 }
 

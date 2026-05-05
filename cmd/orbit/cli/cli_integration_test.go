@@ -377,7 +377,7 @@ func TestValidateFailsOnMalformedRuntimeAgentsMarkers(t *testing.T) {
 	repo.WriteFile(t, "README.md", "hello\n")
 	repo.WriteFile(t, "docs/guide.md", "guide\n")
 	repo.WriteFile(t, "AGENTS.md", ""+
-		"<!-- orbit:begin orbit_id=\"docs\" -->\n"+
+		"<!-- orbit:begin workflow=\"docs\" -->\n"+
 		"broken docs block\n")
 	repo.AddAndCommit(t, "initial commit with malformed agents")
 
@@ -444,13 +444,13 @@ func TestOrbitBriefBackfillWritesCurrentOrbitBlockToHostedSpec(t *testing.T) {
 		"    value: Acme\n")
 	repo.WriteFile(t, "AGENTS.md", ""+
 		"Workspace overview.\n"+
-		"<!-- orbit:begin orbit_id=\"docs\" -->\n"+
+		"<!-- orbit:begin workflow=\"docs\" -->\n"+
 		"You are the Acme docs orbit.\n"+
 		"Keep release notes current.\n"+
-		"<!-- orbit:end orbit_id=\"docs\" -->\n"+
-		"<!-- orbit:begin orbit_id=\"api\" -->\n"+
+		"<!-- orbit:end workflow=\"docs\" -->\n"+
+		"<!-- orbit:begin workflow=\"api\" -->\n"+
 		"Ignore this.\n"+
-		"<!-- orbit:end orbit_id=\"api\" -->\n")
+		"<!-- orbit:end workflow=\"api\" -->\n")
 
 	stdout, stderr, err := executeCLI(t, repo.Root, "brief", "backfill")
 	require.NoError(t, err)
@@ -489,9 +489,9 @@ func TestOrbitBriefBackfillFailsClosedWhenCurrentOrbitBlockIsMissing(t *testing.
 
 	repo.WriteFile(t, "AGENTS.md", ""+
 		"Workspace overview.\n"+
-		"<!-- orbit:begin orbit_id=\"api\" -->\n"+
+		"<!-- orbit:begin workflow=\"api\" -->\n"+
 		"API brief.\n"+
-		"<!-- orbit:end orbit_id=\"api\" -->\n")
+		"<!-- orbit:end workflow=\"api\" -->\n")
 
 	stdout, stderr, err := executeCLI(t, repo.Root, "brief", "backfill", "--orbit", "docs")
 	require.Error(t, err)
@@ -566,10 +566,10 @@ func TestOrbitBriefBackfillReportsSkippedStatusWhenHostedTruthAlreadyMatches(t *
 		"    value: Acme\n")
 	repo.WriteFile(t, "AGENTS.md", ""+
 		"Workspace overview.\n"+
-		"<!-- orbit:begin orbit_id=\"docs\" -->\n"+
+		"<!-- orbit:begin workflow=\"docs\" -->\n"+
 		"You are the Acme docs orbit.\n"+
 		"Keep release notes current.\n"+
-		"<!-- orbit:end orbit_id=\"docs\" -->\n")
+		"<!-- orbit:end workflow=\"docs\" -->\n")
 	repo.AddAndCommit(t, "seed in-sync brief backfill repo")
 
 	stdout, stderr, err := executeCLI(t, repo.Root, "brief", "backfill", "--orbit", "docs", "--json")
@@ -611,8 +611,8 @@ func TestOrbitBriefBackfillReportsRemovedStatusWhenClearingHostedTruth(t *testin
 		"members: []\n")
 	repo.WriteFile(t, "AGENTS.md", ""+
 		"Workspace overview.\n"+
-		"<!-- orbit:begin orbit_id=\"docs\" -->\n"+
-		"<!-- orbit:end orbit_id=\"docs\" -->\n")
+		"<!-- orbit:begin workflow=\"docs\" -->\n"+
+		"<!-- orbit:end workflow=\"docs\" -->\n")
 	repo.AddAndCommit(t, "seed removable brief backfill repo")
 
 	stdout, stderr, err := executeCLI(t, repo.Root, "brief", "backfill", "--orbit", "docs")
@@ -662,10 +662,10 @@ func TestOrbitBriefMaterializeWritesRenderedCurrentOrbitBlockToRootAgents(t *tes
 	agentsData, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
 	require.NoError(t, err)
 	require.Equal(t, ""+
-		"<!-- orbit:begin orbit_id=\"docs\" -->\n"+
+		"<!-- orbit:begin workflow=\"docs\" -->\n"+
 		"You are the Acme docs orbit.\n"+
 		"Keep release notes current.\n"+
-		"<!-- orbit:end orbit_id=\"docs\" -->\n", string(agentsData))
+		"<!-- orbit:end workflow=\"docs\" -->\n", string(agentsData))
 
 	spec, err := orbitpkg.LoadHostedOrbitSpec(context.Background(), repo.Root, "docs")
 	require.NoError(t, err)
@@ -681,9 +681,9 @@ func TestOrbitBriefMaterializePreservesOtherBlocksAndProseOnSourceRevision(t *te
 		"Keep release notes current.\n",
 		""+
 			"Workspace overview.\n"+
-			"<!-- orbit:begin orbit_id=\"api\" -->\n"+
+			"<!-- orbit:begin workflow=\"api\" -->\n"+
 			"API brief.\n"+
-			"<!-- orbit:end orbit_id=\"api\" -->\n",
+			"<!-- orbit:end workflow=\"api\" -->\n",
 	)
 
 	stdout, stderr, err := executeCLI(t, repo.Root, "brief", "materialize", "--orbit", "docs")
@@ -695,10 +695,10 @@ func TestOrbitBriefMaterializePreservesOtherBlocksAndProseOnSourceRevision(t *te
 	require.NoError(t, err)
 	agents := string(agentsData)
 	require.Contains(t, agents, "Workspace overview.\n")
-	require.Contains(t, agents, "<!-- orbit:begin orbit_id=\"api\" -->\nAPI brief.\n<!-- orbit:end orbit_id=\"api\" -->\n")
-	require.Contains(t, agents, "<!-- orbit:begin orbit_id=\"docs\" -->\nYou are the $project_name docs orbit.\nKeep release notes current.\n<!-- orbit:end orbit_id=\"docs\" -->\n")
-	require.Less(t, strings.Index(agents, "Workspace overview.\n"), strings.Index(agents, "<!-- orbit:begin orbit_id=\"api\" -->"))
-	require.Less(t, strings.Index(agents, "<!-- orbit:end orbit_id=\"api\" -->"), strings.Index(agents, "<!-- orbit:begin orbit_id=\"docs\" -->"))
+	require.Contains(t, agents, "<!-- orbit:begin workflow=\"api\" -->\nAPI brief.\n<!-- orbit:end workflow=\"api\" -->\n")
+	require.Contains(t, agents, "<!-- orbit:begin workflow=\"docs\" -->\nYou are the $project_name docs orbit.\nKeep release notes current.\n<!-- orbit:end workflow=\"docs\" -->\n")
+	require.Less(t, strings.Index(agents, "Workspace overview.\n"), strings.Index(agents, "<!-- orbit:begin workflow=\"api\" -->"))
+	require.Less(t, strings.Index(agents, "<!-- orbit:end workflow=\"api\" -->"), strings.Index(agents, "<!-- orbit:begin workflow=\"docs\" -->"))
 }
 
 func TestOrbitBriefMaterializeFailsClosedWhenCurrentOrbitBlockIsDrifted(t *testing.T) {
@@ -709,10 +709,10 @@ func TestOrbitBriefMaterializeFailsClosedWhenCurrentOrbitBlockIsDrifted(t *testi
 		"Keep release notes current.\n",
 		""+
 			"Workspace overview.\n"+
-			"<!-- orbit:begin orbit_id=\"docs\" -->\n"+
+			"<!-- orbit:begin workflow=\"docs\" -->\n"+
 			"You are the Drifted docs orbit.\n"+
 			"Keep release notes current.\n"+
-			"<!-- orbit:end orbit_id=\"docs\" -->\n",
+			"<!-- orbit:end workflow=\"docs\" -->\n",
 	)
 
 	originalAgents, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
@@ -739,13 +739,13 @@ func TestOrbitBriefMaterializeForceOverwritesDriftedCurrentOrbitBlock(t *testing
 		"Keep release notes current.\n",
 		""+
 			"Workspace overview.\n"+
-			"<!-- orbit:begin orbit_id=\"api\" -->\n"+
+			"<!-- orbit:begin workflow=\"api\" -->\n"+
 			"API brief.\n"+
-			"<!-- orbit:end orbit_id=\"api\" -->\n"+
-			"<!-- orbit:begin orbit_id=\"docs\" -->\n"+
+			"<!-- orbit:end workflow=\"api\" -->\n"+
+			"<!-- orbit:begin workflow=\"docs\" -->\n"+
 			"You are the Drifted docs orbit.\n"+
 			"Keep release notes current.\n"+
-			"<!-- orbit:end orbit_id=\"docs\" -->\n",
+			"<!-- orbit:end workflow=\"docs\" -->\n",
 	)
 
 	stdout, stderr, err := executeCLI(t, repo.Root, "brief", "materialize", "--orbit", "docs", "--force")
@@ -756,8 +756,8 @@ func TestOrbitBriefMaterializeForceOverwritesDriftedCurrentOrbitBlock(t *testing
 	agentsData, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
 	require.NoError(t, err)
 	agents := string(agentsData)
-	require.Contains(t, agents, "<!-- orbit:begin orbit_id=\"api\" -->\nAPI brief.\n<!-- orbit:end orbit_id=\"api\" -->\n")
-	require.Contains(t, agents, "<!-- orbit:begin orbit_id=\"docs\" -->\nYou are the $project_name docs orbit.\nKeep release notes current.\n<!-- orbit:end orbit_id=\"docs\" -->\n")
+	require.Contains(t, agents, "<!-- orbit:begin workflow=\"api\" -->\nAPI brief.\n<!-- orbit:end workflow=\"api\" -->\n")
+	require.Contains(t, agents, "<!-- orbit:begin workflow=\"docs\" -->\nYou are the $project_name docs orbit.\nKeep release notes current.\n<!-- orbit:end workflow=\"docs\" -->\n")
 	require.NotContains(t, agents, "You are the Drifted docs orbit.\n")
 }
 
@@ -4119,10 +4119,10 @@ func seedBriefBackfillRevisionRepo(t *testing.T, revisionKind string) *testutil.
 		"    value: Acme\n")
 	repo.WriteFile(t, "AGENTS.md", ""+
 		"Workspace overview.\n"+
-		"<!-- orbit:begin orbit_id=\"docs\" -->\n"+
+		"<!-- orbit:begin workflow=\"docs\" -->\n"+
 		"You are the Acme docs orbit.\n"+
 		"Keep release notes current.\n"+
-		"<!-- orbit:end orbit_id=\"docs\" -->\n")
+		"<!-- orbit:end workflow=\"docs\" -->\n")
 	repo.AddAndCommit(t, "seed brief backfill revision repo")
 
 	return repo

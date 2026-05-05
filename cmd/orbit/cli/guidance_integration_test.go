@@ -208,9 +208,9 @@ func TestOrbitGuidanceBackfillDefaultsToOrbitTemplateBranchOrbit(t *testing.T) {
 	repo := seedOrbitGuidanceRevisionRepo(t, "", "", "", map[string]string{
 		"AGENTS.md": "" +
 			"Workspace overview.\n" +
-			"<!-- orbit:begin orbit_id=\"docs\" -->\n" +
+			"<!-- orbit:begin workflow=\"docs\" -->\n" +
 			"You are the Acme docs orbit.\n" +
-			"<!-- orbit:end orbit_id=\"docs\" -->\n",
+			"<!-- orbit:end workflow=\"docs\" -->\n",
 	})
 	repo.WriteFile(t, ".harness/manifest.yaml", ""+
 		"schema_version: 1\n"+
@@ -441,8 +441,8 @@ func TestOrbitGuidanceMaterializeSeedEmptyCreatesEditableBlocksThatBackfillAllTe
 	for _, path := range []string{"AGENTS.md", "HUMANS.md", "BOOTSTRAP.md"} {
 		data, readErr := os.ReadFile(filepath.Join(repo.Root, path))
 		require.NoError(t, readErr)
-		require.Contains(t, string(data), `<!-- orbit:begin orbit_id="docs" -->`)
-		require.Contains(t, string(data), `<!-- orbit:end orbit_id="docs" -->`)
+		require.Contains(t, string(data), `<!-- orbit:begin workflow="docs" -->`)
+		require.Contains(t, string(data), `<!-- orbit:end workflow="docs" -->`)
 	}
 
 	agentsBlock, err := orbittemplate.WrapRuntimeAgentsBlock("docs", []byte("You are the Acme docs orbit.\nKeep release notes current.\n"))
@@ -499,9 +499,9 @@ func TestOrbitGuidanceMaterializeSeedEmptyAppendsMissingBlockToExistingArtifact(
 	require.NoError(t, err)
 	agents := string(agentsData)
 	require.Contains(t, agents, "Workspace overview.\n")
-	require.Contains(t, agents, `<!-- orbit:begin orbit_id="api" -->`)
-	require.Contains(t, agents, `<!-- orbit:begin orbit_id="docs" -->`)
-	require.Equal(t, 1, strings.Count(agents, `<!-- orbit:begin orbit_id="docs" -->`))
+	require.Contains(t, agents, `<!-- orbit:begin workflow="api" -->`)
+	require.Contains(t, agents, `<!-- orbit:begin workflow="docs" -->`)
+	require.Equal(t, 1, strings.Count(agents, `<!-- orbit:begin workflow="docs" -->`))
 }
 
 func TestOrbitGuidanceMaterializeSeedEmptySkipsExistingDriftedBlock(t *testing.T) {
@@ -537,7 +537,7 @@ func TestOrbitGuidanceMaterializeSeedEmptySkipsExistingDriftedBlock(t *testing.T
 	agentsData, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
 	require.NoError(t, err)
 	require.Equal(t, string(originalAgents), string(agentsData))
-	require.Equal(t, 1, strings.Count(string(agentsData), `<!-- orbit:begin orbit_id="docs" -->`))
+	require.Equal(t, 1, strings.Count(string(agentsData), `<!-- orbit:begin workflow="docs" -->`))
 }
 
 func TestOrbitGuidanceMaterializeSeedEmptyTextReportsExistingBlockSkip(t *testing.T) {
@@ -606,10 +606,10 @@ func TestOrbitGuidanceBackfillAgentsReportsSkippedWhenHostedTemplateAlreadyMatch
 	repo := seedOrbitGuidanceRevisionRepo(t, "You are the $project_name docs orbit.\nKeep release notes current.\n", "", "", map[string]string{
 		"AGENTS.md": "" +
 			"Workspace overview.\n" +
-			"<!-- orbit:begin orbit_id=\"docs\" -->\n" +
+			"<!-- orbit:begin workflow=\"docs\" -->\n" +
 			"You are the Acme docs orbit.\n" +
 			"Keep release notes current.\n" +
-			"<!-- orbit:end orbit_id=\"docs\" -->\n",
+			"<!-- orbit:end workflow=\"docs\" -->\n",
 	})
 
 	stdout, stderr, err := executeCLI(t, repo.Root, "guidance", "backfill", "--orbit", "docs", "--target", "agents", "--json")
@@ -636,20 +636,20 @@ func TestOrbitGuidanceBackfillAllWritesAllHostedTemplates(t *testing.T) {
 	repo := seedOrbitGuidanceRevisionRepo(t, "", "", "", map[string]string{
 		"AGENTS.md": "" +
 			"Workspace overview.\n" +
-			"<!-- orbit:begin orbit_id=\"docs\" -->\n" +
+			"<!-- orbit:begin workflow=\"docs\" -->\n" +
 			"You are the Acme docs orbit.\n" +
 			"Keep release notes current.\n" +
-			"<!-- orbit:end orbit_id=\"docs\" -->\n",
+			"<!-- orbit:end workflow=\"docs\" -->\n",
 		"HUMANS.md": "" +
 			"Workspace overview.\n" +
-			"<!-- orbit:begin orbit_id=\"docs\" -->\n" +
+			"<!-- orbit:begin workflow=\"docs\" -->\n" +
 			"Run the Acme docs workflow.\n" +
-			"<!-- orbit:end orbit_id=\"docs\" -->\n",
+			"<!-- orbit:end workflow=\"docs\" -->\n",
 		"BOOTSTRAP.md": "" +
 			"Workspace overview.\n" +
-			"<!-- orbit:begin orbit_id=\"docs\" -->\n" +
+			"<!-- orbit:begin workflow=\"docs\" -->\n" +
 			"Bootstrap the Acme docs orbit.\n" +
-			"<!-- orbit:end orbit_id=\"docs\" -->\n",
+			"<!-- orbit:end workflow=\"docs\" -->\n",
 	})
 
 	stdout, stderr, err := executeCLI(t, repo.Root, "guidance", "backfill", "--orbit", "docs", "--target", "all", "--json")
@@ -691,15 +691,15 @@ func TestOrbitGuidanceBackfillAllSkipsMissingBootstrapRootArtifact(t *testing.T)
 	repo := seedOrbitGuidanceRevisionRepo(t, "", "", "Keep existing bootstrap truth.\n", map[string]string{
 		"AGENTS.md": "" +
 			"Workspace overview.\n" +
-			"<!-- orbit:begin orbit_id=\"docs\" -->\n" +
+			"<!-- orbit:begin workflow=\"docs\" -->\n" +
 			"You are the Acme docs orbit.\n" +
 			"Keep release notes current.\n" +
-			"<!-- orbit:end orbit_id=\"docs\" -->\n",
+			"<!-- orbit:end workflow=\"docs\" -->\n",
 		"HUMANS.md": "" +
 			"Workspace overview.\n" +
-			"<!-- orbit:begin orbit_id=\"docs\" -->\n" +
+			"<!-- orbit:begin workflow=\"docs\" -->\n" +
 			"Run the Acme docs workflow.\n" +
-			"<!-- orbit:end orbit_id=\"docs\" -->\n",
+			"<!-- orbit:end workflow=\"docs\" -->\n",
 	})
 
 	stdout, stderr, err := executeCLI(t, repo.Root, "guidance", "backfill", "--orbit", "docs", "--target", "all", "--json")
@@ -743,9 +743,9 @@ func TestOrbitGuidanceBackfillAllSkipsMissingBlocksWithoutHostedTruth(t *testing
 	repo := seedOrbitGuidanceRevisionRepo(t, "", "", "", map[string]string{
 		"HUMANS.md": "" +
 			"Workspace overview.\n" +
-			"<!-- orbit:begin orbit_id=\"docs\" -->\n" +
+			"<!-- orbit:begin workflow=\"docs\" -->\n" +
 			"Run the Acme docs workflow.\n" +
-			"<!-- orbit:end orbit_id=\"docs\" -->\n",
+			"<!-- orbit:end workflow=\"docs\" -->\n",
 	})
 
 	stdout, stderr, err := executeCLI(t, repo.Root, "guidance", "backfill", "--orbit", "docs", "--target", "all", "--json")
@@ -788,9 +788,9 @@ func TestOrbitGuidanceBackfillAllBlocksMissingBlockWithHostedTruth(t *testing.T)
 		"AGENTS.md": "Workspace overview.\n",
 		"HUMANS.md": "" +
 			"Workspace overview.\n" +
-			"<!-- orbit:begin orbit_id=\"docs\" -->\n" +
+			"<!-- orbit:begin workflow=\"docs\" -->\n" +
 			"Run the Acme docs workflow.\n" +
-			"<!-- orbit:end orbit_id=\"docs\" -->\n",
+			"<!-- orbit:end workflow=\"docs\" -->\n",
 	})
 
 	stdout, stderr, err := executeCLI(t, repo.Root, "guidance", "backfill", "--orbit", "docs", "--target", "all", "--json")
@@ -830,8 +830,8 @@ func TestOrbitGuidanceBackfillEmptyBootstrapBlockRemovesHostedTemplate(t *testin
 	repo := seedOrbitGuidanceRevisionRepo(t, "", "", "Bootstrap the $project_name docs orbit.\n", map[string]string{
 		"BOOTSTRAP.md": "" +
 			"Workspace overview.\n" +
-			"<!-- orbit:begin orbit_id=\"docs\" -->\n" +
-			"<!-- orbit:end orbit_id=\"docs\" -->\n",
+			"<!-- orbit:begin workflow=\"docs\" -->\n" +
+			"<!-- orbit:end workflow=\"docs\" -->\n",
 	})
 
 	stdout, stderr, err := executeCLI(t, repo.Root, "guidance", "backfill", "--orbit", "docs", "--target", "bootstrap")
@@ -855,9 +855,9 @@ func TestOrbitGuidanceBackfillCheckReportsBootstrapBackfillAllowedWhenInSync(t *
 	repo := seedOrbitGuidanceRevisionRepo(t, "", "", "Bootstrap the $project_name docs orbit.\n", map[string]string{
 		"BOOTSTRAP.md": "" +
 			"Workspace overview.\n" +
-			"<!-- orbit:begin orbit_id=\"docs\" -->\n" +
+			"<!-- orbit:begin workflow=\"docs\" -->\n" +
 			"Bootstrap the Acme docs orbit.\n" +
-			"<!-- orbit:end orbit_id=\"docs\" -->\n",
+			"<!-- orbit:end workflow=\"docs\" -->\n",
 	})
 
 	stdout, stderr, err := executeCLI(t, repo.Root, "guidance", "backfill", "--orbit", "docs", "--target", "bootstrap", "--check", "--json")
@@ -908,9 +908,9 @@ func TestOrbitGuidanceBackfillRejectsCompletedBootstrapInRuntime(t *testing.T) {
 	repo := seedOrbitGuidanceRevisionRepo(t, "", "", "Bootstrap the $project_name docs orbit.\n", map[string]string{
 		"BOOTSTRAP.md": "" +
 			"Workspace overview.\n" +
-			"<!-- orbit:begin orbit_id=\"docs\" -->\n" +
+			"<!-- orbit:begin workflow=\"docs\" -->\n" +
 			"Bootstrap the Acme docs orbit.\n" +
-			"<!-- orbit:end orbit_id=\"docs\" -->\n",
+			"<!-- orbit:end workflow=\"docs\" -->\n",
 	})
 	store, err := statepkg.NewFSStore(repo.GitDir(t))
 	require.NoError(t, err)

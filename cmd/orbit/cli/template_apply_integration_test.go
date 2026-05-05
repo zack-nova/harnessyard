@@ -62,9 +62,9 @@ func TestTemplateApplyLocalBranchCreatesSharedAgentsFileWhenAbsent(t *testing.T)
 	agentsData, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
 	require.NoError(t, err)
 	require.Equal(t, ""+
-		"<!-- orbit:begin orbit_id=\"docs\" -->\n"+
+		"<!-- orbit:begin workflow=\"docs\" -->\n"+
 		"Docs orbit for Applied Orbit\n"+
-		"<!-- orbit:end orbit_id=\"docs\" -->\n", string(agentsData))
+		"<!-- orbit:end workflow=\"docs\" -->\n", string(agentsData))
 }
 
 func TestTemplateApplyLocalBranchFailsOnMalformedRuntimeAgents(t *testing.T) {
@@ -78,7 +78,7 @@ func TestTemplateApplyLocalBranchFailsOnMalformedRuntimeAgents(t *testing.T) {
 		"  project_name:\n"+
 		"    value: Applied Orbit\n"), 0o600))
 	repo.WriteFile(t, "AGENTS.md", ""+
-		"<!-- orbit:begin orbit_id=\"docs\" -->\n"+
+		"<!-- orbit:begin workflow=\"docs\" -->\n"+
 		"broken docs block\n")
 
 	stdout, stderr, err := executeCLI(t, repo.Root, "template", "apply", "orbit-template/docs", "--bindings", bindingsPath)

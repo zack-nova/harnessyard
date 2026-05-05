@@ -209,11 +209,11 @@ func TestBackfillOrbitBriefSkipsFormatterPaddingAroundMarkers(t *testing.T) {
 		"      include:\n"+
 		"        - docs/**\n")
 	repo.WriteFile(t, "AGENTS.md", ""+
-		"<!-- orbit:begin orbit_id=\"docs\" -->\n"+
+		"<!-- orbit:begin workflow=\"docs\" -->\n"+
 		"\n"+
 		"Docs orbit for Acme\n"+
 		"\n"+
-		"<!-- orbit:end orbit_id=\"docs\" -->\n")
+		"<!-- orbit:end workflow=\"docs\" -->\n")
 
 	result, err := BackfillOrbitBrief(context.Background(), BriefBackfillInput{
 		RepoRoot: repo.Root,

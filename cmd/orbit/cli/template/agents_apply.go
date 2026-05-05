@@ -140,13 +140,13 @@ func replaceOrAppendRuntimeAgentsBlock(existing []byte, orbitID string, wrappedB
 	replaced := false
 
 	for _, line := range lines {
-		markerKind, markerOrbitID, isMarker, err := parseRuntimeAgentsMarkerLine(line)
+		ownerKind, markerKind, workflowID, isMarker, err := parseRuntimeAgentsMarkerLine(line)
 		if err != nil {
 			return nil, err
 		}
 
 		if replacing {
-			if isMarker && markerKind == "end" && markerOrbitID == orbitID {
+			if isMarker && ownerKind == RuntimeGuidanceOwnerKindOrbit && markerKind == "end" && workflowID == orbitID {
 				output.Write(wrappedBlock)
 				replacing = false
 				replaced = true
@@ -154,7 +154,7 @@ func replaceOrAppendRuntimeAgentsBlock(existing []byte, orbitID string, wrappedB
 			continue
 		}
 
-		if isMarker && markerKind == "begin" && markerOrbitID == orbitID {
+		if isMarker && ownerKind == RuntimeGuidanceOwnerKindOrbit && markerKind == "begin" && workflowID == orbitID {
 			replacing = true
 			continue
 		}

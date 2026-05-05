@@ -523,9 +523,9 @@ func TestBuildTemplateSavePreviewSkipsEmptySharedAgentsPayload(t *testing.T) {
 		"  project_name:\n"+
 		"    value: Orbit\n")
 	repo.WriteFile(t, "AGENTS.md", ""+
-		"<!-- orbit:begin orbit_id=\"api\" -->\n"+
+		"<!-- orbit:begin workflow=\"api\" -->\n"+
 		"api only\n"+
-		"<!-- orbit:end orbit_id=\"api\" -->\n")
+		"<!-- orbit:end workflow=\"api\" -->\n")
 	repo.WriteFile(t, "docs/guide.md", "static guide\n")
 	repo.AddAndCommit(t, "seed runtime repo with empty docs payload")
 
@@ -573,9 +573,9 @@ func TestBuildTemplateSavePreviewSkipsProjectionVisibleFilesAndAgents(t *testing
 	repo.WriteFile(t, "README.md", "Orbit readme\n")
 	repo.WriteFile(t, "AGENTS.md", ""+
 		"shared intro\n"+
-		"<!-- orbit:begin orbit_id=\"docs\" -->\n"+
+		"<!-- orbit:begin workflow=\"docs\" -->\n"+
 		"Docs orbit for Orbit\n"+
-		"<!-- orbit:end orbit_id=\"docs\" -->\n")
+		"<!-- orbit:end workflow=\"docs\" -->\n")
 	repo.WriteFile(t, "docs/guide.md", "Orbit guide\n")
 	repo.AddAndCommit(t, "seed runtime repo with projection-visible shared files")
 
@@ -871,9 +871,9 @@ func TestBuildTemplateSavePreviewEditTemplateAllowsEditingSharedAgentsPayloadWit
 		"    description: Service URL\n")
 	repo.WriteFile(t, "AGENTS.md", ""+
 		"shared intro\n"+
-		"<!-- orbit:begin orbit_id=\"docs\" -->\n"+
+		"<!-- orbit:begin workflow=\"docs\" -->\n"+
 		"Docs orbit for Orbit\n"+
-		"<!-- orbit:end orbit_id=\"docs\" -->\n")
+		"<!-- orbit:end workflow=\"docs\" -->\n")
 	repo.WriteFile(t, "docs/guide.md", "static guide\n")
 	repo.AddAndCommit(t, "seed runtime repo with shared agents")
 
@@ -906,9 +906,9 @@ func TestBuildTemplateSavePreviewEditTemplateAllowsEditingSharedAgentsPayloadWit
 	require.NoError(t, err)
 	require.Equal(t, ""+
 		"shared intro\n"+
-		"<!-- orbit:begin orbit_id=\"docs\" -->\n"+
+		"<!-- orbit:begin workflow=\"docs\" -->\n"+
 		"Docs orbit for Orbit\n"+
-		"<!-- orbit:end orbit_id=\"docs\" -->\n", string(runtimeData))
+		"<!-- orbit:end workflow=\"docs\" -->\n", string(runtimeData))
 }
 
 func TestBuildTemplateSavePreviewEditTemplateFailsWhenDefinitionIsRemoved(t *testing.T) {

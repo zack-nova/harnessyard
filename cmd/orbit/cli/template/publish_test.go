@@ -150,11 +150,11 @@ func TestEnsureBriefExportSyncTreatsFormatterMarkerPaddingAsInSync(t *testing.T)
 		"  project_name:\n"+
 		"    value: Acme\n")
 	repo.WriteFile(t, "AGENTS.md", ""+
-		"<!-- orbit:begin orbit_id=\"docs\" -->\n"+
+		"<!-- orbit:begin workflow=\"docs\" -->\n"+
 		"\n"+
 		"Docs orbit for $project_name\n"+
 		"\n"+
-		"<!-- orbit:end orbit_id=\"docs\" -->\n")
+		"<!-- orbit:end workflow=\"docs\" -->\n")
 
 	status, err := InspectOrbitBriefLane(context.Background(), repo.Root, "docs")
 	require.NoError(t, err)
@@ -194,8 +194,8 @@ func TestEnsureBriefExportSyncWarnsWhenBackfillRemovesHostedBrief(t *testing.T) 
 		"      include:\n"+
 		"        - docs/**\n")
 	repo.WriteFile(t, "AGENTS.md", ""+
-		"<!-- orbit:begin orbit_id=\"docs\" -->\n"+
-		"<!-- orbit:end orbit_id=\"docs\" -->\n")
+		"<!-- orbit:begin workflow=\"docs\" -->\n"+
+		"<!-- orbit:end workflow=\"docs\" -->\n")
 
 	result, err := EnsureBriefExportSync(context.Background(), repo.Root, "docs", "publishing", true)
 	require.NoError(t, err)

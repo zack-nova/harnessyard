@@ -491,9 +491,11 @@ func TestHyardAdoptWriteJSONConvertsCleanRootGuidanceSlice(t *testing.T) {
 	document, err := orbittemplate.ParseRuntimeAgentsDocument(agentsData)
 	require.NoError(t, err)
 	require.Equal(t, []orbittemplate.AgentsRuntimeSegment{{
-		Kind:    orbittemplate.AgentsRuntimeSegmentBlock,
-		OrbitID: "docs",
-		Content: []byte(originalGuidance),
+		Kind:       orbittemplate.AgentsRuntimeSegmentBlock,
+		OwnerKind:  orbittemplate.RuntimeGuidanceOwnerKindOrbit,
+		WorkflowID: "docs",
+		OrbitID:    "docs",
+		Content:    []byte(originalGuidance),
 	}}, document.Segments)
 
 	_, statErr := os.Stat(filepath.Join(repo.Root, ".harness", "vars.yaml"))
@@ -930,7 +932,7 @@ func TestHyardAdoptWriteRefusesMalformedExistingRootGuidanceMarkersBeforeWriting
 	t.Parallel()
 
 	repo := testutil.NewRepo(t)
-	originalGuidance := "<!-- orbit:begin orbit_id=\"docs\" -->\nUnclosed adopted guidance.\n"
+	originalGuidance := "<!-- orbit:begin workflow=\"docs\" -->\nUnclosed adopted guidance.\n"
 	repo.WriteFile(t, "AGENTS.md", originalGuidance)
 	repo.AddAndCommit(t, "seed malformed root marker")
 
