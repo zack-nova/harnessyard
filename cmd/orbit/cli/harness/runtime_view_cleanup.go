@@ -61,12 +61,13 @@ type RuntimeViewCleanupCandidate struct {
 	Action     string `json:"action"`
 }
 
-// RuntimeViewCleanupChangedFile reports one root guidance file changed by Run View cleanup.
+// RuntimeViewCleanupChangedFile reports one file changed by Run View cleanup.
 type RuntimeViewCleanupChangedFile struct {
-	Path       string `json:"path"`
-	Target     string `json:"target"`
-	Action     string `json:"action"`
-	BlockCount int    `json:"block_count"`
+	Path              string `json:"path"`
+	Target            string `json:"target"`
+	Action            string `json:"action"`
+	BlockCount        int    `json:"block_count"`
+	PreservedMetadata bool   `json:"preserved_metadata,omitempty"`
 }
 
 // RuntimeViewCleanupSkippedTarget reports one root guidance target that did not need cleanup.
@@ -122,6 +123,12 @@ func RuntimeViewCleanup(ctx context.Context, repo gitpkg.Repo, store statepkg.FS
 	if err != nil {
 		return result, err
 	}
+	memberHintChangedFiles, err := applyRuntimeViewMemberHintCleanup(repo.Root, result.CleanupCandidates)
+	if err != nil {
+		return result, err
+	}
+	changedFiles = append(changedFiles, memberHintChangedFiles...)
+	sortRuntimeViewCleanupChangedFiles(changedFiles)
 	result.ChangedFiles = changedFiles
 	result.SkippedTargets = skippedTargets
 	result.Changed = len(changedFiles) > 0
@@ -273,6 +280,40 @@ func applyRuntimeViewRootGuidanceCleanup(
 	sortRuntimeViewCleanupSkippedTargets(skippedTargets)
 
 	return changedFiles, skippedTargets, nil
+}
+
+func applyRuntimeViewMemberHintCleanup(
+	repoRoot string,
+	candidates []RuntimeViewCleanupCandidate,
+) ([]RuntimeViewCleanupChangedFile, error) {
+	hintPaths := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate.Kind != RuntimeViewCleanupCandidateMemberHint ||
+			candidate.Action != RuntimeViewCleanupActionRemoveConsumedHint {
+			continue
+		}
+		hintPaths = append(hintPaths, candidate.Path)
+	}
+	if len(hintPaths) == 0 {
+		return []RuntimeViewCleanupChangedFile{}, nil
+	}
+
+	consumedHints, err := orbitpkg.ConsumeMemberHintPaths(repoRoot, hintPaths)
+	if err != nil {
+		return nil, fmt.Errorf("consume member hints: %w", err)
+	}
+
+	changedFiles := make([]RuntimeViewCleanupChangedFile, 0, len(consumedHints))
+	for _, effect := range consumedHints {
+		changedFiles = append(changedFiles, RuntimeViewCleanupChangedFile{
+			Path:              effect.Path,
+			Action:            RuntimeViewCleanupActionRemoveConsumedHint,
+			PreservedMetadata: effect.PreservedMetadata,
+		})
+	}
+	sortRuntimeViewCleanupChangedFiles(changedFiles)
+
+	return changedFiles, nil
 }
 
 func inspectRuntimeViewGuidanceTargetCleanup(
@@ -517,9 +558,9 @@ func runtimeViewCleanupNextActions(result RuntimeViewCleanupPlanResult) []string
 
 	if !result.Check {
 		if len(result.ChangedFiles) > 0 {
-			return []string{"review cleaned root guidance before publishing"}
+			return []string{"review cleaned Run View files before publishing"}
 		}
-		return []string{"Run View root guidance cleanup is already clean"}
+		return []string{"Run View cleanup is already clean"}
 	}
 
 	if len(result.CleanupCandidates) == 0 {
@@ -530,11 +571,16 @@ func runtimeViewCleanupNextActions(result RuntimeViewCleanupPlanResult) []string
 }
 
 func runtimeViewCleanupNotes(result RuntimeViewCleanupPlanResult) []string {
-	if result.Check || len(result.ChangedFiles) == 0 {
+	if result.Check {
 		return []string{}
 	}
+	for _, changedFile := range result.ChangedFiles {
+		if changedFile.Action == RuntimeViewCleanupActionStripMarkerLinesPreserveContent {
+			return []string{runtimeViewCleanupPresentationNote}
+		}
+	}
 
-	return []string{runtimeViewCleanupPresentationNote}
+	return []string{}
 }
 
 func sortRuntimeViewCleanupCandidates(candidates []RuntimeViewCleanupCandidate) {

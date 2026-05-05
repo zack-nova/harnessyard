@@ -1,6 +1,8 @@
 package orbit
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -298,4 +300,46 @@ func TestFilterMemberHintCandidateFilesExcludesControlAndCapabilityPaths(t *test
 	})
 	require.NoError(t, err)
 	require.Equal(t, []string{"docs/rules/style.md"}, filtered)
+}
+
+func TestConsumeMemberHintPathsRollsBackAppliedHintsWhenLaterMutationFails(t *testing.T) {
+	repoRoot := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(repoRoot, "docs", "process"), 0o755))
+
+	reviewPath := filepath.Join(repoRoot, "docs", "process", "review.md")
+	markerPath := filepath.Join(repoRoot, "docs", "process", ".orbit-member.yaml")
+	reviewBefore := "" +
+		"---\n" +
+		"title: Review Flow\n" +
+		"orbit_member:\n" +
+		"  name: review\n" +
+		"---\n" +
+		"\n" +
+		"# Review\n"
+	require.NoError(t, os.WriteFile(reviewPath, []byte(reviewBefore), 0o644))
+	require.NoError(t, os.WriteFile(markerPath, []byte("orbit_member:\n  description: Review workflow\n"), 0o644))
+
+	previousHook := beforeMemberHintConsumeMutationHook
+	beforeMemberHintConsumeMutationHook = func(filename string) {
+		if filename != markerPath {
+			return
+		}
+		require.NoError(t, os.Remove(markerPath))
+		require.NoError(t, os.Mkdir(markerPath, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(markerPath, "child"), []byte("block remove"), 0o644))
+	}
+	t.Cleanup(func() {
+		beforeMemberHintConsumeMutationHook = previousHook
+	})
+
+	_, err := ConsumeMemberHintPaths(repoRoot, []string{
+		"docs/process/review.md",
+		"docs/process/.orbit-member.yaml",
+	})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "member hint cleanup rollback after")
+
+	reviewAfter, err := os.ReadFile(reviewPath)
+	require.NoError(t, err)
+	require.Equal(t, reviewBefore, string(reviewAfter))
 }

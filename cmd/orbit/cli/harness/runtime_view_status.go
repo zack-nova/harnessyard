@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	gitpkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/git"
@@ -252,6 +253,21 @@ func inspectRuntimeViewMemberHints(
 		inspection, err := orbitpkg.InspectMemberHints(repoRoot, spec, candidateFiles)
 		if err != nil {
 			return RuntimeViewMemberHintSummary{}, nil, fmt.Errorf("inspect member hints for orbit %q: %w", member.OrbitID, err)
+		}
+		ambiguousHints, err := orbitpkg.InspectAmbiguousFlatMemberHints(repoRoot, candidateFiles)
+		if err != nil {
+			return RuntimeViewMemberHintSummary{}, nil, fmt.Errorf("inspect ambiguous flat member hints for orbit %q: %w", member.OrbitID, err)
+		}
+		if len(ambiguousHints) > 0 {
+			inspection.Hints = append(inspection.Hints, ambiguousHints...)
+			sort.Slice(inspection.Hints, func(left, right int) bool {
+				if inspection.Hints[left].HintPath == inspection.Hints[right].HintPath {
+					return inspection.Hints[left].Kind < inspection.Hints[right].Kind
+				}
+				return inspection.Hints[left].HintPath < inspection.Hints[right].HintPath
+			})
+			inspection.DriftDetected = true
+			inspection.BackfillAllowed = false
 		}
 
 		summary.HintCount += len(inspection.Hints)

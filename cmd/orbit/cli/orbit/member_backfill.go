@@ -12,6 +12,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/zack-nova/harnessyard/cmd/orbit/cli/ids"
 	"github.com/zack-nova/harnessyard/cmd/orbit/cli/internal/contractutil"
 )
 
@@ -35,6 +36,32 @@ type memberBackfillMutation struct {
 	original []byte
 	next     []byte
 	remove   bool
+}
+
+// MemberHintConsumeEffect describes one consumed member hint.
+type MemberHintConsumeEffect struct {
+	Path              string
+	PreservedMetadata bool
+}
+
+// Test-only hook for deterministic member hint consume rollback failures.
+var beforeMemberHintConsumeMutationHook func(filename string)
+
+// ConsumeMemberHintPaths removes already-applied member hints without changing
+// authored Orbit truth.
+func ConsumeMemberHintPaths(repoRoot string, hintPaths []string) ([]MemberHintConsumeEffect, error) {
+	plan, effects, err := buildMemberHintConsumePlan(repoRoot, hintPaths)
+	if err != nil {
+		return nil, err
+	}
+	if err := applyMemberHintConsumePlan(plan); err != nil {
+		return nil, err
+	}
+
+	sort.Slice(effects, func(left, right int) bool {
+		return effects[left].Path < effects[right].Path
+	})
+	return effects, nil
 }
 
 // BackfillMemberHints updates one hosted OrbitSpec from resolved hints and
@@ -217,6 +244,93 @@ func buildMemberBackfillPlan(
 	}
 
 	return plan, consumedHints, nil
+}
+
+func buildMemberHintConsumePlan(repoRoot string, hintPaths []string) ([]memberBackfillMutation, []MemberHintConsumeEffect, error) {
+	mutations := make([]memberBackfillMutation, 0, len(hintPaths))
+	effects := make([]MemberHintConsumeEffect, 0, len(hintPaths))
+
+	for _, hintPath := range hintPaths {
+		normalizedHintPath, err := ids.NormalizeRepoRelativePath(hintPath)
+		if err != nil {
+			return nil, nil, fmt.Errorf("normalize consumed member hint %q: %w", hintPath, err)
+		}
+		filename := filepath.Join(repoRoot, filepath.FromSlash(normalizedHintPath))
+		//nolint:gosec // The path is repo-local and derived from normalized detected hint paths.
+		originalData, err := os.ReadFile(filename)
+		if err != nil {
+			return nil, nil, fmt.Errorf("read member hint %q: %w", normalizedHintPath, err)
+		}
+
+		mutation := memberBackfillMutation{
+			filename: filename,
+			original: originalData,
+		}
+		switch {
+		case filepath.Base(filename) == memberHintMarkerFileName:
+			mutation.remove = true
+			effects = append(effects, MemberHintConsumeEffect{
+				Path: normalizedHintPath,
+			})
+		case filepath.Ext(filename) == ".md":
+			nextData, err := removeOrbitMemberFrontmatter(originalData, normalizedHintPath)
+			if err != nil {
+				return nil, nil, err
+			}
+			mutation.next = nextData
+			effects = append(effects, MemberHintConsumeEffect{
+				Path:              normalizedHintPath,
+				PreservedMetadata: strings.HasPrefix(string(nextData), "---\n"),
+			})
+		default:
+			return nil, nil, fmt.Errorf("unsupported consumed member hint %q", normalizedHintPath)
+		}
+
+		mutations = append(mutations, mutation)
+	}
+
+	return mutations, effects, nil
+}
+
+func applyMemberHintConsumePlan(plan []memberBackfillMutation) error {
+	applied := make([]memberBackfillMutation, 0, len(plan))
+
+	for _, mutation := range plan {
+		runBeforeMemberHintConsumeMutationHook(mutation.filename)
+		if err := applyMemberBackfillMutation(mutation); err != nil {
+			if rollbackErr := rollbackMemberHintConsume(applied); rollbackErr != nil {
+				return fmt.Errorf("member hint cleanup rollback after %s failed: %w", mutation.filename, rollbackErr)
+			}
+			return fmt.Errorf("member hint cleanup rollback after %s: %w", mutation.filename, err)
+		}
+		applied = append(applied, mutation)
+	}
+
+	return nil
+}
+
+func runBeforeMemberHintConsumeMutationHook(filename string) {
+	if beforeMemberHintConsumeMutationHook != nil {
+		beforeMemberHintConsumeMutationHook(filename)
+	}
+}
+
+func rollbackMemberHintConsume(applied []memberBackfillMutation) error {
+	var rollbackErrs []string
+
+	for index := len(applied) - 1; index >= 0; index-- {
+		mutation := applied[index]
+		if err := contractutil.AtomicWriteFile(mutation.filename, mutation.original); err != nil {
+			rollbackErrs = append(rollbackErrs, fmt.Sprintf("restore %s: %v", mutation.filename, err))
+		}
+	}
+
+	if len(rollbackErrs) > 0 {
+		sort.Strings(rollbackErrs)
+		return errors.New(strings.Join(rollbackErrs, "; "))
+	}
+
+	return nil
 }
 
 func applyMemberBackfillPlan(plan memberBackfillPlan) error {

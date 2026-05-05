@@ -257,6 +257,15 @@ func TestHyardViewRunJSONStripsRootGuidanceMarkersAndReportsChangedFiles(t *test
 		Action:     "strip_marker_lines_preserve_content",
 		BlockCount: 1,
 	})
+	require.Contains(t, payload.ChangedFiles, struct {
+		Path       string `json:"path"`
+		Target     string `json:"target"`
+		Action     string `json:"action"`
+		BlockCount int    `json:"block_count"`
+	}{
+		Path:   "docs/process/.orbit-member.yaml",
+		Action: "remove_consumed_hint",
+	})
 	require.Empty(t, payload.SkippedTargets)
 	require.Contains(t, payload.Notes, "marker removal is presentation cleanup only; later authoring requires explicit `hyard guide render` or reconciliation")
 
@@ -275,7 +284,52 @@ func TestHyardViewRunJSONStripsRootGuidanceMarkersAndReportsChangedFiles(t *test
 	bootstrapAfter, err := os.ReadFile(filepath.Join(repo.Root, "BOOTSTRAP.md"))
 	require.NoError(t, err)
 	require.Equal(t, "Bootstrap docs guidance\n", string(bootstrapAfter))
-	require.FileExists(t, filepath.Join(repo.Root, "docs", "process", ".orbit-member.yaml"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "docs", "process", ".orbit-member.yaml"))
+}
+
+func TestHyardViewRunJSONRemovesNestedMarkdownMemberHintAndPreservesMetadata(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardViewRunNestedMarkdownMemberHintRuntimeRepo(t)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "view", "run", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Ready        bool `json:"ready"`
+		Changed      bool `json:"changed"`
+		ChangedFiles []struct {
+			Path              string `json:"path"`
+			Action            string `json:"action"`
+			PreservedMetadata bool   `json:"preserved_metadata,omitempty"`
+		} `json:"changed_files"`
+		Blockers []string `json:"blockers"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.True(t, payload.Ready)
+	require.True(t, payload.Changed)
+	require.Empty(t, payload.Blockers)
+	require.Contains(t, payload.ChangedFiles, struct {
+		Path              string `json:"path"`
+		Action            string `json:"action"`
+		PreservedMetadata bool   `json:"preserved_metadata,omitempty"`
+	}{
+		Path:              "docs/process/review.md",
+		Action:            "remove_consumed_hint",
+		PreservedMetadata: true,
+	})
+
+	reviewAfter, err := os.ReadFile(filepath.Join(repo.Root, "docs", "process", "review.md"))
+	require.NoError(t, err)
+	require.Equal(t, ""+
+		"---\n"+
+		"title: Review Flow\n"+
+		"tags:\n"+
+		"    - process\n"+
+		"---\n"+
+		"\n"+
+		"# Review\n", string(reviewAfter))
 }
 
 func TestHyardViewRunTextToleratesDirtyWorktreeAndReportsSkippedRootGuidanceTargets(t *testing.T) {
@@ -295,6 +349,7 @@ func TestHyardViewRunTextToleratesDirtyWorktreeAndReportsSkippedRootGuidanceTarg
 	require.Contains(t, stdout, "changed: true\n")
 	require.Contains(t, stdout, "changed_files:\n")
 	require.Contains(t, stdout, "  agents AGENTS.md action=strip_marker_lines_preserve_content blocks=1\n")
+	require.Contains(t, stdout, "  docs/process/.orbit-member.yaml action=remove_consumed_hint\n")
 	require.Contains(t, stdout, "skipped_targets:\n")
 	require.Contains(t, stdout, "  bootstrap BOOTSTRAP.md reason=missing\n")
 	require.Contains(t, stdout, "  humans HUMANS.md reason=no_marker_lines\n")
@@ -311,7 +366,7 @@ func TestHyardViewRunTextToleratesDirtyWorktreeAndReportsSkippedRootGuidanceTarg
 	readmeAfter, err := os.ReadFile(filepath.Join(repo.Root, "README.md"))
 	require.NoError(t, err)
 	require.Equal(t, "local runtime notes\n", string(readmeAfter))
-	require.FileExists(t, filepath.Join(repo.Root, "docs", "process", ".orbit-member.yaml"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "docs", "process", ".orbit-member.yaml"))
 }
 
 func TestHyardViewRunJSONReportsSkippedRootGuidanceTargets(t *testing.T) {
@@ -381,6 +436,82 @@ func TestHyardViewRunJSONRefusesActualCleanupWhenPlannerReportsAuthoredTruthDrif
 	require.NoError(t, err)
 	require.Equal(t, agentsBefore, agentsAfter)
 	require.FileExists(t, filepath.Join(repo.Root, "docs", "process", ".orbit-member.yaml"))
+}
+
+func TestHyardViewRunJSONBlocksAmbiguousFlatMemberHintBeforeMutation(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardViewRunAmbiguousFlatMemberHintRuntimeRepo(t)
+	agentsBefore, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoError(t, err)
+	reviewBefore, err := os.ReadFile(filepath.Join(repo.Root, "docs", "process", "review.md"))
+	require.NoError(t, err)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "view", "run", "--json")
+	require.ErrorContains(t, err, "Run View cleanup blocked by Authored Truth Drift")
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Ready        bool `json:"ready"`
+		Changed      bool `json:"changed"`
+		ChangedFiles []struct {
+			Path string `json:"path"`
+		} `json:"changed_files"`
+		Blockers []string `json:"blockers"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.False(t, payload.Ready)
+	require.False(t, payload.Changed)
+	require.Empty(t, payload.ChangedFiles)
+	require.Contains(t, payload.Blockers, "docs docs/process/review.md: docs/process/review.md mixes flat member hint fields with ordinary frontmatter metadata; use nested orbit_member for Run View cleanup; run `hyard orbit content apply docs --check --json`")
+
+	agentsAfter, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoError(t, err)
+	reviewAfter, err := os.ReadFile(filepath.Join(repo.Root, "docs", "process", "review.md"))
+	require.NoError(t, err)
+	require.Equal(t, agentsBefore, agentsAfter)
+	require.Equal(t, reviewBefore, reviewAfter)
+}
+
+func TestHyardViewRunJSONBlocksInvalidMemberHintBeforeMutation(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardViewRunAmbiguousFlatMemberHintRuntimeRepo(t)
+	repo.WriteFile(t, "docs/process/review.md", ""+
+		"---\n"+
+		"orbit_member: review\n"+
+		"---\n"+
+		"\n"+
+		"# Review\n")
+	agentsBefore, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoError(t, err)
+	reviewBefore, err := os.ReadFile(filepath.Join(repo.Root, "docs", "process", "review.md"))
+	require.NoError(t, err)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "view", "run", "--json")
+	require.ErrorContains(t, err, "Run View cleanup blocked by Authored Truth Drift")
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Ready        bool `json:"ready"`
+		Changed      bool `json:"changed"`
+		ChangedFiles []struct {
+			Path string `json:"path"`
+		} `json:"changed_files"`
+		Blockers []string `json:"blockers"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.False(t, payload.Ready)
+	require.False(t, payload.Changed)
+	require.Empty(t, payload.ChangedFiles)
+	require.Contains(t, payload.Blockers, "docs docs/process/review.md: docs/process/review.md orbit_member must be a mapping; run `hyard orbit content apply docs --check --json`")
+
+	agentsAfter, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoError(t, err)
+	reviewAfter, err := os.ReadFile(filepath.Join(repo.Root, "docs", "process", "review.md"))
+	require.NoError(t, err)
+	require.Equal(t, agentsBefore, agentsAfter)
+	require.Equal(t, reviewBefore, reviewAfter)
 }
 
 func TestHyardViewRunCheckJSONBlocksOnAuthoredTruthDrift(t *testing.T) {
@@ -695,6 +826,119 @@ func seedHyardViewRunNoDriftRuntimeRepo(t *testing.T) *testutil.Repo {
 	require.NoError(t, err)
 
 	repo.AddAndCommit(t, "seed run view cleanup repo")
+
+	return repo
+}
+
+func seedHyardViewRunNestedMarkdownMemberHintRuntimeRepo(t *testing.T) *testutil.Repo {
+	t.Helper()
+
+	repo := testutil.NewRepo(t)
+	now := time.Date(2026, time.May, 5, 8, 0, 0, 0, time.UTC)
+
+	spec, err := orbitpkg.DefaultHostedMemberSchemaSpec("docs")
+	require.NoError(t, err)
+	spec.Description = "Docs orbit"
+	require.NotNil(t, spec.Meta)
+	spec.Members = append(spec.Members, orbitpkg.OrbitMember{
+		Name:        "review",
+		Description: "Review workflow",
+		Role:        orbitpkg.OrbitMemberRule,
+		Paths: orbitpkg.OrbitMemberPaths{
+			Include: []string{"docs/process/review.md"},
+		},
+	})
+	_, err = orbitpkg.WriteHostedOrbitSpec(repo.Root, spec)
+	require.NoError(t, err)
+
+	repo.WriteFile(t, "docs/process/review.md", ""+
+		"---\n"+
+		"title: Review Flow\n"+
+		"orbit_member:\n"+
+		"  name: review\n"+
+		"  description: Review workflow\n"+
+		"tags:\n"+
+		"  - process\n"+
+		"---\n"+
+		"\n"+
+		"# Review\n")
+
+	_, err = harnesspkg.WriteManifestFile(repo.Root, harnesspkg.ManifestFile{
+		SchemaVersion: 1,
+		Kind:          harnesspkg.ManifestKindRuntime,
+		Runtime: &harnesspkg.ManifestRuntimeMetadata{
+			ID:        "workspace",
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+		Members: []harnesspkg.ManifestMember{
+			{
+				OrbitID: "docs",
+				Source:  harnesspkg.ManifestMemberSourceManual,
+				AddedAt: now,
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	repo.AddAndCommit(t, "seed nested markdown member hint runtime repo")
+
+	return repo
+}
+
+func seedHyardViewRunAmbiguousFlatMemberHintRuntimeRepo(t *testing.T) *testutil.Repo {
+	t.Helper()
+
+	repo := testutil.NewRepo(t)
+	now := time.Date(2026, time.May, 5, 8, 0, 0, 0, time.UTC)
+
+	spec, err := orbitpkg.DefaultHostedMemberSchemaSpec("docs")
+	require.NoError(t, err)
+	spec.Description = "Docs orbit"
+	require.NotNil(t, spec.Meta)
+	spec.Meta.AgentsTemplate = "Docs orbit guidance\n"
+	spec.Members = append(spec.Members, orbitpkg.OrbitMember{
+		Name:        "review",
+		Description: "Review workflow",
+		Role:        orbitpkg.OrbitMemberRule,
+		Paths: orbitpkg.OrbitMemberPaths{
+			Include: []string{"docs/process/review.md"},
+		},
+	})
+	_, err = orbitpkg.WriteHostedOrbitSpec(repo.Root, spec)
+	require.NoError(t, err)
+
+	repo.WriteFile(t, "docs/process/review.md", ""+
+		"---\n"+
+		"name: review\n"+
+		"description: Review workflow\n"+
+		"title: Review Flow\n"+
+		"---\n"+
+		"\n"+
+		"# Review\n")
+	agentsBlock, err := orbittemplate.WrapRuntimeAgentsBlock("docs", []byte("Docs orbit guidance\n"))
+	require.NoError(t, err)
+	repo.WriteFile(t, "AGENTS.md", string(agentsBlock))
+
+	_, err = harnesspkg.WriteManifestFile(repo.Root, harnesspkg.ManifestFile{
+		SchemaVersion: 1,
+		Kind:          harnesspkg.ManifestKindRuntime,
+		Runtime: &harnesspkg.ManifestRuntimeMetadata{
+			ID:        "workspace",
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+		Members: []harnesspkg.ManifestMember{
+			{
+				OrbitID: "docs",
+				Source:  harnesspkg.ManifestMemberSourceManual,
+				AddedAt: now,
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	repo.AddAndCommit(t, "seed ambiguous flat member hint runtime repo")
 
 	return repo
 }

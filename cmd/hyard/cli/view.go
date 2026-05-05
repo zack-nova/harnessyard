@@ -375,6 +375,17 @@ func renderHyardViewRun(cmd *cobra.Command, result harnesspkg.RuntimeViewCleanup
 		}
 	}
 	for _, changedFile := range result.ChangedFiles {
+		if changedFile.Target == "" {
+			if _, err := fmt.Fprintf(
+				cmd.OutOrStdout(),
+				"  %s action=%s\n",
+				changedFile.Path,
+				changedFile.Action,
+			); err != nil {
+				return fmt.Errorf("write command output: %w", err)
+			}
+			continue
+		}
 		if _, err := fmt.Fprintf(
 			cmd.OutOrStdout(),
 			"  %s %s action=%s blocks=%d\n",
