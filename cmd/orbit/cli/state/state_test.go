@@ -33,6 +33,44 @@ func TestCurrentOrbitStateRoundTrip(t *testing.T) {
 	require.ErrorIs(t, err, statepkg.ErrCurrentOrbitNotFound)
 }
 
+func TestRuntimeViewSelectionRoundTripAndMissingDefault(t *testing.T) {
+	t.Parallel()
+
+	store := newStore(t)
+
+	defaultSelection, err := store.ReadRuntimeViewSelection()
+	require.NoError(t, err)
+	require.Equal(t, statepkg.RuntimeViewRun, defaultSelection.View)
+	require.False(t, defaultSelection.Persisted)
+
+	selection := statepkg.RuntimeViewSelection{
+		View:       statepkg.RuntimeViewAuthor,
+		SelectedAt: time.Date(2026, time.May, 5, 8, 0, 0, 0, time.UTC),
+	}
+	require.NoError(t, store.WriteRuntimeViewSelection(selection))
+
+	loaded, err := store.ReadRuntimeViewSelection()
+	require.NoError(t, err)
+	require.Equal(t, selection.View, loaded.View)
+	require.Equal(t, selection.SelectedAt, loaded.SelectedAt)
+	require.True(t, loaded.Persisted)
+}
+
+func TestReadRuntimeViewSelectionRejectsInvalidPersistedValue(t *testing.T) {
+	t.Parallel()
+
+	store := newStore(t)
+	require.NoError(t, os.MkdirAll(store.StateDir, 0o750))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(store.StateDir, "runtime_view_selection.json"),
+		[]byte("{\"view\":\"preview\"}\n"),
+		0o600,
+	))
+
+	_, err := store.ReadRuntimeViewSelection()
+	require.ErrorContains(t, err, `runtime view selection view must be "run" or "author"`)
+}
+
 func TestProjectionCacheRoundTrip(t *testing.T) {
 	t.Parallel()
 

@@ -18,6 +18,7 @@ const (
 	// Keep the on-disk directory name stable while the codebase moves to projection-cache terminology.
 	projectionCacheDirName = "resolved_scope"
 	currentOrbitFileName   = "current_orbit.json"
+	runtimeViewFileName    = "runtime_view_selection.json"
 	lockFileName           = "orbit.lock"
 )
 
@@ -61,6 +62,10 @@ func (store FSStore) Ensure() error {
 
 func (store FSStore) currentOrbitPath() string {
 	return filepath.Join(store.StateDir, currentOrbitFileName)
+}
+
+func (store FSStore) runtimeViewSelectionPath() string {
+	return filepath.Join(store.StateDir, runtimeViewFileName)
 }
 
 func (store FSStore) lockPath() string {
