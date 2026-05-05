@@ -99,6 +99,66 @@ func TestHyardUninstallOrbitTextDisclosesManualRuntimeOrbitSource(t *testing.T) 
 	require.Empty(t, runtimeFile.Members)
 }
 
+func TestHyardUninstallBareNameResolvesUnambiguousOrbitPackage(t *testing.T) {
+	t.Parallel()
+
+	repo := seedCommittedHyardInstallBackedRuntimeRepo(t)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "uninstall", "docs", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Action       string `json:"action"`
+		TargetType   string `json:"target_type"`
+		OrbitPackage string `json:"orbit_package"`
+		OrbitID      string `json:"orbit_id"`
+		RemoveMode   string `json:"remove_mode"`
+		MemberCount  int    `json:"member_count"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "uninstall", payload.Action)
+	require.Equal(t, "orbit", payload.TargetType)
+	require.Equal(t, "docs", payload.OrbitPackage)
+	require.Equal(t, "docs", payload.OrbitID)
+	require.Equal(t, "runtime_cleanup", payload.RemoveMode)
+	require.Equal(t, 0, payload.MemberCount)
+
+	runtimeFile, err := harnesspkg.LoadRuntimeFile(repo.Root)
+	require.NoError(t, err)
+	require.Empty(t, runtimeFile.Members)
+}
+
+func TestHyardUninstallBareNameResolvesUnambiguousHarnessPackage(t *testing.T) {
+	t.Parallel()
+
+	runtimeRoot, harnessID := cloneHyardHarnessRuntime(t)
+
+	stdout, stderr, err := executeHyardCLI(t, runtimeRoot, "uninstall", harnessID, "--yes", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Action               string   `json:"action"`
+		TargetType           string   `json:"target_type"`
+		HarnessPackage       string   `json:"harness_package"`
+		OrbitPackages        []string `json:"orbit_packages"`
+		DeletedBundleRecord  bool     `json:"deleted_bundle_record"`
+		RemainingMemberCount int      `json:"remaining_member_count"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "uninstall", payload.Action)
+	require.Equal(t, "harness", payload.TargetType)
+	require.Equal(t, harnessID, payload.HarnessPackage)
+	require.Equal(t, []string{"docs"}, payload.OrbitPackages)
+	require.True(t, payload.DeletedBundleRecord)
+	require.Equal(t, 0, payload.RemainingMemberCount)
+
+	runtimeFile, err := harnesspkg.LoadRuntimeFile(runtimeRoot)
+	require.NoError(t, err)
+	require.Empty(t, runtimeFile.Members)
+}
+
 func TestHyardRemoveOrbitRecompilesLedgerOwnedPackageHookOutputs(t *testing.T) {
 	repo := seedCommittedHyardRuntimeWithTwoAgentAddonHooks(t)
 	selectHyardAgentAddonFramework(t, repo)
@@ -350,6 +410,23 @@ func TestHyardUninstallOrbitRejectsVersionedPackageCoordinate(t *testing.T) {
 	require.Equal(t, "docs", runtimeFile.Members[0].OrbitID)
 }
 
+func TestHyardUninstallBareNameRejectsVersionedPackageCoordinate(t *testing.T) {
+	t.Parallel()
+
+	repo := seedCommittedHyardRuntimeRepo(t)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "uninstall", "docs@0.1.0", "--json")
+	require.Error(t, err)
+	require.Empty(t, stdout)
+	require.Empty(t, stderr)
+	require.ErrorContains(t, err, `uninstall package "docs@0.1.0" must use the installed package name`)
+
+	runtimeFile, err := harnesspkg.LoadRuntimeFile(repo.Root)
+	require.NoError(t, err)
+	require.Len(t, runtimeFile.Members, 1)
+	require.Equal(t, "docs", runtimeFile.Members[0].OrbitID)
+}
+
 func TestHyardRemoveOrbitDisambiguationRemovesOrbitWhenHarnessHasSameName(t *testing.T) {
 	t.Parallel()
 
@@ -393,6 +470,37 @@ func TestHyardRemoveBareNameFailsClosedWhenOrbitAndHarnessAreAmbiguous(t *testin
 	require.ErrorContains(t, err, `remove target "`+harnessID+`" is ambiguous`)
 	require.ErrorContains(t, err, `hyard remove orbit `+harnessID)
 	require.ErrorContains(t, err, `hyard remove harness `+harnessID)
+}
+
+func TestHyardUninstallBareNameFailsClosedWhenOrbitAndHarnessAreAmbiguous(t *testing.T) {
+	t.Parallel()
+
+	runtimeRoot, harnessID := cloneHyardHarnessRuntime(t)
+	repo := testRepoAtRoot(t, runtimeRoot)
+	addHyardHostedOrbitDefinition(t, repo, harnessID)
+	require.NoError(t, executeHarnessCLIForHyardTest(t, runtimeRoot, "add", harnessID))
+
+	stdout, stderr, err := executeHyardCLI(t, runtimeRoot, "uninstall", harnessID)
+	require.Error(t, err)
+	require.Empty(t, stdout)
+	require.Empty(t, stderr)
+	require.ErrorContains(t, err, `uninstall target "`+harnessID+`" is ambiguous`)
+	require.ErrorContains(t, err, `hyard uninstall orbit `+harnessID)
+	require.ErrorContains(t, err, `hyard uninstall harness `+harnessID)
+}
+
+func TestHyardUninstallBareNameNotFoundUsesUninstallGuidance(t *testing.T) {
+	t.Parallel()
+
+	repo := seedCommittedHyardRuntimeRepo(t)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "uninstall", "missing")
+	require.Error(t, err)
+	require.Empty(t, stdout)
+	require.Empty(t, stderr)
+	require.ErrorContains(t, err, `uninstall target "missing" was not found in the current runtime`)
+	require.ErrorContains(t, err, `hyard uninstall orbit missing`)
+	require.ErrorContains(t, err, `hyard uninstall harness missing`)
 }
 
 func TestHyardRemoveHarnessDryRunJSONListsOwnedOrbits(t *testing.T) {
