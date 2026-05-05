@@ -67,6 +67,30 @@ Scoped member-editing documentation may continue to use add/remove language, suc
 `hyard orbit member add` and `hyard orbit member remove`, when it describes collection
 membership rather than installed package lifecycle.
 
+## Runtime View And Publication Surface
+
+Run View is the recommended runtime-user view for a Harness Runtime. Runtime-user
+documentation and examples should teach users to inspect `hyard view status`, clean
+visible authoring scaffolds with `hyard view run`, and publish the current runtime
+as a Harness Package.
+
+Run View publication should use `hyard publish harness <harness-package>`.
+Run View examples and next actions should not recommend Orbit Package publication
+as the default way to share runtime work.
+
+Author View is the authored-truth view. Author documentation should explain
+`hyard view author`, `hyard guide render`, `hyard guide save`, the `hyard guide
+writeback` compatibility alias, `hyard orbit content apply`, and Orbit Package
+publication through `hyard publish orbit <orbit-package>`.
+
+Orbit Package publication remains available for authoring and compatibility. It
+should be documented as an authoring surface or compatibility surface, not as the
+recommended runtime-user publication path.
+
+Main `hyard --help` output must stay stable across Runtime View Selection. Runtime
+View Selection may affect command behavior and status/next-action output for a
+runtime repository, but it must not dynamically rewrite the main CLI help surface.
+
 ## Root Guidance Marker Surface
 
 Root guidance blocks use owner-specific marker namespaces with a single double-quoted

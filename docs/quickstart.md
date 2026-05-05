@@ -31,23 +31,12 @@ hyard --version
 hyard --help
 ```
 
-## Worker Path
+## Runtime User Path
 
-Use this path when a runtime already exists and you need to work inside an orbit:
-
-```bash
-hyard plumbing harness inspect
-hyard orbit list
-hyard orbit show docs
-hyard enter docs
-hyard current
-hyard status
-hyard diff
-hyard commit -m "update docs orbit"
-hyard leave
-```
-
-## Runtime Author Path
+Use this path when you want to run, inspect, update, or publish a Harness Runtime.
+Run View is the default runtime-user presentation: it keeps authored scaffolding out
+of the ordinary working tree and makes current runtime publication the recommended
+sharing path.
 
 Create and inspect a runtime:
 
@@ -56,14 +45,28 @@ hyard create runtime demo-repo
 cd demo-repo
 hyard check --json
 hyard ready
+hyard view status
 ```
 
 Install a reusable template or package:
 
 ```bash
 hyard install <template-source>
-hyard guide sync
 hyard check --json
+hyard view run --check
+```
+
+Review installed orbit packages and work inside the current runtime:
+
+```bash
+hyard orbit list
+hyard orbit show docs
+hyard enter docs
+hyard current
+hyard status
+hyard diff
+hyard commit -m "update runtime docs"
+hyard leave
 ```
 
 Uninstall an installed orbit package when it is no longer needed:
@@ -85,22 +88,55 @@ When a runtime contains multiple harness packages, select the target explicitly:
 hyard assign orbit <orbit-package> --harness <harness-package>
 ```
 
-Publish the current harness workspace:
+Publish the current runtime as a Harness Package:
 
 ```bash
 hyard publish harness workspace
 ```
 
-## Orbit Author Path
+## Author Path
 
-Create a source authoring repository for one orbit:
+Use this path when you are editing authored truth, guide blocks, or package content
+intended to become an Orbit Package. Author View makes authored scaffolds explicit;
+Orbit Package publication remains available for authoring and compatibility, but it
+is not the recommended runtime-user publication path.
+
+When you are authoring inside a Harness Runtime, select Author View before
+materializing editable guide artifacts:
+
+```bash
+hyard view author
+```
+
+Render editable guide artifacts, save edited guidance back into authored truth, or
+use the writeback alias when following older authoring instructions:
+
+```bash
+hyard guide render --orbit docs --target all
+hyard guide save --orbit docs --target all
+hyard guide writeback --orbit docs --target all
+```
+
+Apply tracked content hints before publishing:
+
+```bash
+hyard orbit content apply docs --check --json
+hyard orbit content apply docs
+```
+
+Publish the authored orbit as an Orbit Package:
+
+```bash
+hyard publish orbit docs --json
+```
+
+Create a source authoring repository when you need a standalone starting point for
+one orbit package:
 
 ```bash
 hyard create source docs-source --orbit docs --name "Docs Orbit" --description "Docs authoring repo"
 cd docs-source
 hyard orbit member add --orbit docs --key docs-content --role rule --include 'docs/**'
-hyard guide save --orbit docs --target all
-hyard publish orbit docs --json
 ```
 
 Rename an authored orbit package when the package identity needs to change:
@@ -117,9 +153,8 @@ hyard plumbing orbit branch list --json
 hyard plumbing orbit branch inspect HEAD --json
 ```
 
-## Harness Author Path
-
-Create a runtime, install content, verify readiness, and publish:
+Authoring a reusable Harness Package follows the runtime publication path after the
+runtime content is reviewed:
 
 ```bash
 hyard create runtime demo-repo
@@ -127,7 +162,7 @@ cd demo-repo
 hyard install <template-source>
 hyard plumbing harness inspect
 hyard check --json
-hyard guide sync
+hyard view status
 hyard publish harness workspace
 ```
 

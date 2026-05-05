@@ -63,8 +63,8 @@ func newPublishCommand() *cobra.Command {
 		Use:   "publish",
 		Short: "Publish installable orbit or harness results",
 		Long: "Publish installable orbit or harness results through the canonical hyard user surface.\n" +
-			"Use `publish orbit` for authored single-orbit template publication and `publish harness`\n" +
-			"for runtime-as-template publication.",
+			"Runtime users should publish the current runtime as a Harness Package with `hyard publish harness <package>`.\n" +
+			"Use `hyard publish orbit <package>` from Author View or compatibility authoring flows.",
 		Args: cobra.NoArgs,
 	}
 
@@ -89,6 +89,8 @@ func newPublishOrbitCommand() *cobra.Command {
 	cmd.Short = "Publish the current orbit source or template revision"
 	cmd.Long = "Publish the current orbit source or template revision through the hyard user surface.\n" +
 		"This command wraps the existing orbit template publish lane.\n" +
+		"In a Harness Runtime repository, select Author View with `hyard view author` before publishing an Orbit Package.\n" +
+		"Run View users should publish the current runtime with `hyard publish harness <package>`.\n" +
 		"Legacy automation and migration compatibility flags remain supported, but stay hidden\n" +
 		"from the default help surface."
 	cmd.Example = "" +
