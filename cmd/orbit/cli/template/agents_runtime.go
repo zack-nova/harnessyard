@@ -209,14 +209,6 @@ func isBlankRuntimeAgentsLine(line []byte) bool {
 	return len(bytes.TrimSpace(line)) == 0
 }
 
-func beginRuntimeAgentsMarker(orbitID string) string {
-	return beginRuntimeAgentsOwnerMarker(OwnerKindOrbit, orbitID)
-}
-
-func endRuntimeAgentsMarker(orbitID string) string {
-	return endRuntimeAgentsOwnerMarker(OwnerKindOrbit, orbitID)
-}
-
 func beginRuntimeAgentsOwnerMarker(ownerKind OwnerKind, workflowID string) string {
 	return fmt.Sprintf("<!-- %s:begin workflow=%q -->", ownerKind, workflowID)
 }

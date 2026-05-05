@@ -272,10 +272,8 @@ func (session adoptInteractiveSession) selectCandidates(
 	cmd *cobra.Command,
 	candidates []adoptCheckCandidate,
 ) ([]adoptCheckCandidate, error) {
-	acceptRecommended := true
-	if !adoptHasRoleConfirmationCandidates(candidates) {
-		acceptRecommended = false
-	} else {
+	acceptRecommended := false
+	if adoptHasRoleConfirmationCandidates(candidates) {
 		var err error
 		acceptRecommended, err = session.confirmDefault(cmd, "Accept all recommended candidate roles? [Y/n] ", true)
 		if err != nil {
@@ -416,7 +414,7 @@ func (session adoptInteractiveSession) promptLine(cmd *cobra.Command, prompt str
 		if errors.Is(err, io.EOF) && line != "" {
 			return strings.TrimSpace(line), nil
 		}
-		return "", err
+		return "", fmt.Errorf("read prompt line: %w", err)
 	}
 
 	return strings.TrimSpace(line), nil
@@ -499,7 +497,7 @@ func buildAdoptWriteOutputWithOptions(
 	if err != nil {
 		return adoptWriteOutput{}, fmt.Errorf("wrap adopted root guidance: %w", err)
 	}
-	if err := os.WriteFile(agentsPath, wrappedAgents, 0o644); err != nil {
+	if err := os.WriteFile(agentsPath, wrappedAgents, 0o600); err != nil {
 		return adoptWriteOutput{}, fmt.Errorf("write root agent guidance marker block: %w", err)
 	}
 
@@ -823,7 +821,7 @@ func inspectAdoptCheckGuidanceCandidates(cmd *cobra.Command, repoRoot string) ([
 		},
 	}
 
-	content, err := os.ReadFile(filepath.Join(repoRoot, "AGENTS.md"))
+	content, err := os.ReadFile(filepath.Join(repoRoot, "AGENTS.md")) //nolint:gosec // AGENTS.md is a fixed repo-local root guidance path.
 	if err != nil {
 		return nil, nil, fmt.Errorf("read root agent guidance: %w", err)
 	}
@@ -1025,7 +1023,7 @@ func resolveAdoptCheckCodexLocalSkillRoot(
 	}
 	resolved, err := orbitpkg.ResolveLocalSkillCapabilities(repoRoot, spec, trackedFiles, trackedFiles)
 	if err != nil {
-		return orbitpkg.ResolvedLocalSkillCapability{}, err
+		return orbitpkg.ResolvedLocalSkillCapability{}, fmt.Errorf("%w", err)
 	}
 	if len(resolved) == 0 {
 		return orbitpkg.ResolvedLocalSkillCapability{}, fmt.Errorf("local skill root %q: SKILL.md must exist and be tracked", rootPath)
@@ -1379,7 +1377,7 @@ func inspectAdoptableCodexNativeHooks(
 	repoRoot string,
 ) ([]adoptedCodexNativeHook, []adoptCheckDiagnostic, error) {
 	hooksPath := filepath.Join(repoRoot, ".codex", "hooks.json")
-	data, err := os.ReadFile(hooksPath)
+	data, err := os.ReadFile(hooksPath) //nolint:gosec // hooksPath is the fixed repo-local Codex hooks file.
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return []adoptedCodexNativeHook{}, []adoptCheckDiagnostic{}, nil
@@ -1446,7 +1444,7 @@ func inspectAdoptableCodexNativeHooks(
 func writeAdoptedCodexNativeHookTruth(repoRoot string, hooks []adoptedCodexNativeHook) error {
 	configFile, hasConfig, err := harnesspkg.LoadOptionalAgentUnifiedConfigFile(repoRoot)
 	if err != nil {
-		return err
+		return fmt.Errorf("load Codex native hook truth: %w", err)
 	}
 	if !hasConfig {
 		configFile = harnesspkg.AgentUnifiedConfigFile{
@@ -1507,7 +1505,7 @@ func writeAdoptedCodexNativeHookTruth(repoRoot string, hooks []adoptedCodexNativ
 	})
 	configFile.Hooks = unifiedHooks
 	if _, err := harnesspkg.WriteAgentUnifiedConfigFile(repoRoot, configFile); err != nil {
-		return err
+		return fmt.Errorf("write Codex native hook truth: %w", err)
 	}
 
 	return nil
@@ -1531,7 +1529,7 @@ func adoptCheckCodexHookCommandHandlerPath(command string) (string, error) {
 	}
 	normalized, err := ids.NormalizeRepoRelativePath(handlerPath)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("normalize Codex native hook handler path: %w", err)
 	}
 
 	return normalized, nil

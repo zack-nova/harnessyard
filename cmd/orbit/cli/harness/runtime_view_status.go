@@ -178,7 +178,7 @@ func inspectRuntimeViewGuidanceMarkers(repoRoot string) []RuntimeViewGuidanceMar
 			Path:   target.path,
 		}
 
-		data, err := os.ReadFile(filepath.Join(repoRoot, filepath.FromSlash(target.path)))
+		data, err := os.ReadFile(filepath.Join(repoRoot, filepath.FromSlash(target.path))) //nolint:gosec // target.path is a fixed root guidance path.
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				results = append(results, result)

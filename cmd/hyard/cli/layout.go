@@ -656,7 +656,7 @@ func applyLayoutOptimizeAgentConfigHookPaths(repoRoot string, plan layoutOptimiz
 func applyLayoutOptimizeGuidanceLinks(repoRoot string, plan layoutOptimizePlan) error {
 	for _, guidancePath := range layoutRootGuidancePaths() {
 		filename := filepath.Join(repoRoot, filepath.FromSlash(guidancePath))
-		data, err := os.ReadFile(filename)
+		data, err := os.ReadFile(filename) //nolint:gosec // filename is built from the repo root and fixed root guidance paths.
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				continue
@@ -973,19 +973,6 @@ func layoutMemberFromMoveDestination(toPath string) orbitpkg.OrbitMember {
 			Include: []string{toPath},
 		},
 	}
-}
-
-func layoutSameStringSlice(left []string, right []string) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	for index := range left {
-		if left[index] != right[index] {
-			return false
-		}
-	}
-
-	return true
 }
 
 func layoutUniqueStrings(values []string) []string {

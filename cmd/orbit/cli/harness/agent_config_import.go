@@ -313,7 +313,7 @@ type agentConfigImportSidecarCandidate struct {
 
 func normalizeAgentConfigImportSourceScopes(scopes []string) (map[string]struct{}, error) {
 	if len(scopes) == 0 {
-		return nil, nil
+		return nil, nil //nolint:nilnil // nil scopes mean "no source filtering" for agent config import.
 	}
 	allowed := make(map[string]struct{}, len(scopes))
 	for _, scope := range scopes {

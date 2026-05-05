@@ -2,6 +2,7 @@ package harness
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	gitpkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/git"
@@ -63,7 +64,10 @@ func ApplyRunViewPresentationDefault(ctx context.Context, repoRoot string) (RunV
 	result.Cleanup = cleanup
 	if err != nil {
 		if rollbackErr := tx.Rollback(); rollbackErr != nil {
-			return result, fmt.Errorf("apply Run View cleanup: %w; rollback Run View cleanup: %v", err, rollbackErr)
+			return result, errors.Join(
+				fmt.Errorf("apply Run View cleanup: %w", err),
+				fmt.Errorf("rollback Run View cleanup: %w", rollbackErr),
+			)
 		}
 		return result, err
 	}

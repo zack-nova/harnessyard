@@ -90,7 +90,11 @@ func newBootstrapSetupCommand() *cobra.Command {
 				plan, err = harnesspkg.ApplyBootstrapAgentSkillSetup(input)
 			}
 			if err != nil {
-				return err
+				action := "apply"
+				if check {
+					action = "plan"
+				}
+				return fmt.Errorf("%s bootstrap skill setup: %w", action, err)
 			}
 			output := hyardBootstrapSetupOutputFromPlan(plan, check)
 			if jsonOutput {

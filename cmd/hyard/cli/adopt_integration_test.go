@@ -1834,7 +1834,7 @@ func newNamedGitRepoForHyardAdopt(t *testing.T, name string) string {
 	return repoRoot
 }
 
-func runGitForHyardAdopt(t *testing.T, repoRoot string, args ...string) string {
+func runGitForHyardAdopt(t *testing.T, repoRoot string, args ...string) {
 	t.Helper()
 
 	command := exec.Command("git", args...)
@@ -1848,8 +1848,6 @@ func runGitForHyardAdopt(t *testing.T, repoRoot string, args ...string) string {
 	)
 	output, err := command.CombinedOutput()
 	require.NoError(t, err, "git %v failed:\n%s", args, string(output))
-
-	return string(output)
 }
 
 func writeHyardAdoptSkill(t *testing.T, repo *testutil.Repo, rootPath string, name string, description string) {

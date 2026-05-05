@@ -56,7 +56,7 @@ func PlanBootstrapAgentSkillSetup(input BootstrapAgentSkillSetupInput) (Bootstra
 		Remove:           input.Remove,
 	}
 
-	existing, err := os.ReadFile(filepath.Join(input.RepoRoot, filepath.FromSlash(skillPath))) //nolint:gosec // skillPath is framework-mapped repo-local output.
+	existing, err := os.ReadFile(filepath.Join(input.RepoRoot, filepath.FromSlash(skillPath)))
 	switch {
 	case input.Remove && errors.Is(err, os.ErrNotExist):
 		plan.Action = "missing"
@@ -109,7 +109,7 @@ func ApplyBootstrapAgentSkillSetup(input BootstrapAgentSkillSetupInput) (Bootstr
 	absPath := filepath.Join(input.RepoRoot, filepath.FromSlash(plan.SkillPath))
 	switch plan.Action {
 	case "create", "update":
-		if err := os.MkdirAll(absRoot, 0o755); err != nil {
+		if err := os.MkdirAll(absRoot, 0o750); err != nil {
 			return BootstrapAgentSkillSetupPlan{}, fmt.Errorf("create bootstrap skill directory %s: %w", plan.SkillRoot, err)
 		}
 		if err := contractutil.AtomicWriteFileMode(absPath, BootstrapAgentSkillData(), 0o644); err != nil {

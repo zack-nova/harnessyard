@@ -235,7 +235,7 @@ func applyRuntimeViewRootGuidanceCleanup(
 
 	for _, target := range runtimeViewCleanupGuidanceTargets() {
 		filename := filepath.Join(repoRoot, filepath.FromSlash(target.path))
-		data, err := os.ReadFile(filename)
+		data, err := os.ReadFile(filename) //nolint:gosec // filename is built from the repo root and fixed root guidance paths.
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				skippedTargets = append(skippedTargets, RuntimeViewCleanupSkippedTarget{
@@ -320,7 +320,7 @@ func inspectRuntimeViewGuidanceTargetCleanup(
 	repoRoot string,
 	target runtimeViewCleanupGuidanceTarget,
 ) ([]RuntimeViewCleanupCandidate, []RuntimeViewDriftDiagnostic, []string) {
-	data, err := os.ReadFile(filepath.Join(repoRoot, filepath.FromSlash(target.path)))
+	data, err := os.ReadFile(filepath.Join(repoRoot, filepath.FromSlash(target.path))) //nolint:gosec // target.path is a fixed root guidance path.
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil, nil

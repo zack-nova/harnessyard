@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -170,13 +171,19 @@ func runGuidanceCompose(
 	})
 	if err != nil {
 		if rollbackErr := tx.Rollback(); rollbackErr != nil {
-			return harnesspkg.ComposeRuntimeGuidanceResult{}, harnesspkg.ReadinessReport{}, false, fmt.Errorf("compose runtime guidance: %w; rollback guidance sync: %v", err, rollbackErr)
+			return harnesspkg.ComposeRuntimeGuidanceResult{}, harnesspkg.ReadinessReport{}, false, errors.Join(
+				fmt.Errorf("compose runtime guidance: %w", err),
+				fmt.Errorf("rollback guidance sync: %w", rollbackErr),
+			)
 		}
 		return harnesspkg.ComposeRuntimeGuidanceResult{}, harnesspkg.ReadinessReport{}, false, fmt.Errorf("compose runtime guidance: %w", err)
 	}
 	if _, err := harnesspkg.ApplyRunViewPresentationDefault(cmd.Context(), repoRoot); err != nil {
 		if rollbackErr := tx.Rollback(); rollbackErr != nil {
-			return harnesspkg.ComposeRuntimeGuidanceResult{}, harnesspkg.ReadinessReport{}, false, fmt.Errorf("apply Run View presentation: %w; rollback guidance sync: %v", err, rollbackErr)
+			return harnesspkg.ComposeRuntimeGuidanceResult{}, harnesspkg.ReadinessReport{}, false, errors.Join(
+				fmt.Errorf("apply Run View presentation: %w", err),
+				fmt.Errorf("rollback guidance sync: %w", rollbackErr),
+			)
 		}
 		return harnesspkg.ComposeRuntimeGuidanceResult{}, harnesspkg.ReadinessReport{}, false, fmt.Errorf("apply Run View presentation: %w", err)
 	}
