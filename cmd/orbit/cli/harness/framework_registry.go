@@ -44,11 +44,6 @@ func RegisteredFrameworkAdapters() []FrameworkAdapter {
 			ExecutableNames: []string{"codex"},
 		},
 		{
-			ID:              "gitagent",
-			LocalHintPaths:  []string{".gitagent_adapter"},
-			ExecutableNames: []string{"gitagent"},
-		},
-		{
 			ID:              "openclaw",
 			ExecutableNames: []string{"openclaw"},
 		},
@@ -68,8 +63,6 @@ func NormalizeFrameworkID(frameworkID string) (string, bool) {
 		return "claudecode", true
 	case "codex":
 		return "codex", true
-	case "gitagent":
-		return "gitagent", true
 	case "openclaw":
 		return "openclaw", true
 	default:

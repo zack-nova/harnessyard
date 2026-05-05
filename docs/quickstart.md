@@ -133,6 +133,14 @@ hyard plumbing harness template save --to harness-template/workspace
 
 ## Bootstrap Completion
 
+To install the repository-level agent skill that guides a pending runtime bootstrap:
+
+```bash
+hyard bootstrap setup
+hyard bootstrap setup codex
+hyard bootstrap setup --remove
+```
+
 If the repository bootstrap has been completed and its initialization surface should be closed:
 
 ```bash

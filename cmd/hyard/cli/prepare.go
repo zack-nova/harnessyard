@@ -40,16 +40,6 @@ func newPrepareCommand() *cobra.Command {
 				return err
 			}
 
-			var repoGuidance harnesspkg.RepoPrepareGuidancePlan
-			if check {
-				repoGuidance, err = harnesspkg.PlanRepoPrepareGuidance(resolved.Repo.Root)
-			} else {
-				repoGuidance, err = harnesspkg.ApplyRepoPrepareGuidance(resolved.Repo.Root)
-			}
-			if err != nil {
-				return fmt.Errorf("prepare repo-level guidance: %w", err)
-			}
-
 			agentSelection := prepareAgentSelectionOutput{
 				Action:      "not_checked",
 				ReadyAgents: []string{},
@@ -70,7 +60,6 @@ func newPrepareCommand() *cobra.Command {
 				RepoRoot:       resolved.Repo.Root,
 				Check:          check,
 				AutoApprove:    yes,
-				RepoGuidance:   repoGuidance,
 				AgentSelection: agentSelection,
 				Readiness:      readiness,
 			}
@@ -106,12 +95,11 @@ func newPrepareCommand() *cobra.Command {
 }
 
 type prepareOutput struct {
-	RepoRoot       string                             `json:"repo_root"`
-	Check          bool                               `json:"check"`
-	AutoApprove    bool                               `json:"auto_approve"`
-	RepoGuidance   harnesspkg.RepoPrepareGuidancePlan `json:"repo_guidance"`
-	AgentSelection prepareAgentSelectionOutput        `json:"agent_selection"`
-	Readiness      harnesspkg.ReadinessReport         `json:"readiness"`
+	RepoRoot       string                      `json:"repo_root"`
+	Check          bool                        `json:"check"`
+	AutoApprove    bool                        `json:"auto_approve"`
+	AgentSelection prepareAgentSelectionOutput `json:"agent_selection"`
+	Readiness      harnesspkg.ReadinessReport  `json:"readiness"`
 }
 
 type prepareAgentSelectionOutput struct {

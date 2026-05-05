@@ -3969,80 +3969,14 @@ func TestHyardReadyTreatsBundleOwnedOrbitsWithoutStandaloneGuidanceAsReady(t *te
 	require.NotContains(t, stdout, "suggested_command: harness agents compose")
 }
 
-func TestHyardPrepareYesAddsRepoLevelBlocksWhenBootstrapExists(t *testing.T) {
+func TestHyardPrepareYesLeavesBootstrapGuidanceUntouched(t *testing.T) {
 	t.Parallel()
 
 	repo := testutil.NewRepo(t)
 	_, err := harnesspkg.BootstrapRuntimeControlPlane(repo.Root, time.Date(2026, time.April, 30, 9, 0, 0, 0, time.UTC))
 	require.NoError(t, err)
-	repo.WriteFile(t, "BOOTSTRAP.md", "Existing bootstrap instructions.\n")
-
-	stdout, stderr, err := executeHyardCLI(t, repo.Root, "prepare", "--yes")
-	require.NoError(t, err)
-	require.Empty(t, stderr)
-	require.Contains(t, stdout, "prepared harness runtime")
-
-	bootstrapData, err := os.ReadFile(filepath.Join(repo.Root, "BOOTSTRAP.md"))
-	require.NoError(t, err)
-	require.Contains(t, string(bootstrapData), "<!-- hyard:repo-bootstrap:begin -->")
-	require.Contains(t, string(bootstrapData), "<!-- hyard:repo-bootstrap:end -->")
-	require.Contains(t, string(bootstrapData), "Run `hyard bootstrap complete --check --json` to preview the closeout.")
-	require.Contains(t, string(bootstrapData), "Run `hyard bootstrap complete --yes` after confirming the preview only removes bootstrap guidance and bootstrap-lane runtime files.")
-	require.Contains(t, string(bootstrapData), "Existing bootstrap instructions.\n")
-
-	agentsData, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
-	require.NoError(t, err)
-	require.Contains(t, string(agentsData), "<!-- hyard:repo-agents:begin -->")
-	require.Contains(t, string(agentsData), "<!-- hyard:repo-agents:end -->")
-	require.Contains(t, string(agentsData), "Before starting normal work, read `BOOTSTRAP.md` if it exists.")
-	require.Contains(t, string(agentsData), "If it contains hyard bootstrap instructions, complete that initialization flow first.")
-}
-
-func TestHyardPrepareYesSkipsRepoLevelBlocksWhenBootstrapMissing(t *testing.T) {
-	t.Parallel()
-
-	repo := testutil.NewRepo(t)
-	_, err := harnesspkg.BootstrapRuntimeControlPlane(repo.Root, time.Date(2026, time.April, 30, 9, 0, 0, 0, time.UTC))
-	require.NoError(t, err)
-
-	stdout, stderr, err := executeHyardCLI(t, repo.Root, "prepare", "--yes")
-	require.NoError(t, err)
-	require.Empty(t, stderr)
-	require.Contains(t, stdout, "prepared harness runtime")
-
-	require.NoFileExists(t, filepath.Join(repo.Root, "AGENTS.md"))
-	require.NoFileExists(t, filepath.Join(repo.Root, "BOOTSTRAP.md"))
-}
-
-func TestHyardPrepareYesSkipsRepoLevelBlocksWhenBootstrapEmpty(t *testing.T) {
-	t.Parallel()
-
-	repo := testutil.NewRepo(t)
-	_, err := harnesspkg.BootstrapRuntimeControlPlane(repo.Root, time.Date(2026, time.April, 30, 9, 0, 0, 0, time.UTC))
-	require.NoError(t, err)
-	repo.WriteFile(t, "BOOTSTRAP.md", " \n\t\n")
-
-	stdout, stderr, err := executeHyardCLI(t, repo.Root, "prepare", "--yes")
-	require.NoError(t, err)
-	require.Empty(t, stderr)
-	require.Contains(t, stdout, "prepared harness runtime")
-
-	bootstrapData, err := os.ReadFile(filepath.Join(repo.Root, "BOOTSTRAP.md"))
-	require.NoError(t, err)
-	require.Equal(t, " \n\t\n", string(bootstrapData))
-	require.NoFileExists(t, filepath.Join(repo.Root, "AGENTS.md"))
-}
-
-func TestHyardPrepareYesPreservesEditedRepoLevelBlocks(t *testing.T) {
-	t.Parallel()
-
-	repo := testutil.NewRepo(t)
-	_, err := harnesspkg.BootstrapRuntimeControlPlane(repo.Root, time.Date(2026, time.April, 30, 9, 0, 0, 0, time.UTC))
-	require.NoError(t, err)
-	bootstrap := "Existing bootstrap instructions.\n\n<!-- hyard:repo-bootstrap:begin -->\nCustom bootstrap prep.\n<!-- hyard:repo-bootstrap:end -->\n"
-	agents := "Existing agent instructions.\n\n<!-- hyard:repo-agents:begin -->\nCustom agent prep.\n<!-- hyard:repo-agents:end -->\n"
+	bootstrap := "Existing bootstrap instructions.\n"
 	repo.WriteFile(t, "BOOTSTRAP.md", bootstrap)
-	repo.WriteFile(t, "AGENTS.md", agents)
 
 	stdout, stderr, err := executeHyardCLI(t, repo.Root, "prepare", "--yes")
 	require.NoError(t, err)
@@ -4052,33 +3986,10 @@ func TestHyardPrepareYesPreservesEditedRepoLevelBlocks(t *testing.T) {
 	bootstrapData, err := os.ReadFile(filepath.Join(repo.Root, "BOOTSTRAP.md"))
 	require.NoError(t, err)
 	require.Equal(t, bootstrap, string(bootstrapData))
-	agentsData, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
-	require.NoError(t, err)
-	require.Equal(t, agents, string(agentsData))
-}
-
-func TestHyardPrepareYesRejectsMalformedRepoLevelBlockMarkers(t *testing.T) {
-	t.Parallel()
-
-	repo := testutil.NewRepo(t)
-	_, err := harnesspkg.BootstrapRuntimeControlPlane(repo.Root, time.Date(2026, time.April, 30, 9, 0, 0, 0, time.UTC))
-	require.NoError(t, err)
-	bootstrap := "Existing bootstrap instructions.\n<!-- hyard:repo-bootstrap:begin -->\nUnclosed custom prep.\n"
-	repo.WriteFile(t, "BOOTSTRAP.md", bootstrap)
-
-	stdout, stderr, err := executeHyardCLI(t, repo.Root, "prepare", "--yes")
-	require.Error(t, err)
-	require.Empty(t, stdout)
-	require.Empty(t, stderr)
-	require.Contains(t, err.Error(), "malformed hyard repo-level guidance block markers")
 	require.NoFileExists(t, filepath.Join(repo.Root, "AGENTS.md"))
-
-	bootstrapData, err := os.ReadFile(filepath.Join(repo.Root, "BOOTSTRAP.md"))
-	require.NoError(t, err)
-	require.Equal(t, bootstrap, string(bootstrapData))
 }
 
-func TestHyardPrepareCheckJSONPreviewsWithoutWritingRepoLevelBlocks(t *testing.T) {
+func TestHyardPrepareCheckJSONOmitsRepoGuidancePlan(t *testing.T) {
 	t.Parallel()
 
 	repo := testutil.NewRepo(t)
@@ -4092,32 +4003,177 @@ func TestHyardPrepareCheckJSONPreviewsWithoutWritingRepoLevelBlocks(t *testing.T
 	require.Empty(t, stderr)
 
 	var payload struct {
-		RepoRoot     string `json:"repo_root"`
-		Check        bool   `json:"check"`
-		RepoGuidance struct {
-			BootstrapPresent bool `json:"bootstrap_present"`
-			Files            []struct {
-				Path   string `json:"path"`
-				Action string `json:"action"`
-			} `json:"files"`
-		} `json:"repo_guidance"`
+		RepoRoot       string          `json:"repo_root"`
+		Check          bool            `json:"check"`
+		AgentSelection json.RawMessage `json:"agent_selection"`
+		Readiness      json.RawMessage `json:"readiness"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
 	require.Equal(t, repo.Root, payload.RepoRoot)
 	require.True(t, payload.Check)
-	require.True(t, payload.RepoGuidance.BootstrapPresent)
-	require.Equal(t, []struct {
-		Path   string `json:"path"`
-		Action string `json:"action"`
-	}{
-		{Path: "BOOTSTRAP.md", Action: "update"},
-		{Path: "AGENTS.md", Action: "create"},
-	}, payload.RepoGuidance.Files)
+	require.NotEmpty(t, payload.AgentSelection)
+	require.NotEmpty(t, payload.Readiness)
 
 	bootstrapData, err := os.ReadFile(filepath.Join(repo.Root, "BOOTSTRAP.md"))
 	require.NoError(t, err)
 	require.Equal(t, bootstrap, string(bootstrapData))
 	require.NoFileExists(t, filepath.Join(repo.Root, "AGENTS.md"))
+}
+
+func TestHyardBootstrapSetupWritesExplicitFrameworkSkill(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	_, err := harnesspkg.BootstrapRuntimeControlPlane(repo.Root, time.Date(2026, time.April, 30, 9, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "bootstrap", "setup", "codex", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		RepoRoot         string `json:"repo_root"`
+		Framework        string `json:"framework"`
+		ResolutionSource string `json:"resolution_source"`
+		SkillPath        string `json:"skill_path"`
+		Action           string `json:"action"`
+		Changed          bool   `json:"changed"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, repo.Root, payload.RepoRoot)
+	require.Equal(t, "codex", payload.Framework)
+	require.Equal(t, "explicit_local", payload.ResolutionSource)
+	require.Equal(t, ".codex/skills/harness-runtime-bootstrap/SKILL.md", payload.SkillPath)
+	require.Equal(t, "create", payload.Action)
+	require.True(t, payload.Changed)
+
+	data, err := os.ReadFile(filepath.Join(repo.Root, ".codex", "skills", "harness-runtime-bootstrap", "SKILL.md"))
+	require.NoError(t, err)
+	require.Equal(t, string(harnesspkg.BootstrapAgentSkillData()), string(data))
+}
+
+func TestHyardBootstrapSetupResolvesSelectedFrameworkBeforeRecommendation(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	_, err := harnesspkg.BootstrapRuntimeControlPlane(repo.Root, time.Date(2026, time.April, 30, 9, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	_, err = harnesspkg.WriteFrameworksFile(repo.Root, harnesspkg.FrameworksFile{
+		SchemaVersion:        1,
+		RecommendedFramework: "codex",
+	})
+	require.NoError(t, err)
+	_, err = harnesspkg.WriteFrameworkSelection(repo.GitDir(t), harnesspkg.FrameworkSelection{
+		SelectedFramework: "claudecode",
+		SelectionSource:   harnesspkg.FrameworkSelectionSourceExplicitLocal,
+		UpdatedAt:         time.Date(2026, time.May, 4, 9, 0, 0, 0, time.UTC),
+	})
+	require.NoError(t, err)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "bootstrap", "setup", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Framework        string `json:"framework"`
+		ResolutionSource string `json:"resolution_source"`
+		SkillPath        string `json:"skill_path"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "claudecode", payload.Framework)
+	require.Equal(t, "explicit_local", payload.ResolutionSource)
+	require.Equal(t, ".claude/skills/harness-runtime-bootstrap/SKILL.md", payload.SkillPath)
+	require.FileExists(t, filepath.Join(repo.Root, ".claude", "skills", "harness-runtime-bootstrap", "SKILL.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, ".codex", "skills", "harness-runtime-bootstrap", "SKILL.md"))
+}
+
+func TestHyardBootstrapSetupResolvesRecommendedFramework(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	_, err := harnesspkg.BootstrapRuntimeControlPlane(repo.Root, time.Date(2026, time.April, 30, 9, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	_, err = harnesspkg.WriteFrameworksFile(repo.Root, harnesspkg.FrameworksFile{
+		SchemaVersion:        1,
+		RecommendedFramework: "openclaw",
+	})
+	require.NoError(t, err)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "bootstrap", "setup", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Framework        string `json:"framework"`
+		ResolutionSource string `json:"resolution_source"`
+		SkillPath        string `json:"skill_path"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "openclaw", payload.Framework)
+	require.Equal(t, "recommended_default", payload.ResolutionSource)
+	require.Equal(t, "skills/harness-runtime-bootstrap/SKILL.md", payload.SkillPath)
+	require.FileExists(t, filepath.Join(repo.Root, "skills", "harness-runtime-bootstrap", "SKILL.md"))
+}
+
+func TestHyardBootstrapSetupForceAndRemoveManageConflicts(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	_, err := harnesspkg.BootstrapRuntimeControlPlane(repo.Root, time.Date(2026, time.April, 30, 9, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	repo.WriteFile(t, ".codex/skills/harness-runtime-bootstrap/SKILL.md", "custom bootstrap skill\n")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "bootstrap", "setup", "codex", "--check", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+	var checkPayload struct {
+		Action  string `json:"action"`
+		Changed bool   `json:"changed"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &checkPayload))
+	require.Equal(t, "conflict", checkPayload.Action)
+	require.False(t, checkPayload.Changed)
+
+	stdout, stderr, err = executeHyardCLI(t, repo.Root, "bootstrap", "setup", "codex")
+	require.Error(t, err)
+	require.Empty(t, stdout)
+	require.Empty(t, stderr)
+	require.ErrorContains(t, err, "has local edits")
+
+	_, stderr, err = executeHyardCLI(t, repo.Root, "bootstrap", "setup", "codex", "--force", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+	data, err := os.ReadFile(filepath.Join(repo.Root, ".codex", "skills", "harness-runtime-bootstrap", "SKILL.md"))
+	require.NoError(t, err)
+	require.Equal(t, string(harnesspkg.BootstrapAgentSkillData()), string(data))
+
+	stdout, stderr, err = executeHyardCLI(t, repo.Root, "bootstrap", "setup", "codex", "--remove", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+	var removePayload struct {
+		Action  string `json:"action"`
+		Changed bool   `json:"changed"`
+		Remove  bool   `json:"remove"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &removePayload))
+	require.Equal(t, "remove", removePayload.Action)
+	require.True(t, removePayload.Changed)
+	require.True(t, removePayload.Remove)
+	require.NoFileExists(t, filepath.Join(repo.Root, ".codex", "skills", "harness-runtime-bootstrap"))
+}
+
+func TestHyardBootstrapSetupRequiresResolvableFramework(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	_, err := harnesspkg.BootstrapRuntimeControlPlane(repo.Root, time.Date(2026, time.April, 30, 9, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "bootstrap", "setup", "--json")
+	require.Error(t, err)
+	require.Empty(t, stdout)
+	require.Empty(t, stderr)
+	require.ErrorContains(t, err, "could not resolve a target framework")
 }
 
 func TestHyardBootstrapCompleteCheckPreviewsRepositoryBootstrapCloseout(t *testing.T) {
@@ -4130,29 +4186,27 @@ func TestHyardBootstrapCompleteCheckPreviewsRepositoryBootstrapCloseout(t *testi
 	require.Empty(t, stderr)
 
 	var payload struct {
-		RepoRoot             string   `json:"repo_root"`
-		Check                bool     `json:"check"`
-		Completed            bool     `json:"completed"`
-		CompletedOrbits      []string `json:"completed_orbits"`
-		RemovedPaths         []string `json:"removed_paths"`
-		RemovedRepoBlocks    []string `json:"removed_repo_blocks"`
-		DeletedBootstrapFile bool     `json:"deleted_bootstrap_file"`
-		DeletedAgentsFile    bool     `json:"deleted_agents_file"`
+		RepoRoot               string   `json:"repo_root"`
+		Check                  bool     `json:"check"`
+		Completed              bool     `json:"completed"`
+		CompletedOrbits        []string `json:"completed_orbits"`
+		RemovedPaths           []string `json:"removed_paths"`
+		RemovedBootstrapBlocks []string `json:"removed_bootstrap_blocks"`
+		DeletedBootstrapFile   bool     `json:"deleted_bootstrap_file"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
 	require.Equal(t, repo.Root, payload.RepoRoot)
 	require.True(t, payload.Check)
 	require.False(t, payload.Completed)
 	require.Equal(t, []string{"docs", "ops"}, payload.CompletedOrbits)
-	require.ElementsMatch(t, []string{"agents", "bootstrap"}, payload.RemovedRepoBlocks)
-	require.Contains(t, payload.RemovedPaths, "AGENTS.md")
+	require.ElementsMatch(t, []string{"docs", "ops"}, payload.RemovedBootstrapBlocks)
+	require.NotContains(t, payload.RemovedPaths, "AGENTS.md")
 	require.Contains(t, payload.RemovedPaths, "BOOTSTRAP.md")
 	require.Contains(t, payload.RemovedPaths, "bootstrap/docs/setup.md")
 	require.Contains(t, payload.RemovedPaths, "bootstrap/ops/setup.md")
-	require.True(t, payload.DeletedBootstrapFile)
-	require.True(t, payload.DeletedAgentsFile)
+	require.False(t, payload.DeletedBootstrapFile)
 
-	require.FileExists(t, filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "AGENTS.md"))
 	require.FileExists(t, filepath.Join(repo.Root, "BOOTSTRAP.md"))
 	require.FileExists(t, filepath.Join(repo.Root, "bootstrap", "docs", "setup.md"))
 	require.FileExists(t, filepath.Join(repo.Root, "bootstrap", "ops", "setup.md"))
@@ -4168,29 +4222,27 @@ func TestHyardBootstrapCompleteYesClosesRepositoryBootstrap(t *testing.T) {
 	require.Empty(t, stderr)
 
 	var payload struct {
-		RepoRoot             string   `json:"repo_root"`
-		Check                bool     `json:"check"`
-		Completed            bool     `json:"completed"`
-		CompletedOrbits      []string `json:"completed_orbits"`
-		RemovedPaths         []string `json:"removed_paths"`
-		RemovedRepoBlocks    []string `json:"removed_repo_blocks"`
-		DeletedBootstrapFile bool     `json:"deleted_bootstrap_file"`
-		DeletedAgentsFile    bool     `json:"deleted_agents_file"`
+		RepoRoot               string   `json:"repo_root"`
+		Check                  bool     `json:"check"`
+		Completed              bool     `json:"completed"`
+		CompletedOrbits        []string `json:"completed_orbits"`
+		RemovedPaths           []string `json:"removed_paths"`
+		RemovedBootstrapBlocks []string `json:"removed_bootstrap_blocks"`
+		DeletedBootstrapFile   bool     `json:"deleted_bootstrap_file"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
 	require.Equal(t, repo.Root, payload.RepoRoot)
 	require.False(t, payload.Check)
 	require.True(t, payload.Completed)
 	require.Equal(t, []string{"docs", "ops"}, payload.CompletedOrbits)
-	require.ElementsMatch(t, []string{"agents", "bootstrap"}, payload.RemovedRepoBlocks)
-	require.Contains(t, payload.RemovedPaths, "AGENTS.md")
+	require.ElementsMatch(t, []string{"docs", "ops"}, payload.RemovedBootstrapBlocks)
+	require.NotContains(t, payload.RemovedPaths, "AGENTS.md")
 	require.Contains(t, payload.RemovedPaths, "BOOTSTRAP.md")
 	require.Contains(t, payload.RemovedPaths, "bootstrap/docs/setup.md")
 	require.Contains(t, payload.RemovedPaths, "bootstrap/ops/setup.md")
-	require.True(t, payload.DeletedBootstrapFile)
-	require.True(t, payload.DeletedAgentsFile)
+	require.False(t, payload.DeletedBootstrapFile)
 
-	require.NoFileExists(t, filepath.Join(repo.Root, "BOOTSTRAP.md"))
+	require.FileExists(t, filepath.Join(repo.Root, "BOOTSTRAP.md"))
 	require.NoFileExists(t, filepath.Join(repo.Root, "AGENTS.md"))
 	require.NoFileExists(t, filepath.Join(repo.Root, "bootstrap", "docs", "setup.md"))
 	require.NoFileExists(t, filepath.Join(repo.Root, "bootstrap", "ops", "setup.md"))
@@ -4205,7 +4257,7 @@ func TestHyardBootstrapCompleteYesClosesRepositoryBootstrap(t *testing.T) {
 	}
 }
 
-func TestHyardBootstrapReopenRestoresRepositoryBootstrapBlocks(t *testing.T) {
+func TestHyardBootstrapReopenLeavesRepositoryGuidanceArtifactsAlone(t *testing.T) {
 	t.Parallel()
 
 	repo := seedHyardBootstrapCompletionRepo(t)
@@ -4218,27 +4270,17 @@ func TestHyardBootstrapReopenRestoresRepositoryBootstrapBlocks(t *testing.T) {
 	require.Empty(t, stderr)
 
 	var payload struct {
-		RepoRoot           string   `json:"repo_root"`
-		ReopenedOrbits     []string `json:"reopened_orbits"`
-		RestoredPaths      []string `json:"restored_paths"`
-		RestoredRepoBlocks []string `json:"restored_repo_blocks"`
+		RepoRoot       string   `json:"repo_root"`
+		ReopenedOrbits []string `json:"reopened_orbits"`
+		RestoredPaths  []string `json:"restored_paths"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
 	require.Equal(t, repo.Root, payload.RepoRoot)
 	require.Equal(t, []string{"docs", "ops"}, payload.ReopenedOrbits)
-	require.ElementsMatch(t, []string{"agents", "bootstrap"}, payload.RestoredRepoBlocks)
-	require.Contains(t, payload.RestoredPaths, "AGENTS.md")
-	require.Contains(t, payload.RestoredPaths, "BOOTSTRAP.md")
+	require.Empty(t, payload.RestoredPaths)
 
-	bootstrapData, err := os.ReadFile(filepath.Join(repo.Root, "BOOTSTRAP.md"))
-	require.NoError(t, err)
-	require.Contains(t, string(bootstrapData), "<!-- hyard:repo-bootstrap:begin -->")
-	require.Contains(t, string(bootstrapData), "hyard bootstrap complete --check --json")
-
-	agentsData, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
-	require.NoError(t, err)
-	require.Contains(t, string(agentsData), "<!-- hyard:repo-agents:begin -->")
-	require.Contains(t, string(agentsData), "read `BOOTSTRAP.md`")
+	require.FileExists(t, filepath.Join(repo.Root, "BOOTSTRAP.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "AGENTS.md"))
 
 	require.NoFileExists(t, filepath.Join(repo.Root, "bootstrap", "docs", "setup.md"))
 	require.NoFileExists(t, filepath.Join(repo.Root, "bootstrap", "ops", "setup.md"))
@@ -4252,38 +4294,11 @@ func TestHyardBootstrapReopenRestoresRepositoryBootstrapBlocks(t *testing.T) {
 	}
 }
 
-func TestHyardBootstrapReopenRejectsMalformedBootstrapBlockBeforeRuntimeMutation(t *testing.T) {
+func TestHyardBootstrapCompleteYesIgnoresUncommittedRootAgentsGuidance(t *testing.T) {
 	t.Parallel()
 
 	repo := seedHyardBootstrapCompletionRepo(t)
-
-	_, _, err := executeHyardCLI(t, repo.Root, "bootstrap", "complete", "--yes", "--json")
-	require.NoError(t, err)
-	repo.WriteFile(t, "BOOTSTRAP.md", "<!-- hyard:repo-bootstrap:begin -->\nUnclosed bootstrap guidance.\n")
-
-	stdout, stderr, err := executeHyardCLI(t, repo.Root, "bootstrap", "reopen", "--json")
-	require.Error(t, err)
-	require.Empty(t, stdout)
-	require.Empty(t, stderr)
-	require.ErrorContains(t, err, "malformed hyard repo-level guidance block markers")
-
-	store, err := statepkg.NewFSStore(repo.GitDir(t))
-	require.NoError(t, err)
-	for _, orbitID := range []string{"docs", "ops"} {
-		snapshot, err := store.ReadRuntimeStateSnapshot(orbitID)
-		require.NoError(t, err)
-		require.NotNil(t, snapshot.Bootstrap)
-		require.True(t, snapshot.Bootstrap.Completed)
-	}
-}
-
-func TestHyardBootstrapCompleteYesAcceptsUncommittedPrepareGuidance(t *testing.T) {
-	t.Parallel()
-
-	repo := seedHyardBootstrapCompletionRepoWithoutRepoGuidance(t)
-
-	_, _, err := executeHyardCLI(t, repo.Root, "prepare", "--yes")
-	require.NoError(t, err)
+	repo.WriteFile(t, "AGENTS.md", "Local bootstrap reminder.\n")
 
 	stdout, stderr, err := executeHyardCLI(t, repo.Root, "bootstrap", "complete", "--yes", "--json")
 	require.NoError(t, err)
@@ -4292,14 +4307,12 @@ func TestHyardBootstrapCompleteYesAcceptsUncommittedPrepareGuidance(t *testing.T
 	var payload struct {
 		CompletedOrbits      []string `json:"completed_orbits"`
 		DeletedBootstrapFile bool     `json:"deleted_bootstrap_file"`
-		DeletedAgentsFile    bool     `json:"deleted_agents_file"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
 	require.Equal(t, []string{"docs", "ops"}, payload.CompletedOrbits)
-	require.True(t, payload.DeletedBootstrapFile)
-	require.True(t, payload.DeletedAgentsFile)
-	require.NoFileExists(t, filepath.Join(repo.Root, "BOOTSTRAP.md"))
-	require.NoFileExists(t, filepath.Join(repo.Root, "AGENTS.md"))
+	require.False(t, payload.DeletedBootstrapFile)
+	require.FileExists(t, filepath.Join(repo.Root, "BOOTSTRAP.md"))
+	require.FileExists(t, filepath.Join(repo.Root, "AGENTS.md"))
 }
 
 func TestHyardBootstrapCompleteYesAcceptsDirtyBootstrapLaneArtifacts(t *testing.T) {
@@ -4347,43 +4360,33 @@ func TestHyardBootstrapCompleteYesAcceptsDirtyBootstrapLaneArtifacts(t *testing.
 	require.NotContains(t, status, "bootstrap/docs/generated.md")
 }
 
-func TestHyardBootstrapCompleteYesRejectsMalformedAgentsBlockBeforeRuntimeMutation(t *testing.T) {
+func TestHyardBootstrapCompleteYesIgnoresUnrelatedAgentsFile(t *testing.T) {
 	t.Parallel()
 
 	repo := seedHyardBootstrapCompletionRepo(t)
-	repo.WriteFile(t, "AGENTS.md", "<!-- hyard:repo-agents:begin -->\nUnclosed agent bootstrap guidance.\n")
+	repo.WriteFile(t, "AGENTS.md", "Local agent guidance.\n")
 
 	stdout, stderr, err := executeHyardCLI(t, repo.Root, "bootstrap", "complete", "--yes", "--json")
-	require.Error(t, err)
-	require.Empty(t, stdout)
+	require.NoError(t, err)
+	require.NotEmpty(t, stdout)
 	require.Empty(t, stderr)
-	require.ErrorContains(t, err, "malformed hyard repo-level guidance block markers")
 
 	require.FileExists(t, filepath.Join(repo.Root, "BOOTSTRAP.md"))
-	require.FileExists(t, filepath.Join(repo.Root, "bootstrap", "docs", "setup.md"))
-	require.FileExists(t, filepath.Join(repo.Root, "bootstrap", "ops", "setup.md"))
+	require.FileExists(t, filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "bootstrap", "docs", "setup.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "bootstrap", "ops", "setup.md"))
 
 	store, err := statepkg.NewFSStore(repo.GitDir(t))
 	require.NoError(t, err)
 	for _, orbitID := range []string{"docs", "ops"} {
-		_, err := store.ReadRuntimeStateSnapshot(orbitID)
-		require.ErrorIs(t, err, statepkg.ErrRuntimeStateSnapshotNotFound)
+		snapshot, err := store.ReadRuntimeStateSnapshot(orbitID)
+		require.NoError(t, err)
+		require.NotNil(t, snapshot.Bootstrap)
+		require.True(t, snapshot.Bootstrap.Completed)
 	}
 }
 
 func seedHyardBootstrapCompletionRepo(t *testing.T) *testutil.Repo {
-	t.Helper()
-
-	return seedHyardBootstrapCompletionRepoWithRepoGuidance(t, true)
-}
-
-func seedHyardBootstrapCompletionRepoWithoutRepoGuidance(t *testing.T) *testutil.Repo {
-	t.Helper()
-
-	return seedHyardBootstrapCompletionRepoWithRepoGuidance(t, false)
-}
-
-func seedHyardBootstrapCompletionRepoWithRepoGuidance(t *testing.T, includeRepoGuidance bool) *testutil.Repo {
 	t.Helper()
 
 	repo := testutil.NewRepo(t)
@@ -4439,10 +4442,6 @@ func seedHyardBootstrapCompletionRepoWithRepoGuidance(t *testing.T, includeRepoG
 	require.NoError(t, err)
 
 	repo.WriteFile(t, "BOOTSTRAP.md", "Workspace bootstrap notes.\n\n"+string(bootstrapData)+"\n")
-	if includeRepoGuidance {
-		repo.WriteFile(t, "BOOTSTRAP.md", "Workspace bootstrap notes.\n\n"+string(bootstrapData)+"\n\n<!-- hyard:repo-bootstrap:begin -->\nComplete the repository bootstrap tasks before normal work starts.\nRun `hyard bootstrap complete --check --json` to preview the closeout.\nRun `hyard bootstrap complete --yes` after confirming the preview only removes bootstrap guidance and bootstrap-lane runtime files.\n<!-- hyard:repo-bootstrap:end -->\n")
-		repo.WriteFile(t, "AGENTS.md", "<!-- hyard:repo-agents:begin -->\nBefore starting normal work, read `BOOTSTRAP.md` if it exists.\nIf it contains hyard bootstrap instructions, complete that initialization flow first.\n<!-- hyard:repo-agents:end -->\n")
-	}
 	repo.AddAndCommit(t, "seed hyard bootstrap completion repo")
 
 	return repo

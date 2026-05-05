@@ -141,7 +141,6 @@ func TestResolveFrameworkPrefersExplicitLocalSelectionOverHintProjectAndRecommen
 	repo.WriteFile(t, ".harness/frameworks.yaml", ""+
 		"schema_version: 1\n"+
 		"recommended_framework: claude\n")
-	repo.WriteFile(t, ".gitagent_adapter", "enabled\n")
 	repo.WriteFile(t, "CLAUDE.md", "# Claude alias\n")
 
 	_, err := WriteFrameworkSelection(filepath.Join(repo.Root, ".git"), FrameworkSelection{
@@ -176,25 +175,6 @@ func TestResolveFrameworkUsesProjectDetectionBeforeRecommendedDefault(t *testing
 	require.NoError(t, err)
 	require.Equal(t, "claudecode", resolution.Framework)
 	require.Equal(t, FrameworkSelectionSourceProjectDetection, resolution.Source)
-}
-
-func TestResolveFrameworkUsesLocalHintBeforeProjectDetectionAndRecommendedDefault(t *testing.T) {
-	t.Parallel()
-
-	repo := testutil.NewRepo(t)
-	repo.WriteFile(t, ".harness/frameworks.yaml", ""+
-		"schema_version: 1\n"+
-		"recommended_framework: codex\n")
-	repo.WriteFile(t, ".gitagent_adapter", "enabled\n")
-	repo.WriteFile(t, "CLAUDE.md", "# Claude alias\n")
-
-	resolution, err := ResolveFramework(context.Background(), FrameworkResolutionInput{
-		RepoRoot: repo.Root,
-		GitDir:   filepath.Join(repo.Root, ".git"),
-	})
-	require.NoError(t, err)
-	require.Equal(t, "gitagent", resolution.Framework)
-	require.Equal(t, FrameworkSelectionSourceLocalHint, resolution.Source)
 }
 
 func TestResolveFrameworkReturnsRecommendedDefaultWhenNoHigherPrioritySignalExists(t *testing.T) {

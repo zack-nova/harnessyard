@@ -412,7 +412,7 @@ func TestHarnessFrameworkListReportsSupportedRecommendedAndResolvedFrameworks(t 
 	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
 	require.Equal(t, repo.Root, payload.HarnessRoot)
 	require.Equal(t, harnesspkg.DefaultHarnessIDForPath(repo.Root), payload.HarnessID)
-	require.Equal(t, []string{"claudecode", "codex", "gitagent", "openclaw"}, payload.SupportedFrameworks)
+	require.Equal(t, []string{"claudecode", "codex", "openclaw"}, payload.SupportedFrameworks)
 	require.Equal(t, "claudecode", payload.RecommendedFramework)
 	require.Equal(t, "claudecode", payload.ResolvedFramework)
 	require.Equal(t, "recommended_default", payload.ResolutionSource)
@@ -1031,73 +1031,6 @@ func TestHarnessFrameworkPlanExposesAgentActivationRouteGroups(t *testing.T) {
 	require.Empty(t, payload.RecommendedHybridOutputs)
 	require.Empty(t, payload.CompatibilityOutputs)
 	require.Empty(t, payload.HookPreview)
-}
-
-func TestHarnessFrameworkPlanReportsCompatibilityRoutesForUnsupportedAgentOutputs(t *testing.T) {
-	t.Parallel()
-
-	repo := seedHarnessFrameworkRepo(t)
-	repo.WriteFile(t, ".harness/frameworks.yaml", ""+
-		"schema_version: 1\n"+
-		"recommended_framework: gitagent\n")
-
-	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "framework", "plan", "--json")
-	require.NoError(t, err)
-	require.Empty(t, stderr)
-
-	var payload struct {
-		Framework            string `json:"framework"`
-		CompatibilityOutputs []struct {
-			Artifact       string `json:"artifact"`
-			ArtifactType   string `json:"artifact_type"`
-			Route          string `json:"route"`
-			Recommended    bool   `json:"recommended"`
-			Source         string `json:"source"`
-			Kind           string `json:"kind"`
-			Mode           string `json:"mode"`
-			EffectiveScope string `json:"effective_scope"`
-		} `json:"compatibility_outputs"`
-	}
-	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
-	require.Equal(t, "gitagent", payload.Framework)
-	require.Contains(t, payload.CompatibilityOutputs, struct {
-		Artifact       string `json:"artifact"`
-		ArtifactType   string `json:"artifact_type"`
-		Route          string `json:"route"`
-		Recommended    bool   `json:"recommended"`
-		Source         string `json:"source"`
-		Kind           string `json:"kind"`
-		Mode           string `json:"mode"`
-		EffectiveScope string `json:"effective_scope"`
-	}{
-		Artifact:       "review",
-		ArtifactType:   "prompt-command",
-		Route:          "project_compatibility",
-		Recommended:    false,
-		Source:         "orbit/commands/review.md",
-		Kind:           "command_as_skill",
-		Mode:           "not_implemented",
-		EffectiveScope: "project",
-	})
-	require.Contains(t, payload.CompatibilityOutputs, struct {
-		Artifact       string `json:"artifact"`
-		ArtifactType   string `json:"artifact_type"`
-		Route          string `json:"route"`
-		Recommended    bool   `json:"recommended"`
-		Source         string `json:"source"`
-		Kind           string `json:"kind"`
-		Mode           string `json:"mode"`
-		EffectiveScope string `json:"effective_scope"`
-	}{
-		Artifact:       "docs-style",
-		ArtifactType:   "local-skill",
-		Route:          "project_compatibility",
-		Recommended:    false,
-		Source:         "orbit/skills/docs-style",
-		Kind:           "skill",
-		Mode:           "not_implemented",
-		EffectiveScope: "project",
-	})
 }
 
 func TestHarnessFrameworkPlanAndApplyFailClosedOnCapabilityCollisions(t *testing.T) {
@@ -2462,62 +2395,6 @@ func TestHarnessFrameworkApplyGlobalFlagUsesGlobalRoutes(t *testing.T) {
 	require.Equal(t, filepath.Join(repo.Root, "orbit", "skills", "docs-style"), skillTarget)
 	require.NoFileExists(t, filepath.Join(repo.Root, ".claude", "skills", "review"))
 	require.NoFileExists(t, filepath.Join(repo.Root, ".claude", "skills", "docs-style"))
-}
-
-func TestHarnessFrameworkApplyReportsCompatibilityPendingForUnsupportedProjectRoutes(t *testing.T) {
-	repo := seedHarnessFrameworkRepo(t)
-	repo.WriteFile(t, ".harness/frameworks.yaml", ""+
-		"schema_version: 1\n"+
-		"recommended_framework: gitagent\n")
-
-	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "framework", "apply", "--project-only", "--json")
-	require.NoError(t, err)
-	require.Empty(t, stderr)
-
-	var payload struct {
-		Framework          string `json:"framework"`
-		Status             string `json:"status"`
-		ProjectOutputCount int    `json:"project_output_count"`
-		GlobalOutputCount  int    `json:"global_output_count"`
-		ArtifactResults    []struct {
-			Artifact       string `json:"artifact"`
-			ArtifactType   string `json:"artifact_type"`
-			Route          string `json:"route"`
-			EffectiveScope string `json:"effective_scope"`
-			Status         string `json:"status"`
-		} `json:"artifact_results"`
-	}
-	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
-	require.Equal(t, "gitagent", payload.Framework)
-	require.Equal(t, "partial", payload.Status)
-	require.Zero(t, payload.ProjectOutputCount)
-	require.Zero(t, payload.GlobalOutputCount)
-	require.Contains(t, payload.ArtifactResults, struct {
-		Artifact       string `json:"artifact"`
-		ArtifactType   string `json:"artifact_type"`
-		Route          string `json:"route"`
-		EffectiveScope string `json:"effective_scope"`
-		Status         string `json:"status"`
-	}{
-		Artifact:       "review",
-		ArtifactType:   "prompt-command",
-		Route:          "project_compatibility",
-		EffectiveScope: "project",
-		Status:         "compatibility_pending",
-	})
-	require.Contains(t, payload.ArtifactResults, struct {
-		Artifact       string `json:"artifact"`
-		ArtifactType   string `json:"artifact_type"`
-		Route          string `json:"route"`
-		EffectiveScope string `json:"effective_scope"`
-		Status         string `json:"status"`
-	}{
-		Artifact:       "docs-style",
-		ArtifactType:   "local-skill",
-		Route:          "project_compatibility",
-		EffectiveScope: "project",
-		Status:         "compatibility_pending",
-	})
 }
 
 func TestHarnessFrameworkCheckReportsHealthyActivationAndExecutablePresence(t *testing.T) {

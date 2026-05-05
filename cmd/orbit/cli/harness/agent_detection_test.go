@@ -29,7 +29,7 @@ func TestAgentDetectionSupportedIDsAndAliases(t *testing.T) {
 		require.Equal(t, expected, actual, input)
 	}
 
-	_, ok := NormalizeAgentID("gitagent")
+	_, ok := NormalizeAgentID("legacyagent")
 	require.False(t, ok)
 }
 
@@ -335,12 +335,12 @@ func TestDetectAgentsDoesNotSuggestWhenMultipleAgentsAreReady(t *testing.T) {
 	require.Contains(t, report.Warnings, "multiple ready agents detected: claudecode, codex")
 }
 
-func TestDetectAgentsReportsLegacyGitagentSelection(t *testing.T) {
+func TestDetectAgentsReportsLegacyUnsupportedSelection(t *testing.T) {
 	repo := testutil.NewRepo(t)
 	gitDir := repo.GitDir(t)
 	repo.WriteFile(t, ".git/orbit/state/agents/selection.json", ""+
 		"{\n"+
-		"  \"selected_framework\": \"gitagent\",\n"+
+		"  \"selected_framework\": \"legacyagent\",\n"+
 		"  \"selection_source\": \"explicit_local\",\n"+
 		"  \"updated_at\": \"2026-04-25T12:00:00Z\"\n"+
 		"}\n")
@@ -353,8 +353,8 @@ func TestDetectAgentsReportsLegacyGitagentSelection(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	require.Equal(t, "gitagent", report.LocalSelection)
-	require.Contains(t, report.Warnings, `legacy or unsupported selected agent "gitagent" is ignored by detection`)
+	require.Equal(t, "legacyagent", report.LocalSelection)
+	require.Contains(t, report.Warnings, `legacy or unsupported selected agent "legacyagent" is ignored by detection`)
 	require.Empty(t, report.SuggestedActions)
 }
 
