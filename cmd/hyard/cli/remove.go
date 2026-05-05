@@ -19,11 +19,31 @@ const (
 	hyardRemoveModeHarnessPackage = "harness_package_remove"
 )
 
+type hyardPackageRemovalSurface struct {
+	Command    string
+	Action     string
+	ResultVerb string
+}
+
+var (
+	hyardRemoveSurface = hyardPackageRemovalSurface{
+		Command:    "remove",
+		ResultVerb: "removed",
+	}
+	hyardUninstallSurface = hyardPackageRemovalSurface{
+		Command:    "uninstall",
+		Action:     "uninstall",
+		ResultVerb: "uninstalled",
+	}
+)
+
 type hyardRemoveOutput struct {
+	Action                string                      `json:"action,omitempty"`
 	HarnessRoot           string                      `json:"harness_root"`
 	TargetType            string                      `json:"target_type"`
 	OrbitPackage          string                      `json:"orbit_package,omitempty"`
 	OrbitID               string                      `json:"orbit_id,omitempty"`
+	MemberSource          string                      `json:"member_source,omitempty"`
 	HarnessPackage        string                      `json:"harness_package,omitempty"`
 	HarnessID             string                      `json:"harness_id,omitempty"`
 	RemoveMode            string                      `json:"remove_mode"`
@@ -78,6 +98,25 @@ func newRemoveCommand() *cobra.Command {
 	return cmd
 }
 
+func newUninstallCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "uninstall",
+		Short: "Uninstall a package from the current runtime",
+		Long: "Uninstall a package from the current runtime through the canonical hyard package lifecycle surface.\n" +
+			"Use `hyard uninstall orbit <name>` to uninstall one Orbit Package.",
+		Example: "" +
+			"  hyard uninstall orbit docs\n" +
+			"  hyard uninstall orbit docs --json\n",
+		Args: cobra.NoArgs,
+	}
+	cmd.PersistentFlags().Bool("json", false, "Output machine-readable JSON")
+	cmd.PersistentFlags().Bool("dry-run", false, "Preview package uninstallation without applying when supported")
+	cmd.PersistentFlags().Bool("yes", false, "Confirm package uninstallation and user-level agent cleanup without prompting")
+	cmd.AddCommand(newUninstallOrbitCommand())
+
+	return cmd
+}
+
 func newRemoveOrbitCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "orbit <orbit-package>",
@@ -88,7 +127,22 @@ func newRemoveOrbitCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return runHyardRemoveOrbit(cmd, orbitPackage)
+			return runHyardRemoveOrbit(cmd, orbitPackage, hyardRemoveSurface)
+		},
+	}
+}
+
+func newUninstallOrbitCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "orbit <orbit-package>",
+		Short: "Uninstall one Orbit Package from the current runtime",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			orbitPackage, err := parseHyardPackageRemovalName(args[0], hyardUninstallSurface.Command)
+			if err != nil {
+				return err
+			}
+			return runHyardRemoveOrbit(cmd, orbitPackage, hyardUninstallSurface)
 		},
 	}
 }
@@ -136,7 +190,7 @@ func runHyardRemoveAuto(cmd *cobra.Command, rawPackage string) error {
 			packageName,
 		)
 	case matchesOrbit:
-		return runHyardRemoveOrbitWithResolvedRoot(cmd, resolved, packageName)
+		return runHyardRemoveOrbitWithResolvedRoot(cmd, resolved, packageName, hyardRemoveSurface)
 	case matchesHarness:
 		return runHyardRemoveHarnessWithResolvedRoot(cmd, resolved, packageName)
 	default:
@@ -144,7 +198,7 @@ func runHyardRemoveAuto(cmd *cobra.Command, rawPackage string) error {
 	}
 }
 
-func runHyardRemoveOrbit(cmd *cobra.Command, orbitPackage string) error {
+func runHyardRemoveOrbit(cmd *cobra.Command, orbitPackage string, surface hyardPackageRemovalSurface) error {
 	workingDir, err := hyardWorkingDirFromCommand(cmd)
 	if err != nil {
 		return err
@@ -153,16 +207,16 @@ func runHyardRemoveOrbit(cmd *cobra.Command, orbitPackage string) error {
 	if err != nil {
 		return fmt.Errorf("resolve harness root: %w", err)
 	}
-	return runHyardRemoveOrbitWithResolvedRoot(cmd, resolved, orbitPackage)
+	return runHyardRemoveOrbitWithResolvedRoot(cmd, resolved, orbitPackage, surface)
 }
 
-func runHyardRemoveOrbitWithResolvedRoot(cmd *cobra.Command, resolved harnesspkg.ResolvedRoot, orbitPackage string) error {
+func runHyardRemoveOrbitWithResolvedRoot(cmd *cobra.Command, resolved harnesspkg.ResolvedRoot, orbitPackage string, surface hyardPackageRemovalSurface) error {
 	dryRun, err := cmd.Flags().GetBool("dry-run")
 	if err != nil {
 		return fmt.Errorf("read --dry-run flag: %w", err)
 	}
 	if dryRun {
-		return fmt.Errorf("remove orbit --dry-run is not supported; use `hyard remove harness <name> --dry-run` for harness package previews")
+		return fmt.Errorf("%s orbit --dry-run is not supported; use `hyard remove harness <name> --dry-run` for harness package previews", surface.Command)
 	}
 	jsonOutput, err := wantHyardJSON(cmd)
 	if err != nil {
@@ -172,12 +226,13 @@ func runHyardRemoveOrbitWithResolvedRoot(cmd *cobra.Command, resolved harnesspkg
 	if err != nil {
 		return fmt.Errorf("read --yes flag: %w", err)
 	}
+	memberSource := runtimeMemberSource(resolved.Runtime, orbitPackage)
 
 	result, err := harnesspkg.RemoveRuntimeMemberWithOptions(cmd.Context(), resolved.Repo, orbitPackage, time.Now().UTC(), harnesspkg.RemoveRuntimeMemberOptions{
 		AllowGlobalAgentCleanup: yes,
 	})
 	if err != nil {
-		return fmt.Errorf("remove orbit package: %w", err)
+		return fmt.Errorf("%s orbit package: %w", surface.Command, err)
 	}
 	readiness, err := harnesspkg.EvaluateRuntimeReadiness(cmd.Context(), resolved.Repo.Root)
 	if err != nil {
@@ -200,11 +255,20 @@ func runHyardRemoveOrbitWithResolvedRoot(cmd *cobra.Command, resolved harnesspkg
 		AgentCleanup:          hyardAgentCleanupFromHarness(result.AgentCleanup),
 		Readiness:             &readiness,
 	}
+	if surface.Action != "" {
+		output.Action = surface.Action
+		output.MemberSource = memberSource
+	}
 	if jsonOutput {
 		return emitHyardJSON(cmd, output)
 	}
-	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "removed orbit package %s from %s\n", orbitPackage, resolved.Repo.Root); err != nil {
+	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "%s orbit package %s from %s\n", surface.ResultVerb, orbitPackage, resolved.Repo.Root); err != nil {
 		return fmt.Errorf("write command output: %w", err)
+	}
+	if surface.Action == hyardUninstallSurface.Action && memberSource == harnesspkg.MemberSourceManual {
+		if _, err := fmt.Fprintln(cmd.OutOrStdout(), "member_source: manual"); err != nil {
+			return fmt.Errorf("write command output: %w", err)
+		}
 	}
 	if err := writeHyardPostActionReadinessText(cmd, readiness); err != nil {
 		return err
@@ -426,15 +490,29 @@ func writeHyardRemoveHarnessPlan(cmd *cobra.Command, plan harnesspkg.RemoveRunti
 }
 
 func parseHyardRemovePackageName(raw string) (string, error) {
+	return parseHyardPackageRemovalName(raw, hyardRemoveSurface.Command)
+}
+
+func parseHyardPackageRemovalName(raw string, command string) (string, error) {
 	coordinate, err := parseHyardPackageCoordinate(raw)
 	if err != nil {
 		return "", err
 	}
 	if coordinate.String() != coordinate.Name {
-		return "", fmt.Errorf("remove package %q must use the installed package name", coordinate.String())
+		return "", fmt.Errorf("%s package %q must use the installed package name", command, coordinate.String())
 	}
 
 	return coordinate.Name, nil
+}
+
+func runtimeMemberSource(runtimeFile harnesspkg.RuntimeFile, orbitPackage string) string {
+	for _, member := range runtimeFile.Members {
+		if member.OrbitID == orbitPackage {
+			return member.Source
+		}
+	}
+
+	return ""
 }
 
 func runtimeHasOrbitPackage(runtimeFile harnesspkg.RuntimeFile, packageName string) bool {

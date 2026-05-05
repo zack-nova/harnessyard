@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	harnesspkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/harness"
+	orbittemplate "github.com/zack-nova/harnessyard/cmd/orbit/cli/template"
 	"github.com/zack-nova/harnessyard/cmd/orbit/cli/testutil"
 )
 
@@ -37,6 +38,61 @@ func TestHyardRemoveOrbitRemovesUnambiguousRuntimeOrbit(t *testing.T) {
 	require.Equal(t, "docs", payload.OrbitID)
 	require.Equal(t, "runtime_cleanup", payload.RemoveMode)
 	require.Equal(t, 0, payload.MemberCount)
+
+	runtimeFile, err := harnesspkg.LoadRuntimeFile(repo.Root)
+	require.NoError(t, err)
+	require.Empty(t, runtimeFile.Members)
+}
+
+func TestHyardUninstallOrbitJSONRemovesInstallBackedRuntimeOrbit(t *testing.T) {
+	t.Parallel()
+
+	repo := seedCommittedHyardInstallBackedRuntimeRepo(t)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "uninstall", "orbit", "docs", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Action                string `json:"action"`
+		TargetType            string `json:"target_type"`
+		OrbitPackage          string `json:"orbit_package"`
+		OrbitID               string `json:"orbit_id"`
+		MemberSource          string `json:"member_source"`
+		RemoveMode            string `json:"remove_mode"`
+		MemberCount           int    `json:"member_count"`
+		DetachedInstallRecord bool   `json:"detached_install_record"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "uninstall", payload.Action)
+	require.Equal(t, "orbit", payload.TargetType)
+	require.Equal(t, "docs", payload.OrbitPackage)
+	require.Equal(t, "docs", payload.OrbitID)
+	require.Equal(t, "install_orbit", payload.MemberSource)
+	require.Equal(t, "runtime_cleanup", payload.RemoveMode)
+	require.Equal(t, 0, payload.MemberCount)
+	require.True(t, payload.DetachedInstallRecord)
+
+	runtimeFile, err := harnesspkg.LoadRuntimeFile(repo.Root)
+	require.NoError(t, err)
+	require.Empty(t, runtimeFile.Members)
+
+	record, err := harnesspkg.LoadInstallRecord(repo.Root, "docs")
+	require.NoError(t, err)
+	require.Equal(t, orbittemplate.InstallRecordStatusDetached, orbittemplate.EffectiveInstallRecordStatus(record))
+}
+
+func TestHyardUninstallOrbitTextDisclosesManualRuntimeOrbitSource(t *testing.T) {
+	t.Parallel()
+
+	repo := seedCommittedHyardRuntimeRepo(t)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "uninstall", "orbit", "docs")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+	require.Contains(t, stdout, "uninstalled orbit package docs from "+repo.Root)
+	require.Contains(t, stdout, "member_source: manual")
+	require.NotContains(t, stdout, "removed orbit package docs")
 
 	runtimeFile, err := harnesspkg.LoadRuntimeFile(repo.Root)
 	require.NoError(t, err)
@@ -277,6 +333,23 @@ func TestHyardRemoveRejectsVersionedPackageCoordinate(t *testing.T) {
 	require.Equal(t, "docs", runtimeFile.Members[0].OrbitID)
 }
 
+func TestHyardUninstallOrbitRejectsVersionedPackageCoordinate(t *testing.T) {
+	t.Parallel()
+
+	repo := seedCommittedHyardRuntimeRepo(t)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "uninstall", "orbit", "docs@0.1.0", "--json")
+	require.Error(t, err)
+	require.Empty(t, stdout)
+	require.Empty(t, stderr)
+	require.ErrorContains(t, err, `uninstall package "docs@0.1.0" must use the installed package name`)
+
+	runtimeFile, err := harnesspkg.LoadRuntimeFile(repo.Root)
+	require.NoError(t, err)
+	require.Len(t, runtimeFile.Members, 1)
+	require.Equal(t, "docs", runtimeFile.Members[0].OrbitID)
+}
+
 func TestHyardRemoveOrbitDisambiguationRemovesOrbitWhenHarnessHasSameName(t *testing.T) {
 	t.Parallel()
 
@@ -500,6 +573,40 @@ func commitHyardRuntimeRoot(t *testing.T, root string, message string) {
 	runGitForHyardRemoveTest(t, root, "config", "user.email", "orbit@example.com")
 	runGitForHyardRemoveTest(t, root, "add", "-A")
 	runGitForHyardRemoveTest(t, root, "commit", "-m", message)
+}
+
+func seedCommittedHyardInstallBackedRuntimeRepo(t *testing.T) *testutil.Repo {
+	t.Helper()
+
+	repo := seedCommittedHyardRuntimeRepo(t)
+	now := time.Date(2026, time.May, 5, 12, 0, 0, 0, time.UTC)
+
+	runtimeFile, err := harnesspkg.LoadRuntimeFile(repo.Root)
+	require.NoError(t, err)
+	require.Len(t, runtimeFile.Members, 1)
+	runtimeFile.Members[0].Source = harnesspkg.MemberSourceInstallOrbit
+	runtimeFile.Members[0].AddedAt = now
+	runtimeFile.Harness.UpdatedAt = now
+
+	_, err = harnesspkg.WriteManifestFile(repo.Root, harnesspkg.ManifestFileFromRuntimeFile(runtimeFile))
+	require.NoError(t, err)
+
+	_, err = harnesspkg.WriteInstallRecord(repo.Root, orbittemplate.InstallRecord{
+		SchemaVersion: 1,
+		OrbitID:       "docs",
+		Template: orbittemplate.Source{
+			SourceKind:     orbittemplate.InstallSourceKindLocalBranch,
+			SourceRepo:     "",
+			SourceRef:      "orbit-template/docs",
+			TemplateCommit: "abc123",
+		},
+		AppliedAt: now,
+	})
+	require.NoError(t, err)
+
+	repo.AddAndCommit(t, "mark docs as install-backed package")
+
+	return repo
 }
 
 func runGitForHyardRemoveTest(t *testing.T, root string, args ...string) {
