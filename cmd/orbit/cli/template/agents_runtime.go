@@ -9,7 +9,15 @@ import (
 	"github.com/zack-nova/harnessyard/cmd/orbit/cli/ids"
 )
 
-// AgentsRuntimeSegmentKind distinguishes unmarked prose from one orbit-owned block.
+// OwnerKind identifies the root guidance block marker namespace.
+type OwnerKind string
+
+const (
+	OwnerKindOrbit   OwnerKind = "orbit"
+	OwnerKindHarness OwnerKind = "harness"
+)
+
+// AgentsRuntimeSegmentKind distinguishes unmarked prose from one owner-scoped block.
 type AgentsRuntimeSegmentKind string
 
 const (
@@ -17,21 +25,29 @@ const (
 	AgentsRuntimeSegmentBlock    AgentsRuntimeSegmentKind = "block"
 )
 
-var runtimeAgentsMarkerPattern = regexp.MustCompile(`^<!--\s*orbit:(begin|end)\s+orbit_id="([^"]+)"\s*-->$`)
+var runtimeAgentsMarkerPattern = regexp.MustCompile(`^<!-- (orbit|harness):(begin|end) workflow="([^"]+)" -->$`)
 
 // AgentsRuntimeDocument is the ordered parsed representation of one runtime AGENTS.md file.
 type AgentsRuntimeDocument struct {
 	Segments []AgentsRuntimeSegment
 }
 
-// AgentsRuntimeSegment is either plain unmarked prose or one orbit-owned block body.
+// AgentsRuntimeSegment is either plain unmarked prose or one owner-scoped block body.
 type AgentsRuntimeSegment struct {
-	Kind    AgentsRuntimeSegmentKind
-	OrbitID string
-	Content []byte
+	Kind       AgentsRuntimeSegmentKind
+	OwnerKind  OwnerKind
+	WorkflowID string
+	OrbitID    string
+	Content    []byte
 }
 
-// ParseRuntimeAgentsDocument parses one runtime AGENTS.md file and validates the frozen V0.2 marker contract.
+type runtimeAgentsMarker struct {
+	Kind       string
+	OwnerKind  OwnerKind
+	WorkflowID string
+}
+
+// ParseRuntimeAgentsDocument parses one runtime AGENTS.md file and validates the workflow marker contract.
 func ParseRuntimeAgentsDocument(data []byte) (AgentsRuntimeDocument, error) {
 	lines := splitLinesPreserveNewline(data)
 	document := AgentsRuntimeDocument{
@@ -40,7 +56,8 @@ func ParseRuntimeAgentsDocument(data []byte) (AgentsRuntimeDocument, error) {
 
 	var unmarked bytes.Buffer
 	var currentBlock bytes.Buffer
-	currentOrbitID := ""
+	var currentMarker runtimeAgentsMarker
+	inBlock := false
 	seenBlocks := make(map[string]struct{})
 
 	flushUnmarked := func() {
@@ -55,53 +72,64 @@ func ParseRuntimeAgentsDocument(data []byte) (AgentsRuntimeDocument, error) {
 	}
 
 	for _, line := range lines {
-		markerKind, orbitID, isMarker, err := parseRuntimeAgentsMarkerLine(line)
+		marker, isMarker, err := parseRuntimeAgentsMarkerLine(line)
 		if err != nil {
 			return AgentsRuntimeDocument{}, err
 		}
 		if isMarker {
-			switch markerKind {
+			switch marker.Kind {
 			case "begin":
-				if currentOrbitID != "" {
-					return AgentsRuntimeDocument{}, fmt.Errorf("nested orbit block for %q", orbitID)
+				if inBlock {
+					return AgentsRuntimeDocument{}, fmt.Errorf("nested %s block for %q", blockOwnerLabel(marker.OwnerKind), marker.WorkflowID)
 				}
 				flushUnmarked()
-				currentOrbitID = orbitID
+				currentMarker = marker
+				inBlock = true
 				currentBlock.Reset()
 			case "end":
-				if currentOrbitID == "" {
-					return AgentsRuntimeDocument{}, fmt.Errorf("unexpected orbit end marker for %q", orbitID)
+				if !inBlock {
+					return AgentsRuntimeDocument{}, fmt.Errorf("unexpected %s end marker for %q", blockOwnerLabel(marker.OwnerKind), marker.WorkflowID)
 				}
-				if currentOrbitID != orbitID {
-					return AgentsRuntimeDocument{}, fmt.Errorf("end orbit_id %q does not match begin orbit_id %q", orbitID, currentOrbitID)
+				if currentMarker.OwnerKind != marker.OwnerKind || currentMarker.WorkflowID != marker.WorkflowID {
+					return AgentsRuntimeDocument{}, fmt.Errorf(
+						"end %s block %q does not match begin %s block %q",
+						blockOwnerLabel(marker.OwnerKind),
+						marker.WorkflowID,
+						blockOwnerLabel(currentMarker.OwnerKind),
+						currentMarker.WorkflowID,
+					)
 				}
-				if _, exists := seenBlocks[orbitID]; exists {
-					return AgentsRuntimeDocument{}, fmt.Errorf("duplicate orbit block for %q", orbitID)
+				seenKey := runtimeAgentsBlockKey(marker.OwnerKind, marker.WorkflowID)
+				if _, exists := seenBlocks[seenKey]; exists {
+					return AgentsRuntimeDocument{}, fmt.Errorf("duplicate %s block for %q", blockOwnerLabel(marker.OwnerKind), marker.WorkflowID)
 				}
-				seenBlocks[orbitID] = struct{}{}
+				seenBlocks[seenKey] = struct{}{}
 				document.Segments = append(document.Segments, AgentsRuntimeSegment{
-					Kind:    AgentsRuntimeSegmentBlock,
-					OrbitID: orbitID,
-					Content: trimRuntimeAgentsMarkerPadding(currentBlock.Bytes()),
+					Kind:       AgentsRuntimeSegmentBlock,
+					OwnerKind:  marker.OwnerKind,
+					WorkflowID: marker.WorkflowID,
+					OrbitID:    marker.WorkflowID,
+					Content:    trimRuntimeAgentsMarkerPadding(currentBlock.Bytes()),
 				})
-				currentOrbitID = ""
+				currentMarker = runtimeAgentsMarker{}
+				inBlock = false
 				currentBlock.Reset()
 			default:
-				return AgentsRuntimeDocument{}, fmt.Errorf("unsupported orbit marker kind %q", markerKind)
+				return AgentsRuntimeDocument{}, fmt.Errorf("unsupported workflow marker kind %q", marker.Kind)
 			}
 
 			continue
 		}
 
-		if currentOrbitID != "" {
+		if inBlock {
 			_, _ = currentBlock.Write(line)
 			continue
 		}
 		_, _ = unmarked.Write(line)
 	}
 
-	if currentOrbitID != "" {
-		return AgentsRuntimeDocument{}, fmt.Errorf("unterminated orbit block for %q", currentOrbitID)
+	if inBlock {
+		return AgentsRuntimeDocument{}, fmt.Errorf("unterminated %s block for %q", blockOwnerLabel(currentMarker.OwnerKind), currentMarker.WorkflowID)
 	}
 
 	flushUnmarked()
@@ -111,18 +139,23 @@ func ParseRuntimeAgentsDocument(data []byte) (AgentsRuntimeDocument, error) {
 
 // WrapRuntimeAgentsBlock renders one runtime AGENTS marker block around the provided payload.
 func WrapRuntimeAgentsBlock(orbitID string, payload []byte) ([]byte, error) {
-	if err := ids.ValidateOrbitID(orbitID); err != nil {
-		return nil, fmt.Errorf("validate orbit id %q: %w", orbitID, err)
+	return WrapRuntimeAgentsOwnerBlock(OwnerKindOrbit, orbitID, payload)
+}
+
+// WrapRuntimeAgentsOwnerBlock renders one owner-scoped runtime AGENTS marker block around the provided payload.
+func WrapRuntimeAgentsOwnerBlock(ownerKind OwnerKind, workflowID string, payload []byte) ([]byte, error) {
+	if err := validateRuntimeAgentsBlockID(ownerKind, workflowID); err != nil {
+		return nil, err
 	}
 
 	var rendered bytes.Buffer
-	rendered.WriteString(beginRuntimeAgentsMarker(orbitID))
+	rendered.WriteString(beginRuntimeAgentsOwnerMarker(ownerKind, workflowID))
 	rendered.WriteByte('\n')
 	rendered.Write(payload)
 	if len(payload) > 0 && payload[len(payload)-1] != '\n' {
 		rendered.WriteByte('\n')
 	}
-	rendered.WriteString(endRuntimeAgentsMarker(orbitID))
+	rendered.WriteString(endRuntimeAgentsOwnerMarker(ownerKind, workflowID))
 	rendered.WriteByte('\n')
 
 	return rendered.Bytes(), nil
@@ -156,11 +189,39 @@ func isBlankRuntimeAgentsLine(line []byte) bool {
 }
 
 func beginRuntimeAgentsMarker(orbitID string) string {
-	return fmt.Sprintf("<!-- orbit:begin orbit_id=%q -->", orbitID)
+	return beginRuntimeAgentsOwnerMarker(OwnerKindOrbit, orbitID)
 }
 
 func endRuntimeAgentsMarker(orbitID string) string {
-	return fmt.Sprintf("<!-- orbit:end orbit_id=%q -->", orbitID)
+	return endRuntimeAgentsOwnerMarker(OwnerKindOrbit, orbitID)
+}
+
+func beginRuntimeAgentsOwnerMarker(ownerKind OwnerKind, workflowID string) string {
+	return fmt.Sprintf("<!-- %s:begin workflow=%q -->", ownerKind, workflowID)
+}
+
+func endRuntimeAgentsOwnerMarker(ownerKind OwnerKind, workflowID string) string {
+	return fmt.Sprintf("<!-- %s:end workflow=%q -->", ownerKind, workflowID)
+}
+
+func validateRuntimeAgentsBlockID(ownerKind OwnerKind, workflowID string) error {
+	if err := validateOwnerKind(ownerKind); err != nil {
+		return err
+	}
+	if err := ids.ValidateOrbitID(workflowID); err != nil {
+		return fmt.Errorf("validate workflow id %q: %w", workflowID, err)
+	}
+
+	return nil
+}
+
+func validateOwnerKind(ownerKind OwnerKind) error {
+	switch ownerKind {
+	case OwnerKindOrbit, OwnerKindHarness:
+		return nil
+	default:
+		return fmt.Errorf("unsupported workflow owner kind %q", ownerKind)
+	}
 }
 
 func splitLinesPreserveNewline(data []byte) [][]byte {
@@ -184,19 +245,48 @@ func splitLinesPreserveNewline(data []byte) [][]byte {
 	return lines
 }
 
-func parseRuntimeAgentsMarkerLine(line []byte) (kind string, orbitID string, isMarker bool, err error) {
+func parseRuntimeAgentsMarkerLine(line []byte) (runtimeAgentsMarker, bool, error) {
 	trimmed := strings.TrimSpace(string(line))
-	if !strings.Contains(trimmed, "<!-- orbit:") {
-		return "", "", false, nil
+	if !looksLikeRuntimeAgentsMarker(trimmed) {
+		return runtimeAgentsMarker{}, false, nil
 	}
 
 	matches := runtimeAgentsMarkerPattern.FindStringSubmatch(trimmed)
 	if matches == nil {
-		return "", "", false, fmt.Errorf("malformed orbit marker %q", trimmed)
+		return runtimeAgentsMarker{}, false, fmt.Errorf("malformed workflow marker %q", trimmed)
 	}
-	if err := ids.ValidateOrbitID(matches[2]); err != nil {
-		return "", "", false, fmt.Errorf("validate orbit id %q: %w", matches[2], err)
+	if err := ids.ValidateOrbitID(matches[3]); err != nil {
+		return runtimeAgentsMarker{}, false, fmt.Errorf("validate workflow id %q: %w", matches[3], err)
 	}
 
-	return matches[1], matches[2], true, nil
+	return runtimeAgentsMarker{
+		OwnerKind:  OwnerKind(matches[1]),
+		Kind:       matches[2],
+		WorkflowID: matches[3],
+	}, true, nil
+}
+
+func looksLikeRuntimeAgentsMarker(trimmed string) bool {
+	if strings.HasPrefix(trimmed, "<!-- "+string(OwnerKindOrbit)+":") ||
+		strings.HasPrefix(trimmed, "<!-- "+string(OwnerKindHarness)+":") {
+		return true
+	}
+	if !strings.HasPrefix(trimmed, "<!-- ") {
+		return false
+	}
+	body := strings.TrimPrefix(trimmed, "<!-- ")
+	firstField, _, _ := strings.Cut(body, " ")
+	_, action, ok := strings.Cut(firstField, ":")
+	if !ok {
+		return false
+	}
+	return action == "begin" || action == "end"
+}
+
+func runtimeAgentsBlockKey(ownerKind OwnerKind, workflowID string) string {
+	return string(ownerKind) + "\x00" + workflowID
+}
+
+func blockOwnerLabel(ownerKind OwnerKind) string {
+	return string(ownerKind)
 }

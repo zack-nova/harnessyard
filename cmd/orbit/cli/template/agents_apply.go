@@ -1,7 +1,6 @@
 package orbittemplate
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -58,7 +57,7 @@ func analyzeSharedAgentsApply(
 	}
 
 	for _, segment := range document.Segments {
-		if segment.Kind == AgentsRuntimeSegmentBlock && segment.OrbitID == orbitID {
+		if segment.Kind == AgentsRuntimeSegmentBlock && segment.OwnerKind == OwnerKindOrbit && segment.WorkflowID == orbitID {
 			return conflicts, []string{
 				fmt.Sprintf(`runtime AGENTS.md already contains orbit block %q; apply will replace it in place`, orbitID),
 			}, nil
@@ -130,57 +129,7 @@ func removeRuntimeAgentsBlock(repoRoot string, orbitID string) error {
 }
 
 func replaceOrAppendRuntimeAgentsBlock(existing []byte, orbitID string, wrappedBlock []byte) ([]byte, error) {
-	if _, err := ParseRuntimeAgentsDocument(existing); err != nil {
-		return nil, fmt.Errorf("parse runtime AGENTS.md: %w", err)
-	}
-
-	lines := splitLinesPreserveNewline(existing)
-	var output bytes.Buffer
-	replacing := false
-	replaced := false
-
-	for _, line := range lines {
-		markerKind, markerOrbitID, isMarker, err := parseRuntimeAgentsMarkerLine(line)
-		if err != nil {
-			return nil, err
-		}
-
-		if replacing {
-			if isMarker && markerKind == "end" && markerOrbitID == orbitID {
-				output.Write(wrappedBlock)
-				replacing = false
-				replaced = true
-			}
-			continue
-		}
-
-		if isMarker && markerKind == "begin" && markerOrbitID == orbitID {
-			replacing = true
-			continue
-		}
-
-		output.Write(line)
-	}
-
-	if replacing {
-		return nil, fmt.Errorf("unterminated orbit block for %q", orbitID)
-	}
-	if replaced {
-		return output.Bytes(), nil
-	}
-
-	merged := append([]byte(nil), existing...)
-	if len(merged) > 0 {
-		if merged[len(merged)-1] != '\n' {
-			merged = append(merged, '\n')
-		}
-		if !bytes.HasSuffix(merged, []byte("\n\n")) {
-			merged = append(merged, '\n')
-		}
-	}
-	merged = append(merged, wrappedBlock...)
-
-	return merged, nil
+	return replaceOrAppendRuntimeGuidanceOwnerBlock(existing, OwnerKindOrbit, orbitID, wrappedBlock, "runtime AGENTS.md")
 }
 
 // ReplaceOrAppendRuntimeAgentsBlockData replaces one existing runtime AGENTS block in place
@@ -189,7 +138,17 @@ func ReplaceOrAppendRuntimeAgentsBlockData(existing []byte, blockID string, wrap
 	return replaceOrAppendRuntimeAgentsBlock(existing, blockID, wrappedBlock)
 }
 
+// ReplaceOrAppendRuntimeAgentsOwnerBlockData replaces or appends one owner-scoped runtime AGENTS block.
+func ReplaceOrAppendRuntimeAgentsOwnerBlockData(existing []byte, ownerKind OwnerKind, workflowID string, wrappedBlock []byte) ([]byte, error) {
+	return replaceOrAppendRuntimeGuidanceOwnerBlock(existing, ownerKind, workflowID, wrappedBlock, "runtime AGENTS.md")
+}
+
 // RemoveRuntimeAgentsBlockData removes one runtime AGENTS block by identity from raw document data.
 func RemoveRuntimeAgentsBlockData(existing []byte, blockID string) ([]byte, bool, error) {
 	return RemoveRuntimeGuidanceBlockData(existing, blockID, "runtime AGENTS.md")
+}
+
+// RemoveRuntimeAgentsOwnerBlockData removes one owner-scoped runtime AGENTS block from raw document data.
+func RemoveRuntimeAgentsOwnerBlockData(existing []byte, ownerKind OwnerKind, workflowID string) ([]byte, bool, error) {
+	return RemoveRuntimeGuidanceOwnerBlockData(existing, ownerKind, workflowID, "runtime AGENTS.md")
 }

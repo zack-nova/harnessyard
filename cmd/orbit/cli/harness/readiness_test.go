@@ -239,7 +239,7 @@ func TestEvaluateRuntimeReadinessBundleOwnedOrbitWithInvalidAgentsContainerIsBro
 		RootAgentsDigest:   contentDigest([]byte("bundle guidance\n")),
 	})
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(filepath.Join(repo.Root, "AGENTS.md"), []byte("<!-- orbit:begin orbit_id=\"runtime-two\" -->\nbundle guidance\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(repo.Root, "AGENTS.md"), []byte("<!-- harness:begin workflow=\"runtime-two\" -->\nbundle guidance\n"), 0o600))
 
 	report, err := EvaluateRuntimeReadiness(context.Background(), repo.Root)
 	require.NoError(t, err)

@@ -101,7 +101,7 @@ func TestHarnessBootstrapReopenRestoreSurfaceRestoresBootstrapFilesAndBlock(t *t
 
 	bootstrapData, err := os.ReadFile(filepath.Join(repo.Root, "BOOTSTRAP.md"))
 	require.NoError(t, err)
-	require.Contains(t, string(bootstrapData), `orbit_id="docs"`)
+	require.Contains(t, string(bootstrapData), `workflow="docs"`)
 	require.Contains(t, string(bootstrapData), "Bootstrap the docs orbit.\n")
 
 	restoredData, err := os.ReadFile(filepath.Join(repo.Root, "bootstrap", "docs", "setup.md"))

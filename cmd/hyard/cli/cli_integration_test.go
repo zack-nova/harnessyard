@@ -2545,8 +2545,8 @@ func TestHyardOrbitPrepareCheckIgnoresSeededEmptyGuidanceBlocks(t *testing.T) {
 	t.Parallel()
 
 	repo := seedCommittedHyardSourceRepo(t)
-	repo.WriteFile(t, "HUMANS.md", "<!-- orbit:begin orbit_id=\"docs\" -->\n<!-- orbit:end orbit_id=\"docs\" -->\n")
-	repo.WriteFile(t, "BOOTSTRAP.md", "<!-- orbit:begin orbit_id=\"docs\" -->\n<!-- orbit:end orbit_id=\"docs\" -->\n")
+	repo.WriteFile(t, "HUMANS.md", "<!-- orbit:begin workflow=\"docs\" -->\n<!-- orbit:end workflow=\"docs\" -->\n")
+	repo.WriteFile(t, "BOOTSTRAP.md", "<!-- orbit:begin workflow=\"docs\" -->\n<!-- orbit:end workflow=\"docs\" -->\n")
 	repo.AddAndCommit(t, "seed empty guidance blocks")
 
 	stdout, stderr, err := executeHyardCLI(t, repo.Root, "orbit", "prepare", "docs", "--check", "--json")

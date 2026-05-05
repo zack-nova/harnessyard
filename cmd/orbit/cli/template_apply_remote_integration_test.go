@@ -57,9 +57,9 @@ func TestTemplateApplyRemoteGitReplacesSharedAgentsBlockInPlace(t *testing.T) {
 	runtimeRepo := seedRemoteTemplateApplyRuntimeRepo(t)
 	runtimeRepo.WriteFile(t, "AGENTS.md", ""+
 		"shared intro\n"+
-		"<!-- orbit:begin orbit_id=\"docs\" -->\n"+
+		"<!-- orbit:begin workflow=\"docs\" -->\n"+
 		"old docs block\n"+
-		"<!-- orbit:end orbit_id=\"docs\" -->\n"+
+		"<!-- orbit:end workflow=\"docs\" -->\n"+
 		"tail guidance\n")
 	runtimeRepo.AddAndCommit(t, "seed runtime agents")
 
@@ -81,9 +81,9 @@ func TestTemplateApplyRemoteGitReplacesSharedAgentsBlockInPlace(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, ""+
 		"shared intro\n"+
-		"<!-- orbit:begin orbit_id=\"docs\" -->\n"+
+		"<!-- orbit:begin workflow=\"docs\" -->\n"+
 		"Docs orbit for Applied Remote Orbit\n"+
-		"<!-- orbit:end orbit_id=\"docs\" -->\n"+
+		"<!-- orbit:end workflow=\"docs\" -->\n"+
 		"tail guidance\n", string(agentsData))
 
 	requireNoRemoteTempRefs(t, runtimeRepo)

@@ -4456,9 +4456,9 @@ func TestHarnessAgentsComposeJSONCreatesRootAgentsFromRuntimeMembers(t *testing.
 	agentsData, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
 	require.NoError(t, err)
 	agents := string(agentsData)
-	require.Contains(t, agents, "<!-- orbit:begin orbit_id=\"docs\" -->\nYou are the Acme docs orbit.\n<!-- orbit:end orbit_id=\"docs\" -->\n")
-	require.Contains(t, agents, "<!-- orbit:begin orbit_id=\"cmd\" -->\nUse orbitctl for Acme releases.\n<!-- orbit:end orbit_id=\"cmd\" -->\n")
-	require.Contains(t, agents, "<!-- orbit:begin orbit_id=\"ops\" -->\nOps orbit\n<!-- orbit:end orbit_id=\"ops\" -->\n")
+	require.Contains(t, agents, "<!-- orbit:begin workflow=\"docs\" -->\nYou are the Acme docs orbit.\n<!-- orbit:end workflow=\"docs\" -->\n")
+	require.Contains(t, agents, "<!-- orbit:begin workflow=\"cmd\" -->\nUse orbitctl for Acme releases.\n<!-- orbit:end workflow=\"cmd\" -->\n")
+	require.Contains(t, agents, "<!-- orbit:begin workflow=\"ops\" -->\nOps orbit\n<!-- orbit:end workflow=\"ops\" -->\n")
 	require.NotContains(t, agents, "Workspace overview.\n")
 }
 
@@ -4482,9 +4482,9 @@ func TestHarnessAgentsComposeFailsClosedOnDriftedOrbitBlockWithoutForce(t *testi
 	repo := seedHarnessAgentsComposeRepo(t)
 	repo.WriteFile(t, "AGENTS.md", ""+
 		"Workspace overview.\n"+
-		"<!-- orbit:begin orbit_id=\"docs\" -->\n"+
+		"<!-- orbit:begin workflow=\"docs\" -->\n"+
 		"You are the Drifted docs orbit.\n"+
-		"<!-- orbit:end orbit_id=\"docs\" -->\n")
+		"<!-- orbit:end workflow=\"docs\" -->\n")
 
 	originalAgents, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
 	require.NoError(t, err)
@@ -4509,12 +4509,12 @@ func TestHarnessAgentsComposeForcePreservesProseAndNonTargetBlocks(t *testing.T)
 	repo := seedHarnessAgentsComposeRepo(t)
 	repo.WriteFile(t, "AGENTS.md", ""+
 		"Workspace overview.\n"+
-		"<!-- orbit:begin orbit_id=\"api\" -->\n"+
+		"<!-- orbit:begin workflow=\"api\" -->\n"+
 		"API brief.\n"+
-		"<!-- orbit:end orbit_id=\"api\" -->\n"+
-		"<!-- orbit:begin orbit_id=\"docs\" -->\n"+
+		"<!-- orbit:end workflow=\"api\" -->\n"+
+		"<!-- orbit:begin workflow=\"docs\" -->\n"+
 		"You are the Drifted docs orbit.\n"+
-		"<!-- orbit:end orbit_id=\"docs\" -->\n")
+		"<!-- orbit:end workflow=\"docs\" -->\n")
 
 	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "agents", "compose", "--force", "--json")
 	require.NoError(t, err)
@@ -4538,10 +4538,10 @@ func TestHarnessAgentsComposeForcePreservesProseAndNonTargetBlocks(t *testing.T)
 	require.NoError(t, err)
 	agents := string(agentsData)
 	require.Contains(t, agents, "Workspace overview.\n")
-	require.Contains(t, agents, "<!-- orbit:begin orbit_id=\"api\" -->\nAPI brief.\n<!-- orbit:end orbit_id=\"api\" -->\n")
-	require.Contains(t, agents, "<!-- orbit:begin orbit_id=\"docs\" -->\nYou are the Acme docs orbit.\n<!-- orbit:end orbit_id=\"docs\" -->\n")
-	require.Contains(t, agents, "<!-- orbit:begin orbit_id=\"cmd\" -->\nUse orbitctl for Acme releases.\n<!-- orbit:end orbit_id=\"cmd\" -->\n")
-	require.Contains(t, agents, "<!-- orbit:begin orbit_id=\"ops\" -->\nOps orbit\n<!-- orbit:end orbit_id=\"ops\" -->\n")
+	require.Contains(t, agents, "<!-- orbit:begin workflow=\"api\" -->\nAPI brief.\n<!-- orbit:end workflow=\"api\" -->\n")
+	require.Contains(t, agents, "<!-- orbit:begin workflow=\"docs\" -->\nYou are the Acme docs orbit.\n<!-- orbit:end workflow=\"docs\" -->\n")
+	require.Contains(t, agents, "<!-- orbit:begin workflow=\"cmd\" -->\nUse orbitctl for Acme releases.\n<!-- orbit:end workflow=\"cmd\" -->\n")
+	require.Contains(t, agents, "<!-- orbit:begin workflow=\"ops\" -->\nOps orbit\n<!-- orbit:end workflow=\"ops\" -->\n")
 	require.NotContains(t, agents, "You are the Drifted docs orbit.\n")
 }
 

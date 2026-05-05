@@ -50,8 +50,8 @@ func TestHarnessBootstrapCompleteOrbitRemovesRuntimeBootstrapSurfaceAndWritesSta
 
 	bootstrapData, err := os.ReadFile(filepath.Join(repo.Root, "BOOTSTRAP.md"))
 	require.NoError(t, err)
-	require.NotContains(t, string(bootstrapData), `orbit_id="docs"`)
-	require.Contains(t, string(bootstrapData), `orbit_id="ops"`)
+	require.NotContains(t, string(bootstrapData), `workflow="docs"`)
+	require.Contains(t, string(bootstrapData), `workflow="ops"`)
 
 	_, err = os.Stat(filepath.Join(repo.Root, ".harness", "orbits", "docs.yaml"))
 	require.NoError(t, err)

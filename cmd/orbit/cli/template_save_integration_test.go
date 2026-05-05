@@ -133,9 +133,9 @@ func TestTemplateSaveSkipsProjectionVisibleFilesAndAgents(t *testing.T) {
 	repo.WriteFile(t, "README.md", "Orbit readme\n")
 	repo.WriteFile(t, "AGENTS.md", ""+
 		"shared intro\n"+
-		"<!-- orbit:begin orbit_id=\"docs\" -->\n"+
+		"<!-- orbit:begin workflow=\"docs\" -->\n"+
 		"Docs orbit for Orbit\n"+
-		"<!-- orbit:end orbit_id=\"docs\" -->\n")
+		"<!-- orbit:end workflow=\"docs\" -->\n")
 	repo.AddAndCommit(t, "add projection-visible shared files")
 
 	stdout, stderr, err := executeCLI(t, repo.Root, "template", "save", "docs", "--to", "orbit-template/docs")
@@ -410,9 +410,9 @@ func TestTemplateSaveDryRunWarnsWhenRuntimeAgentsLacksCurrentOrbitMarker(t *test
 		"  sparse_checkout_mode: no-cone\n")
 	repo.WriteFile(t, "AGENTS.md", ""+
 		"shared Orbit guidance\n"+
-		"<!-- orbit:begin orbit_id=\"api\" -->\n"+
+		"<!-- orbit:begin workflow=\"api\" -->\n"+
 		"api only\n"+
-		"<!-- orbit:end orbit_id=\"api\" -->\n")
+		"<!-- orbit:end workflow=\"api\" -->\n")
 	repo.AddAndCommit(t, "add runtime agents without docs block")
 
 	stdout, stderr, err := executeCLI(t, repo.Root, "template", "save", "docs", "--to", "orbit-template/docs", "--dry-run")

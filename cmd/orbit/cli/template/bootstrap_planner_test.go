@@ -169,9 +169,9 @@ func TestInspectOrbitBootstrapLaneForOperationRejectsCompletedBootstrap(t *testi
 	repo := seedBootstrapPlannerRepo(t)
 	repo.WriteFile(t, "BOOTSTRAP.md", ""+
 		"Workspace overview.\n"+
-		"<!-- orbit:begin orbit_id=\"completed\" -->\n"+
+		"<!-- orbit:begin workflow=\"completed\" -->\n"+
 		"Bootstrap the completed orbit.\n"+
-		"<!-- orbit:end orbit_id=\"completed\" -->\n")
+		"<!-- orbit:end workflow=\"completed\" -->\n")
 
 	store, err := statepkg.NewFSStore(repo.GitDir(t))
 	require.NoError(t, err)

@@ -12,7 +12,7 @@ import (
 
 // ApplyBundleAgentsPayload appends or replaces one harness bundle block in runtime AGENTS.md.
 func ApplyBundleAgentsPayload(repoRoot string, harnessID string, payload []byte) error {
-	wrappedBlock, err := orbittemplate.WrapRuntimeAgentsBlock(harnessID, payload)
+	wrappedBlock, err := orbittemplate.WrapRuntimeAgentsOwnerBlock(orbittemplate.OwnerKindHarness, harnessID, payload)
 	if err != nil {
 		return fmt.Errorf("wrap bundle AGENTS payload: %w", err)
 	}
@@ -30,7 +30,7 @@ func ApplyBundleAgentsPayload(repoRoot string, harnessID string, payload []byte)
 		return fmt.Errorf("read runtime AGENTS.md: %w", err)
 	}
 
-	merged, err := orbittemplate.ReplaceOrAppendRuntimeAgentsBlockData(existing, harnessID, wrappedBlock)
+	merged, err := orbittemplate.ReplaceOrAppendRuntimeAgentsOwnerBlockData(existing, orbittemplate.OwnerKindHarness, harnessID, wrappedBlock)
 	if err != nil {
 		return fmt.Errorf("merge runtime AGENTS.md: %w", err)
 	}
@@ -53,7 +53,7 @@ func RemoveBundleAgentsPayload(repoRoot string, harnessID string) error {
 		return fmt.Errorf("read runtime AGENTS.md: %w", err)
 	}
 
-	updated, removed, err := orbittemplate.RemoveRuntimeAgentsBlockData(existing, harnessID)
+	updated, removed, err := orbittemplate.RemoveRuntimeAgentsOwnerBlockData(existing, orbittemplate.OwnerKindHarness, harnessID)
 	if err != nil {
 		return fmt.Errorf("remove runtime AGENTS block: %w", err)
 	}

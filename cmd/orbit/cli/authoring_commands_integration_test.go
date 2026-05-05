@@ -461,8 +461,8 @@ func requireContainsSeedEmptyGuidanceArtifacts(t *testing.T, repoRoot string) {
 	for _, path := range []string{"AGENTS.md", "HUMANS.md", "BOOTSTRAP.md"} {
 		data, err := os.ReadFile(filepath.Join(repoRoot, path))
 		require.NoError(t, err)
-		require.Contains(t, string(data), `<!-- orbit:begin orbit_id="docs" -->`)
-		require.Contains(t, string(data), `<!-- orbit:end orbit_id="docs" -->`)
+		require.Contains(t, string(data), `<!-- orbit:begin workflow="docs" -->`)
+		require.Contains(t, string(data), `<!-- orbit:end workflow="docs" -->`)
 	}
 }
 
