@@ -193,6 +193,196 @@ func TestHyardViewRunCheckJSONReportsCleanupCandidatesWithoutMutation(t *testing
 	require.Equal(t, hintBefore, hintAfter)
 }
 
+func TestHyardViewRunJSONStripsRootGuidanceMarkersAndReportsChangedFiles(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardViewRunRootGuidanceRuntimeRepo(t)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "view", "run", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Check        bool `json:"check"`
+		Ready        bool `json:"ready"`
+		Changed      bool `json:"changed"`
+		ChangedFiles []struct {
+			Path       string `json:"path"`
+			Target     string `json:"target"`
+			Action     string `json:"action"`
+			BlockCount int    `json:"block_count"`
+		} `json:"changed_files"`
+		SkippedTargets []struct {
+			Path   string `json:"path"`
+			Target string `json:"target"`
+			Reason string `json:"reason"`
+		} `json:"skipped_targets"`
+		Notes []string `json:"notes"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+
+	require.False(t, payload.Check)
+	require.True(t, payload.Ready)
+	require.True(t, payload.Changed)
+	require.Contains(t, payload.ChangedFiles, struct {
+		Path       string `json:"path"`
+		Target     string `json:"target"`
+		Action     string `json:"action"`
+		BlockCount int    `json:"block_count"`
+	}{
+		Path:       "AGENTS.md",
+		Target:     "agents",
+		Action:     "strip_marker_lines_preserve_content",
+		BlockCount: 2,
+	})
+	require.Contains(t, payload.ChangedFiles, struct {
+		Path       string `json:"path"`
+		Target     string `json:"target"`
+		Action     string `json:"action"`
+		BlockCount int    `json:"block_count"`
+	}{
+		Path:       "BOOTSTRAP.md",
+		Target:     "bootstrap",
+		Action:     "strip_marker_lines_preserve_content",
+		BlockCount: 1,
+	})
+	require.Contains(t, payload.ChangedFiles, struct {
+		Path       string `json:"path"`
+		Target     string `json:"target"`
+		Action     string `json:"action"`
+		BlockCount int    `json:"block_count"`
+	}{
+		Path:       "HUMANS.md",
+		Target:     "humans",
+		Action:     "strip_marker_lines_preserve_content",
+		BlockCount: 1,
+	})
+	require.Empty(t, payload.SkippedTargets)
+	require.Contains(t, payload.Notes, "marker removal is presentation cleanup only; later authoring requires explicit `hyard guide render` or reconciliation")
+
+	agentsAfter, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoError(t, err)
+	require.Equal(t, ""+
+		"Global agents guidance\n"+
+		"Docs orbit guidance\n"+
+		"Workspace harness guidance\n"+
+		"Tail agents guidance\n", string(agentsAfter))
+
+	humansAfter, err := os.ReadFile(filepath.Join(repo.Root, "HUMANS.md"))
+	require.NoError(t, err)
+	require.Equal(t, "Human docs guidance\n", string(humansAfter))
+
+	bootstrapAfter, err := os.ReadFile(filepath.Join(repo.Root, "BOOTSTRAP.md"))
+	require.NoError(t, err)
+	require.Equal(t, "Bootstrap docs guidance\n", string(bootstrapAfter))
+	require.FileExists(t, filepath.Join(repo.Root, "docs", "process", ".orbit-member.yaml"))
+}
+
+func TestHyardViewRunTextToleratesDirtyWorktreeAndReportsSkippedRootGuidanceTargets(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardViewRunNoDriftRuntimeRepo(t)
+	repo.WriteFile(t, "HUMANS.md", "Human plain notes\n")
+	repo.WriteFile(t, "README.md", "local runtime notes\n")
+	require.NotEmpty(t, repo.Run(t, "status", "--short"))
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "view", "run")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	require.Contains(t, stdout, "check: false\n")
+	require.Contains(t, stdout, "ready: true\n")
+	require.Contains(t, stdout, "changed: true\n")
+	require.Contains(t, stdout, "changed_files:\n")
+	require.Contains(t, stdout, "  agents AGENTS.md action=strip_marker_lines_preserve_content blocks=1\n")
+	require.Contains(t, stdout, "skipped_targets:\n")
+	require.Contains(t, stdout, "  bootstrap BOOTSTRAP.md reason=missing\n")
+	require.Contains(t, stdout, "  humans HUMANS.md reason=no_marker_lines\n")
+	require.Contains(t, stdout, "notes:\n")
+	require.Contains(t, stdout, "  marker removal is presentation cleanup only; later authoring requires explicit `hyard guide render` or reconciliation\n")
+
+	agentsAfter, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoError(t, err)
+	require.Equal(t, "Docs orbit guidance\n", string(agentsAfter))
+
+	humansAfter, err := os.ReadFile(filepath.Join(repo.Root, "HUMANS.md"))
+	require.NoError(t, err)
+	require.Equal(t, "Human plain notes\n", string(humansAfter))
+	readmeAfter, err := os.ReadFile(filepath.Join(repo.Root, "README.md"))
+	require.NoError(t, err)
+	require.Equal(t, "local runtime notes\n", string(readmeAfter))
+	require.FileExists(t, filepath.Join(repo.Root, "docs", "process", ".orbit-member.yaml"))
+}
+
+func TestHyardViewRunJSONReportsSkippedRootGuidanceTargets(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardViewRunNoDriftRuntimeRepo(t)
+	repo.WriteFile(t, "HUMANS.md", "Human plain notes\n")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "view", "run", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		SkippedTargets []struct {
+			Path   string `json:"path"`
+			Target string `json:"target"`
+			Reason string `json:"reason"`
+		} `json:"skipped_targets"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Contains(t, payload.SkippedTargets, struct {
+		Path   string `json:"path"`
+		Target string `json:"target"`
+		Reason string `json:"reason"`
+	}{
+		Path:   "BOOTSTRAP.md",
+		Target: "bootstrap",
+		Reason: "missing",
+	})
+	require.Contains(t, payload.SkippedTargets, struct {
+		Path   string `json:"path"`
+		Target string `json:"target"`
+		Reason string `json:"reason"`
+	}{
+		Path:   "HUMANS.md",
+		Target: "humans",
+		Reason: "no_marker_lines",
+	})
+}
+
+func TestHyardViewRunJSONRefusesActualCleanupWhenPlannerReportsAuthoredTruthDrift(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardViewRunDriftRuntimeRepo(t)
+	agentsBefore, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoError(t, err)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "view", "run", "--json")
+	require.ErrorContains(t, err, "Run View cleanup blocked by Authored Truth Drift")
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Ready        bool `json:"ready"`
+		Changed      bool `json:"changed"`
+		ChangedFiles []struct {
+			Path string `json:"path"`
+		} `json:"changed_files"`
+		Blockers []string `json:"blockers"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.False(t, payload.Ready)
+	require.False(t, payload.Changed)
+	require.Empty(t, payload.ChangedFiles)
+	require.Contains(t, payload.Blockers, "AGENTS.md agents block \"docs\" has authored truth drift; run `hyard guide save --orbit docs --target agents`")
+
+	agentsAfter, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoError(t, err)
+	require.Equal(t, agentsBefore, agentsAfter)
+	require.FileExists(t, filepath.Join(repo.Root, "docs", "process", ".orbit-member.yaml"))
+}
+
 func TestHyardViewRunCheckJSONBlocksOnAuthoredTruthDrift(t *testing.T) {
 	t.Parallel()
 
@@ -505,6 +695,77 @@ func seedHyardViewRunNoDriftRuntimeRepo(t *testing.T) *testutil.Repo {
 	require.NoError(t, err)
 
 	repo.AddAndCommit(t, "seed run view cleanup repo")
+
+	return repo
+}
+
+func seedHyardViewRunRootGuidanceRuntimeRepo(t *testing.T) *testutil.Repo {
+	t.Helper()
+
+	repo := testutil.NewRepo(t)
+	now := time.Date(2026, time.May, 5, 8, 0, 0, 0, time.UTC)
+
+	spec, err := orbitpkg.DefaultHostedMemberSchemaSpec("docs")
+	require.NoError(t, err)
+	spec.Description = "Docs orbit"
+	require.NotNil(t, spec.Meta)
+	spec.Meta.AgentsTemplate = "Docs orbit guidance\n"
+	spec.Meta.HumansTemplate = "Human docs guidance\n"
+	spec.Meta.BootstrapTemplate = "Bootstrap docs guidance\n"
+	spec.Members = append(spec.Members, orbitpkg.OrbitMember{
+		Name:        "process",
+		Description: "Review workflow",
+		Role:        orbitpkg.OrbitMemberProcess,
+		Paths: orbitpkg.OrbitMemberPaths{
+			Include: []string{"docs/process/**"},
+		},
+	})
+	_, err = orbitpkg.WriteHostedOrbitSpec(repo.Root, spec)
+	require.NoError(t, err)
+
+	repo.WriteFile(t, "docs/guide.md", "Docs guide\n")
+	repo.WriteFile(t, "docs/process/review.md", "# Review\n")
+	repo.WriteFile(t, "docs/process/.orbit-member.yaml", ""+
+		"orbit_member:\n"+
+		"  description: Review workflow\n")
+
+	agentsBlock, err := orbittemplate.WrapRuntimeAgentsBlock("docs", []byte("Docs orbit guidance\n"))
+	require.NoError(t, err)
+	harnessBlock, err := orbittemplate.WrapRuntimeAgentsOwnerBlock(orbittemplate.OwnerKindHarness, "workspace", []byte("Workspace harness guidance\n"))
+	require.NoError(t, err)
+	repo.WriteFile(t, "AGENTS.md", ""+
+		"Global agents guidance\n"+
+		string(agentsBlock)+
+		string(harnessBlock)+
+		"Tail agents guidance\n")
+
+	humansBlock, err := orbittemplate.WrapRuntimeAgentsBlock("docs", []byte("Human docs guidance\n"))
+	require.NoError(t, err)
+	repo.WriteFile(t, "HUMANS.md", string(humansBlock))
+
+	bootstrapBlock, err := orbittemplate.WrapRuntimeAgentsBlock("docs", []byte("Bootstrap docs guidance\n"))
+	require.NoError(t, err)
+	repo.WriteFile(t, "BOOTSTRAP.md", string(bootstrapBlock))
+
+	_, err = harnesspkg.WriteManifestFile(repo.Root, harnesspkg.ManifestFile{
+		SchemaVersion: 1,
+		Kind:          harnesspkg.ManifestKindRuntime,
+		Runtime: &harnesspkg.ManifestRuntimeMetadata{
+			ID:        "workspace",
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+		Members: []harnesspkg.ManifestMember{
+			{
+				OrbitID: "docs",
+				Source:  harnesspkg.ManifestMemberSourceManual,
+				AddedAt: now,
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	repo.AddAndCommit(t, "seed run view root guidance cleanup repo")
 
 	return repo
 }

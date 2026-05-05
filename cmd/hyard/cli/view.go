@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -33,15 +34,16 @@ func newViewCommand() *cobra.Command {
 func newViewRunCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "run",
-		Short: "Preview Run View cleanup",
+		Short: "Apply or preview Run View cleanup",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			check, err := cmd.Flags().GetBool("check")
 			if err != nil {
 				return fmt.Errorf("read --check flag: %w", err)
 			}
-			if !check {
-				return fmt.Errorf("hyard view run cleanup is only available with --check in this slice")
+			jsonOutput, err := cmd.Flags().GetBool("json")
+			if err != nil {
+				return fmt.Errorf("read --json flag: %w", err)
 			}
 
 			workingDir, err := hyardWorkingDirFromCommand(cmd)
@@ -57,17 +59,22 @@ func newViewRunCommand() *cobra.Command {
 				return fmt.Errorf("create state store: %w", err)
 			}
 
-			result, err := harnesspkg.RuntimeViewCleanupPlan(cmd.Context(), repo, store, check)
-			if err != nil {
-				return fmt.Errorf("plan Run View cleanup: %w", err)
-			}
-
-			jsonOutput, err := cmd.Flags().GetBool("json")
-			if err != nil {
-				return fmt.Errorf("read --json flag: %w", err)
-			}
+			result, cleanupErr := harnesspkg.RuntimeViewCleanup(cmd.Context(), repo, store, check)
 			if jsonOutput {
-				return emitHyardJSON(cmd, result)
+				var blocked harnesspkg.RuntimeViewCleanupBlockedError
+				if cleanupErr == nil || errors.As(cleanupErr, &blocked) {
+					if err := emitHyardJSON(cmd, result); err != nil {
+						return err
+					}
+				}
+				if cleanupErr != nil {
+					return fmt.Errorf("run Run View cleanup: %w", cleanupErr)
+				}
+
+				return nil
+			}
+			if cleanupErr != nil {
+				return fmt.Errorf("run Run View cleanup: %w", cleanupErr)
 			}
 
 			return renderHyardViewRun(cmd, result)
@@ -359,6 +366,47 @@ func renderHyardViewRun(cmd *cobra.Command, result harnesspkg.RuntimeViewCleanup
 		}
 	}
 
+	if _, err := fmt.Fprintln(cmd.OutOrStdout(), "changed_files:"); err != nil {
+		return fmt.Errorf("write command output: %w", err)
+	}
+	if len(result.ChangedFiles) == 0 {
+		if _, err := fmt.Fprintln(cmd.OutOrStdout(), "  none"); err != nil {
+			return fmt.Errorf("write command output: %w", err)
+		}
+	}
+	for _, changedFile := range result.ChangedFiles {
+		if _, err := fmt.Fprintf(
+			cmd.OutOrStdout(),
+			"  %s %s action=%s blocks=%d\n",
+			changedFile.Target,
+			changedFile.Path,
+			changedFile.Action,
+			changedFile.BlockCount,
+		); err != nil {
+			return fmt.Errorf("write command output: %w", err)
+		}
+	}
+
+	if _, err := fmt.Fprintln(cmd.OutOrStdout(), "skipped_targets:"); err != nil {
+		return fmt.Errorf("write command output: %w", err)
+	}
+	if len(result.SkippedTargets) == 0 {
+		if _, err := fmt.Fprintln(cmd.OutOrStdout(), "  none"); err != nil {
+			return fmt.Errorf("write command output: %w", err)
+		}
+	}
+	for _, skippedTarget := range result.SkippedTargets {
+		if _, err := fmt.Fprintf(
+			cmd.OutOrStdout(),
+			"  %s %s reason=%s\n",
+			skippedTarget.Target,
+			skippedTarget.Path,
+			skippedTarget.Reason,
+		); err != nil {
+			return fmt.Errorf("write command output: %w", err)
+		}
+	}
+
 	if err := renderHyardViewStatusList(cmd, "blockers", result.Blockers); err != nil {
 		return err
 	}
@@ -395,6 +443,11 @@ func renderHyardViewRun(cmd *cobra.Command, result harnesspkg.RuntimeViewCleanup
 	}
 	if err := renderHyardViewStatusList(cmd, "next_actions", result.NextActions); err != nil {
 		return err
+	}
+	if len(result.Notes) > 0 {
+		if err := renderHyardViewStatusList(cmd, "notes", result.Notes); err != nil {
+			return err
+		}
 	}
 
 	return nil
