@@ -54,6 +54,7 @@ type FrameworkPackageRecommendation struct {
 type FrameworkResolution struct {
 	Framework              string                           `json:"framework"`
 	Source                 FrameworkSelectionSource         `json:"source"`
+	Candidates             []string                         `json:"candidates,omitempty"`
 	RecommendedFramework   string                           `json:"recommended_framework,omitempty"`
 	PackageRecommendations []FrameworkPackageRecommendation `json:"package_recommendations,omitempty"`
 	SupportedFrameworks    []string                         `json:"supported_frameworks,omitempty"`
@@ -237,6 +238,7 @@ func ResolveFramework(ctx context.Context, input FrameworkResolutionInput) (Fram
 			resolution.Source = FrameworkSelectionSourceExplicitLocal
 			return resolution, nil
 		default:
+			resolution.Candidates = append([]string(nil), supportedSelections...)
 			resolution.Source = FrameworkSelectionSourceUnresolvedConflict
 			resolution.Warnings = append(resolution.Warnings, fmt.Sprintf("multiple explicit local framework selections require multi-agent apply: %v", supportedSelections))
 			return resolution, nil
@@ -255,6 +257,8 @@ func ResolveFramework(ctx context.Context, input FrameworkResolutionInput) (Fram
 		return resolution, nil
 	}
 	if len(localHintMatches) > 1 {
+		resolution.Candidates = append([]string(nil), localHintMatches...)
+		resolution.Source = FrameworkSelectionSourceUnresolvedConflict
 		resolution.Warnings = append(resolution.Warnings, fmt.Sprintf("multiple framework local hints detected: %v", localHintMatches))
 		return resolution, nil
 	}
@@ -269,6 +273,8 @@ func ResolveFramework(ctx context.Context, input FrameworkResolutionInput) (Fram
 		return resolution, nil
 	}
 	if len(projectMatches) > 1 {
+		resolution.Candidates = append([]string(nil), projectMatches...)
+		resolution.Source = FrameworkSelectionSourceUnresolvedConflict
 		resolution.Warnings = append(resolution.Warnings, fmt.Sprintf("multiple framework project detections detected: %v", projectMatches))
 		return resolution, nil
 	}
@@ -324,6 +330,12 @@ func ResolveFramework(ctx context.Context, input FrameworkResolutionInput) (Fram
 		resolution.Source = FrameworkSelectionSourcePackageRecommendation
 		return resolution, nil
 	default:
+		candidates := make([]string, 0, len(uniqueRecommendations))
+		for frameworkID := range uniqueRecommendations {
+			candidates = append(candidates, frameworkID)
+		}
+		sort.Strings(candidates)
+		resolution.Candidates = candidates
 		resolution.Source = FrameworkSelectionSourceUnresolvedConflict
 		resolution.Warnings = append(resolution.Warnings, formatFrameworkRecommendationConflictWarning(packageRecommendations))
 		return resolution, nil

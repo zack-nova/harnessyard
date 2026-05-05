@@ -45,6 +45,7 @@ type AgentDetectionInput struct {
 	GitDir   string
 	Deep     bool
 	Refresh  bool
+	NoCache  bool
 }
 
 // AgentDetectionHost describes the host environment that was inspected.
@@ -195,7 +196,7 @@ func DetectAgents(ctx context.Context, input AgentDetectionInput) (AgentDetectio
 	}
 
 	cacheKey := agentDetectionCacheKey(input, homeDir)
-	if !input.Refresh {
+	if !input.Refresh && !input.NoCache {
 		if cachedTools, ok := loadAgentDetectionCache(input.GitDir, cacheKey); ok {
 			report.Tools = cachedTools
 			finalizeAgentDetectionReport(&report)
@@ -208,7 +209,9 @@ func DetectAgents(ctx context.Context, input AgentDetectionInput) (AgentDetectio
 		report.Tools = append(report.Tools, tool)
 	}
 	finalizeAgentDetectionReport(&report)
-	storeAgentDetectionCache(input.GitDir, cacheKey, report.Tools)
+	if !input.NoCache {
+		storeAgentDetectionCache(input.GitDir, cacheKey, report.Tools)
+	}
 
 	return report, nil
 }
