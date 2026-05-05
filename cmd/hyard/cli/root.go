@@ -46,6 +46,7 @@ func NewRootCommand() *cobra.Command {
 		newCreateCommand(),
 		newCloneCommand(),
 		newAdoptCommand(),
+		newLayoutCommand(),
 		newInitCommand(),
 		newInstallCommand(),
 		newRemoveCommand(),
