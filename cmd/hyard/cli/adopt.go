@@ -91,15 +91,16 @@ type adoptCheckNextAction struct {
 }
 
 type adoptWriteOutput struct {
-	SchemaVersion string                     `json:"schema_version"`
-	RepoRoot      string                     `json:"repo_root"`
-	Mode          string                     `json:"mode"`
-	AdoptedOrbit  adoptCheckAdoptedOrbit     `json:"adopted_orbit"`
-	WrittenPaths  []string                   `json:"written_paths"`
-	Validations   []adoptWriteValidation     `json:"validations"`
-	Check         harnesspkg.CheckResult     `json:"check"`
-	Readiness     harnesspkg.ReadinessReport `json:"readiness"`
-	NextActions   []adoptCheckNextAction     `json:"next_actions"`
+	SchemaVersion string                              `json:"schema_version"`
+	RepoRoot      string                              `json:"repo_root"`
+	Mode          string                              `json:"mode"`
+	AdoptedOrbit  adoptCheckAdoptedOrbit              `json:"adopted_orbit"`
+	WrittenPaths  []string                            `json:"written_paths"`
+	AgentConfig   *harnesspkg.AgentConfigImportResult `json:"agent_config_import,omitempty"`
+	Validations   []adoptWriteValidation              `json:"validations"`
+	Check         harnesspkg.CheckResult              `json:"check"`
+	Readiness     harnesspkg.ReadinessReport          `json:"readiness"`
+	NextActions   []adoptCheckNextAction              `json:"next_actions"`
 }
 
 type adoptWriteValidation struct {
@@ -225,6 +226,20 @@ func buildAdoptWriteOutput(cmd *cobra.Command, explicitOrbitID string) (adoptWri
 		return adoptWriteOutput{}, fmt.Errorf("write root agent guidance marker block: %w", err)
 	}
 
+	var agentConfigImport *harnesspkg.AgentConfigImportResult
+	if preflight.Frameworks.Recommended == "codex" {
+		importResult, err := harnesspkg.ImportAgentConfig(cmd.Context(), harnesspkg.AgentConfigImportInput{
+			RepoRoot:     preflight.RepoRoot,
+			Framework:    "codex",
+			SourceScopes: []string{"project"},
+			Write:        true,
+		})
+		if err != nil {
+			return adoptWriteOutput{}, fmt.Errorf("import Codex project config during Adoption: %w", err)
+		}
+		agentConfigImport = &importResult
+	}
+
 	if _, err := harnesspkg.LoadManifestFile(preflight.RepoRoot); err != nil {
 		return adoptWriteOutput{}, fmt.Errorf("validate generated runtime manifest: %w", err)
 	}
@@ -261,6 +276,9 @@ func buildAdoptWriteOutput(cmd *cobra.Command, explicitOrbitID string) (adoptWri
 		orbitSpecPath,
 		"AGENTS.md",
 	}
+	if agentConfigImport != nil {
+		writtenPaths = append(writtenPaths, agentConfigImport.WrittenPaths...)
+	}
 
 	return adoptWriteOutput{
 		SchemaVersion: adoptionCheckSchemaVersion,
@@ -268,6 +286,7 @@ func buildAdoptWriteOutput(cmd *cobra.Command, explicitOrbitID string) (adoptWri
 		Mode:          "write",
 		AdoptedOrbit:  preflight.AdoptedOrbit,
 		WrittenPaths:  writtenPaths,
+		AgentConfig:   agentConfigImport,
 		Validations:   adoptWriteValidations(checkResult, readiness),
 		Check:         checkResult,
 		Readiness:     readiness,
