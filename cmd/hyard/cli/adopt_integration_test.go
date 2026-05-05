@@ -105,6 +105,324 @@ type hyardAdoptWriteValidation struct {
 	OK     bool   `json:"ok"`
 }
 
+func TestHyardAdoptInteractiveOverridesDefaultOrbitIDBeforeWriting(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := newNamedGitRepoForHyardAdopt(t, "My Runtime Repo!")
+	require.NoError(t, os.WriteFile(
+		filepath.Join(repoRoot, "AGENTS.md"),
+		[]byte("# Agent guidance\n\nAdopt this repository.\n"),
+		0o600,
+	))
+	runGitForHyardAdopt(t, repoRoot, "add", "-A")
+	runGitForHyardAdopt(t, repoRoot, "commit", "-m", "seed root guidance")
+
+	stdout, stderr, err := executeHyardCLIWithInput(t, repoRoot, "docs\ny\n", "adopt")
+	require.NoError(t, err)
+	require.Contains(t, stderr, "Adopted Orbit id [my-runtime-repo]:")
+	require.Contains(t, stderr, "Write Adoption changes? [y/N]")
+	require.Contains(t, stdout, "adopted_orbit: docs\n")
+
+	spec, err := orbitpkg.LoadHostedOrbitSpec(context.Background(), repoRoot, "docs")
+	require.NoError(t, err)
+	require.Equal(t, "docs", spec.ID)
+	require.NoFileExists(t, filepath.Join(repoRoot, ".harness", "orbits", "my-runtime-repo.yaml"))
+}
+
+func TestHyardAdoptInteractiveAcceptsRecommendedGuidanceRoleAndDeclinesMove(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, "AGENTS.md", ""+
+		"# Agent guidance\n\n"+
+		"Follow [the runbook](docs/runbook.md) during Adoption.\n")
+	repo.WriteFile(t, "docs/runbook.md", "# Runbook\n")
+	repo.AddAndCommit(t, "seed referenced guidance")
+
+	stdout, stderr, err := executeHyardCLIWithInput(t, repo.Root, "\ny\nn\ny\n", "adopt", "--orbit", "docs")
+	require.NoError(t, err)
+	require.Contains(t, stderr, "Accept all recommended candidate roles? [Y/n]")
+	require.Contains(t, stderr, "Apply layout move docs/runbook.md -> guidance/docs/runbook.md? [y/N]")
+	require.Contains(t, stdout, "adopted_orbit: docs\n")
+
+	spec, err := orbitpkg.LoadHostedOrbitSpec(context.Background(), repo.Root, "docs")
+	require.NoError(t, err)
+	require.Contains(t, spec.Members, orbitpkg.OrbitMember{
+		Name: "runbook",
+		Role: orbitpkg.OrbitMemberRule,
+		Paths: orbitpkg.OrbitMemberPaths{
+			Include: []string{"docs/runbook.md"},
+		},
+	})
+	require.FileExists(t, filepath.Join(repo.Root, "docs", "runbook.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "guidance", "docs", "runbook.md"))
+}
+
+func TestHyardAdoptInteractiveAcceptsLayoutMoveAndUpdatesTruthAndGuidanceLinks(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, "AGENTS.md", ""+
+		"# Agent guidance\n\n"+
+		"Follow [the runbook](docs/runbook.md) during Adoption.\n")
+	repo.WriteFile(t, "docs/runbook.md", "# Runbook\n")
+	repo.AddAndCommit(t, "seed movable referenced guidance")
+
+	stdout, stderr, err := executeHyardCLIWithInput(t, repo.Root, "\ny\ny\ny\n", "adopt", "--orbit", "docs")
+	require.NoError(t, err)
+	require.Contains(t, stderr, "Apply layout move docs/runbook.md -> guidance/docs/runbook.md? [y/N]")
+	require.Contains(t, stdout, "written: guidance/docs/runbook.md\n")
+
+	spec, err := orbitpkg.LoadHostedOrbitSpec(context.Background(), repo.Root, "docs")
+	require.NoError(t, err)
+	require.Contains(t, spec.Members, orbitpkg.OrbitMember{
+		Name: "runbook",
+		Role: orbitpkg.OrbitMemberRule,
+		Paths: orbitpkg.OrbitMemberPaths{
+			Include: []string{"guidance/docs/runbook.md"},
+		},
+	})
+	require.NoFileExists(t, filepath.Join(repo.Root, "docs", "runbook.md"))
+	require.FileExists(t, filepath.Join(repo.Root, "guidance", "docs", "runbook.md"))
+
+	agentsData, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoError(t, err)
+	require.Contains(t, string(agentsData), "[the runbook](guidance/docs/runbook.md)")
+}
+
+func TestHyardAdoptInteractiveEditsCandidateRolesAndIgnoresCandidates(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, "AGENTS.md", ""+
+		"# Agent guidance\n\n"+
+		"Read CONTEXT.md and docs/runbook.md before making changes.\n")
+	repo.WriteFile(t, "CONTEXT.md", "# Project language\n")
+	repo.WriteFile(t, "docs/runbook.md", "# Runbook\n")
+	repo.AddAndCommit(t, "seed role-edit guidance")
+
+	stdout, stderr, err := executeHyardCLIWithInput(t, repo.Root, "\nn\nsubject\nignore\nn\ny\n", "adopt", "--orbit", "docs")
+	require.NoError(t, err)
+	require.Contains(t, stderr, "Role for CONTEXT.md [rule, subject, process, ignore] (rule):")
+	require.Contains(t, stderr, "Role for docs/runbook.md [rule, subject, process, ignore] (rule):")
+	require.Contains(t, stdout, "adopted_orbit: docs\n")
+
+	spec, err := orbitpkg.LoadHostedOrbitSpec(context.Background(), repo.Root, "docs")
+	require.NoError(t, err)
+	require.Contains(t, spec.Members, orbitpkg.OrbitMember{
+		Name: "context",
+		Role: orbitpkg.OrbitMemberSubject,
+		Paths: orbitpkg.OrbitMemberPaths{
+			Include: []string{"CONTEXT.md"},
+		},
+	})
+	for _, member := range spec.Members {
+		require.NotContains(t, member.Paths.Include, "docs/runbook.md")
+	}
+}
+
+func TestHyardAdoptInteractiveExcludesDeclinedLocalSkillCapability(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, "AGENTS.md", "# Agent guidance\n\nUse selected local skills only.\n")
+	writeHyardAdoptSkill(t, repo, ".codex/skills/frontend-test-lab", "frontend-test-lab", "Fast frontend validation workflow")
+	repo.AddAndCommit(t, "seed local skill candidate")
+
+	stdout, stderr, err := executeHyardCLIWithInput(t, repo.Root, "\nn\ny\n", "adopt", "--orbit", "docs")
+	require.NoError(t, err)
+	require.Contains(t, stderr, "Adopt .codex/skills/frontend-test-lab as local skill capability? [Y/n]")
+	require.NotContains(t, stderr, "Apply layout move .codex/skills/frontend-test-lab -> skills/docs/frontend-test-lab?")
+	require.Contains(t, stdout, "adopted_orbit: docs\n")
+
+	spec, err := orbitpkg.LoadHostedOrbitSpec(context.Background(), repo.Root, "docs")
+	require.NoError(t, err)
+	if spec.Capabilities != nil && spec.Capabilities.Skills != nil && spec.Capabilities.Skills.Local != nil {
+		require.NotContains(t, spec.Capabilities.Skills.Local.Paths.Include, ".codex/skills/frontend-test-lab")
+	}
+}
+
+func TestHyardAdoptInteractiveDeclinedPromptCommandMoveKeepsCapabilityAtCurrentPath(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, "AGENTS.md", "# Agent guidance\n\nKeep command prompts reviewable.\n")
+	repo.WriteFile(t, ".codex/prompts/review.md", "# Review prompt\n")
+	repo.AddAndCommit(t, "seed prompt command candidate")
+
+	stdout, stderr, err := executeHyardCLIWithInput(t, repo.Root, "\ny\nn\ny\n", "adopt", "--orbit", "docs")
+	require.NoError(t, err)
+	require.Contains(t, stderr, "Adopt .codex/prompts/review.md as prompt command capability? [Y/n]")
+	require.Contains(t, stderr, "Apply layout move .codex/prompts/review.md -> commands/docs/review.md? [y/N]")
+	require.Contains(t, stdout, "adopted_orbit: docs\n")
+
+	spec, err := orbitpkg.LoadHostedOrbitSpec(context.Background(), repo.Root, "docs")
+	require.NoError(t, err)
+	require.NotNil(t, spec.Capabilities)
+	require.NotNil(t, spec.Capabilities.Commands)
+	require.Equal(t, []string{".codex/prompts/review.md"}, spec.Capabilities.Commands.Paths.Include)
+	require.FileExists(t, filepath.Join(repo.Root, ".codex", "prompts", "review.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "commands", "docs", "review.md"))
+}
+
+func TestHyardAdoptInteractiveIgnoresCodexHookHandlerCandidateWithoutWritingHookTruth(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, "AGENTS.md", "# Agent guidance\n\nReview hook candidates.\n")
+	repo.WriteFile(t, ".codex/hooks.json", ""+
+		"{\n"+
+		"  \"PreToolUse\": [\n"+
+		"    {\n"+
+		"      \"id\": \"block-dangerous-shell\",\n"+
+		"      \"command\": \"hooks/block-dangerous-shell/run.sh\"\n"+
+		"    }\n"+
+		"  ]\n"+
+		"}\n")
+	repo.WriteFile(t, "hooks/block-dangerous-shell/run.sh", "#!/bin/sh\nprintf '{\"decision\":\"allow\"}\\n'\n")
+	repo.AddAndCommit(t, "seed ignorable hook candidate")
+
+	stdout, stderr, err := executeHyardCLIWithInput(t, repo.Root, "\nn\nignore\ny\n", "adopt", "--orbit", "docs")
+	require.NoError(t, err)
+	require.Contains(t, stderr, "Role for hooks/block-dangerous-shell/run.sh [process, subject, ignore] (process):")
+	require.NotContains(t, stderr, "Apply layout move hooks/block-dangerous-shell/run.sh -> hooks/docs/block-dangerous-shell/run.sh?")
+	require.Contains(t, stdout, "adopted_orbit: docs\n")
+
+	spec, err := orbitpkg.LoadHostedOrbitSpec(context.Background(), repo.Root, "docs")
+	require.NoError(t, err)
+	require.False(t, hyardAdoptSpecHasMemberPath(
+		spec,
+		"hook-handler-block-dangerous-shell",
+		orbitpkg.OrbitMemberProcess,
+		"hooks/block-dangerous-shell/run.sh",
+	))
+
+	config, err := harnesspkg.LoadAgentUnifiedConfigFile(repo.Root)
+	if err == nil {
+		require.Empty(t, config.Hooks.Entries)
+	} else {
+		require.ErrorIs(t, err, os.ErrNotExist)
+	}
+}
+
+func TestHyardAdoptInteractiveEditsCodexHookHandlerRole(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, "AGENTS.md", "# Agent guidance\n\nReview hook roles.\n")
+	repo.WriteFile(t, ".codex/hooks.json", ""+
+		"{\n"+
+		"  \"PreToolUse\": [\n"+
+		"    {\n"+
+		"      \"id\": \"block-dangerous-shell\",\n"+
+		"      \"command\": \"hooks/block-dangerous-shell/run.sh\"\n"+
+		"    }\n"+
+		"  ]\n"+
+		"}\n")
+	repo.WriteFile(t, "hooks/block-dangerous-shell/run.sh", "#!/bin/sh\nprintf '{\"decision\":\"allow\"}\\n'\n")
+	repo.AddAndCommit(t, "seed hook role edit candidate")
+
+	stdout, stderr, err := executeHyardCLIWithInput(t, repo.Root, "\nn\nsubject\nn\ny\n", "adopt", "--orbit", "docs")
+	require.NoError(t, err)
+	require.Contains(t, stderr, "Role for hooks/block-dangerous-shell/run.sh [process, subject, ignore] (process):")
+	require.Contains(t, stdout, "adopted_orbit: docs\n")
+
+	spec, err := orbitpkg.LoadHostedOrbitSpec(context.Background(), repo.Root, "docs")
+	require.NoError(t, err)
+	require.True(t, hyardAdoptSpecHasMemberPath(
+		spec,
+		"hook-handler-block-dangerous-shell",
+		orbitpkg.OrbitMemberSubject,
+		"hooks/block-dangerous-shell/run.sh",
+	))
+
+	config, err := harnesspkg.LoadAgentUnifiedConfigFile(repo.Root)
+	require.NoError(t, err)
+	require.Len(t, config.Hooks.Entries, 1)
+	require.Equal(t, "hooks/block-dangerous-shell/run.sh", config.Hooks.Entries[0].Handler.Path)
+}
+
+func TestHyardAdoptInteractiveFullHappyPathWithCodexAssetsAndAcceptedMoves(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, "AGENTS.md", ""+
+		"# Agent guidance\n\n"+
+		"Follow [the runbook](docs/runbook.md) and use Codex assets.\n")
+	repo.WriteFile(t, "docs/runbook.md", "# Runbook\n")
+	repo.WriteFile(t, ".codex/prompts/review.md", "# Review prompt\n")
+	writeHyardAdoptSkill(t, repo, ".codex/skills/frontend-test-lab", "frontend-test-lab", "Fast frontend validation workflow")
+	repo.WriteFile(t, ".codex/hooks.json", ""+
+		"{\n"+
+		"  \"PreToolUse\": [\n"+
+		"    {\n"+
+		"      \"id\": \"block-dangerous-shell\",\n"+
+		"      \"description\": \"Block dangerous shell commands.\",\n"+
+		"      \"command\": \"hooks/block-dangerous-shell/run.sh\"\n"+
+		"    }\n"+
+		"  ]\n"+
+		"}\n")
+	repo.WriteFile(t, "hooks/block-dangerous-shell/run.sh", "#!/bin/sh\nprintf '{\"decision\":\"allow\"}\\n'\n")
+	require.NoError(t, os.Chmod(filepath.Join(repo.Root, "hooks", "block-dangerous-shell", "run.sh"), 0o755))
+	repo.AddAndCommit(t, "seed full interactive adoption assets")
+
+	stdout, stderr, err := executeHyardCLIWithInput(t, repo.Root, "\ny\ny\ny\ny\ny\ny\ny\ny\n", "adopt", "--orbit", "docs")
+	require.NoError(t, err)
+	require.Contains(t, stderr, "Apply layout move .codex/prompts/review.md -> commands/docs/review.md? [y/N]")
+	require.Contains(t, stderr, "Apply layout move .codex/skills/frontend-test-lab -> skills/docs/frontend-test-lab? [y/N]")
+	require.Contains(t, stderr, "Apply layout move docs/runbook.md -> guidance/docs/runbook.md? [y/N]")
+	require.Contains(t, stderr, "Apply layout move hooks/block-dangerous-shell/run.sh -> hooks/docs/block-dangerous-shell/run.sh? [y/N]")
+	require.Contains(t, stdout, "check_ok: true\n")
+	require.Contains(t, stdout, "validation: runtime_readiness ok=true\n")
+
+	spec, err := orbitpkg.LoadHostedOrbitSpec(context.Background(), repo.Root, "docs")
+	require.NoError(t, err)
+	require.NotNil(t, spec.Capabilities)
+	require.NotNil(t, spec.Capabilities.Commands)
+	require.Equal(t, []string{"commands/docs/review.md"}, spec.Capabilities.Commands.Paths.Include)
+	require.NotNil(t, spec.Capabilities.Skills)
+	require.NotNil(t, spec.Capabilities.Skills.Local)
+	require.Equal(t, []string{"skills/docs/frontend-test-lab"}, spec.Capabilities.Skills.Local.Paths.Include)
+	require.Contains(t, spec.Members, orbitpkg.OrbitMember{
+		Name: "runbook",
+		Role: orbitpkg.OrbitMemberRule,
+		Paths: orbitpkg.OrbitMemberPaths{
+			Include: []string{"guidance/docs/runbook.md"},
+		},
+	})
+	require.True(t, hyardAdoptSpecHasMemberPath(
+		spec,
+		"hook-handler-block-dangerous-shell",
+		orbitpkg.OrbitMemberProcess,
+		"hooks/docs/block-dangerous-shell/run.sh",
+	))
+
+	config, err := harnesspkg.LoadAgentUnifiedConfigFile(repo.Root)
+	require.NoError(t, err)
+	require.Len(t, config.Hooks.Entries, 1)
+	require.Equal(t, "hooks/docs/block-dangerous-shell/run.sh", config.Hooks.Entries[0].Handler.Path)
+}
+
+func hyardAdoptSpecHasMemberPath(
+	spec orbitpkg.OrbitSpec,
+	name string,
+	role orbitpkg.OrbitMemberRole,
+	includePath string,
+) bool {
+	for _, member := range spec.Members {
+		if member.Name != name || member.Role != role {
+			continue
+		}
+		for _, candidatePath := range member.Paths.Include {
+			if candidatePath == includePath {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 func TestHyardAdoptWriteJSONConvertsCleanRootGuidanceSlice(t *testing.T) {
 	t.Parallel()
 

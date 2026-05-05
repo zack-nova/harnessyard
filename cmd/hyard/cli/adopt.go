@@ -1,10 +1,13 @@
 package cli
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -109,6 +112,11 @@ type adoptWriteValidation struct {
 	OK     bool   `json:"ok"`
 }
 
+type adoptWriteOptions struct {
+	Candidates []adoptCheckCandidate
+	LayoutPlan *layoutOptimizePlan
+}
+
 func newAdoptCommand() *cobra.Command {
 	var check bool
 	var orbitID string
@@ -131,6 +139,15 @@ func newAdoptCommand() *cobra.Command {
 			}
 
 			if !check {
+				if !jsonOutput {
+					output, err := runAdoptInteractiveWrite(cmd, orbitID)
+					if err != nil {
+						return err
+					}
+
+					return printAdoptWriteText(cmd, output)
+				}
+
 				output, err := buildAdoptWriteOutput(cmd, orbitID)
 				if err != nil {
 					return err
@@ -160,10 +177,266 @@ func newAdoptCommand() *cobra.Command {
 	return cmd
 }
 
-func buildAdoptWriteOutput(cmd *cobra.Command, explicitOrbitID string) (adoptWriteOutput, error) {
+type adoptInteractiveSession struct {
+	reader *bufio.Reader
+	writer io.Writer
+}
+
+func newAdoptInteractiveSession(cmd *cobra.Command) adoptInteractiveSession {
+	return adoptInteractiveSession{
+		reader: bufio.NewReader(cmd.InOrStdin()),
+		writer: cmd.ErrOrStderr(),
+	}
+}
+
+func runAdoptInteractiveWrite(cmd *cobra.Command, explicitOrbitID string) (adoptWriteOutput, error) {
 	preflight, err := buildAdoptCheckOutput(cmd, explicitOrbitID)
 	if err != nil {
 		return adoptWriteOutput{}, err
+	}
+
+	session := newAdoptInteractiveSession(cmd)
+	orbitID, err := session.promptOrbitID(cmd, preflight.AdoptedOrbit.ID)
+	if err != nil {
+		return adoptWriteOutput{}, err
+	}
+	preflight, err = buildAdoptCheckOutput(cmd, orbitID)
+	if err != nil {
+		return adoptWriteOutput{}, err
+	}
+	selectedCandidates, err := session.selectCandidates(cmd, preflight.Candidates)
+	if err != nil {
+		return adoptWriteOutput{}, err
+	}
+	preflight.Candidates = selectedCandidates
+	layoutPlan, err := buildAdoptionLayoutOptimizePlan(cmd, preflight)
+	if err != nil {
+		return adoptWriteOutput{}, err
+	}
+	confirmedLayoutPlan, err := session.confirmLayoutMoves(cmd, layoutPlan)
+	if err != nil {
+		return adoptWriteOutput{}, err
+	}
+	confirmed, err := session.confirm(cmd, "Write Adoption changes? [y/N] ")
+	if err != nil {
+		return adoptWriteOutput{}, err
+	}
+	if !confirmed {
+		return adoptWriteOutput{}, fmt.Errorf("adoption canceled")
+	}
+
+	return buildAdoptWriteOutputWithOptions(cmd, orbitID, adoptWriteOptions{
+		Candidates: selectedCandidates,
+		LayoutPlan: &confirmedLayoutPlan,
+	})
+}
+
+func (session adoptInteractiveSession) promptOrbitID(cmd *cobra.Command, defaultOrbitID string) (string, error) {
+	raw, err := session.promptLine(cmd, fmt.Sprintf("Adopted Orbit id [%s]: ", defaultOrbitID))
+	if err != nil {
+		return "", fmt.Errorf("confirm Adopted Orbit id: %w", err)
+	}
+	orbitID := strings.TrimSpace(raw)
+	if orbitID == "" {
+		orbitID = defaultOrbitID
+	}
+	if err := ids.ValidateOrbitID(orbitID); err != nil {
+		return "", fmt.Errorf("validate Adopted Orbit id: %w", err)
+	}
+
+	return orbitID, nil
+}
+
+func (session adoptInteractiveSession) confirm(cmd *cobra.Command, prompt string) (bool, error) {
+	return session.confirmDefault(cmd, prompt, false)
+}
+
+func (session adoptInteractiveSession) confirmDefault(cmd *cobra.Command, prompt string, defaultAnswer bool) (bool, error) {
+	raw, err := session.promptLine(cmd, prompt)
+	if err != nil {
+		return false, err
+	}
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "y", "yes":
+		return true, nil
+	case "":
+		return defaultAnswer, nil
+	case "n", "no":
+		return false, nil
+	default:
+		return false, fmt.Errorf("expected yes or no")
+	}
+}
+
+func (session adoptInteractiveSession) selectCandidates(
+	cmd *cobra.Command,
+	candidates []adoptCheckCandidate,
+) ([]adoptCheckCandidate, error) {
+	acceptRecommended := true
+	if !adoptHasRoleConfirmationCandidates(candidates) {
+		acceptRecommended = false
+	} else {
+		var err error
+		acceptRecommended, err = session.confirmDefault(cmd, "Accept all recommended candidate roles? [Y/n] ", true)
+		if err != nil {
+			return nil, fmt.Errorf("confirm candidate roles: %w", err)
+		}
+	}
+
+	selected := []adoptCheckCandidate{}
+	for _, candidate := range candidates {
+		switch {
+		case candidate.Kind == "root_agent_guidance":
+			selected = append(selected, candidate)
+		case candidate.Kind == "local_skill_capability":
+			confirmed, err := session.confirmDefault(
+				cmd,
+				fmt.Sprintf("Adopt %s as local skill capability? [Y/n] ", candidate.Path),
+				true,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("confirm local skill capability %s: %w", candidate.Path, err)
+			}
+			if confirmed {
+				selected = append(selected, candidate)
+			}
+		case candidate.Kind == "prompt_command_capability":
+			confirmed, err := session.confirmDefault(
+				cmd,
+				fmt.Sprintf("Adopt %s as prompt command capability? [Y/n] ", candidate.Path),
+				true,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("confirm prompt command capability %s: %w", candidate.Path, err)
+			}
+			if confirmed {
+				selected = append(selected, candidate)
+			}
+		case candidate.RoleConfirmation.Required:
+			if acceptRecommended {
+				selected = append(selected, candidate)
+				continue
+			}
+			role, err := session.promptCandidateRole(cmd, candidate)
+			if err != nil {
+				return nil, err
+			}
+			if role == "ignore" {
+				continue
+			}
+			candidate.RecommendedMemberRole = role
+			selected = append(selected, candidate)
+		default:
+			selected = append(selected, candidate)
+		}
+	}
+
+	return selected, nil
+}
+
+func adoptHasRoleConfirmationCandidates(candidates []adoptCheckCandidate) bool {
+	for _, candidate := range candidates {
+		if candidate.RoleConfirmation.Required {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (session adoptInteractiveSession) promptCandidateRole(
+	cmd *cobra.Command,
+	candidate adoptCheckCandidate,
+) (string, error) {
+	prompt := fmt.Sprintf(
+		"Role for %s [%s] (%s): ",
+		candidate.Path,
+		strings.Join(candidate.RoleConfirmation.EditableRoles, ", "),
+		candidate.RecommendedMemberRole,
+	)
+	raw, err := session.promptLine(cmd, prompt)
+	if err != nil {
+		return "", fmt.Errorf("prompt candidate role for %s: %w", candidate.Path, err)
+	}
+	role := strings.TrimSpace(raw)
+	if role == "" {
+		role = candidate.RecommendedMemberRole
+	}
+	if !adoptCandidateEditableRole(candidate, role) {
+		return "", fmt.Errorf("candidate %s does not allow role %q", candidate.Path, role)
+	}
+
+	return role, nil
+}
+
+func adoptCandidateEditableRole(candidate adoptCheckCandidate, role string) bool {
+	for _, editableRole := range candidate.RoleConfirmation.EditableRoles {
+		if role == editableRole {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (session adoptInteractiveSession) confirmLayoutMoves(
+	cmd *cobra.Command,
+	plan layoutOptimizePlan,
+) (layoutOptimizePlan, error) {
+	if len(plan.Conflicts) > 0 {
+		return layoutOptimizePlan{}, formatLayoutOptimizeBlockedError(plan)
+	}
+	confirmed := plan
+	confirmed.Moves = []layoutOptimizeMove{}
+	for _, move := range plan.Moves {
+		prompt := fmt.Sprintf("Apply layout move %s -> %s? [y/N] ", move.From, move.To)
+		applyMove, err := session.confirm(cmd, prompt)
+		if err != nil {
+			return layoutOptimizePlan{}, fmt.Errorf("confirm layout move %s -> %s: %w", move.From, move.To, err)
+		}
+		if applyMove {
+			confirmed.Moves = append(confirmed.Moves, move)
+		}
+	}
+
+	return confirmed, nil
+}
+
+func (session adoptInteractiveSession) promptLine(cmd *cobra.Command, prompt string) (string, error) {
+	select {
+	case <-cmd.Context().Done():
+		return "", fmt.Errorf("prompt context canceled: %w", cmd.Context().Err())
+	default:
+	}
+	if _, err := fmt.Fprint(session.writer, prompt); err != nil {
+		return "", fmt.Errorf("write prompt: %w", err)
+	}
+	line, err := session.reader.ReadString('\n')
+	if err != nil {
+		if errors.Is(err, io.EOF) && line != "" {
+			return strings.TrimSpace(line), nil
+		}
+		return "", err
+	}
+
+	return strings.TrimSpace(line), nil
+}
+
+func buildAdoptWriteOutput(cmd *cobra.Command, explicitOrbitID string) (adoptWriteOutput, error) {
+	return buildAdoptWriteOutputWithOptions(cmd, explicitOrbitID, adoptWriteOptions{})
+}
+
+func buildAdoptWriteOutputWithOptions(
+	cmd *cobra.Command,
+	explicitOrbitID string,
+	options adoptWriteOptions,
+) (adoptWriteOutput, error) {
+	preflight, err := buildAdoptCheckOutput(cmd, explicitOrbitID)
+	if err != nil {
+		return adoptWriteOutput{}, err
+	}
+	if options.Candidates != nil {
+		preflight.Candidates = options.Candidates
 	}
 	if preflight.ExistingHarnessRuntime {
 		return adoptWriteOutput{}, fmt.Errorf("existing Harness Runtime cannot be adopted again; use `hyard layout optimize`")
@@ -214,6 +487,8 @@ func buildAdoptWriteOutput(cmd *cobra.Command, explicitOrbitID string) (adoptWri
 		return adoptWriteOutput{}, fmt.Errorf("build adopted orbit spec: %w", err)
 	}
 	spec.Meta.AgentsTemplate = string(originalAgents)
+	spec = applyAdoptedGuidanceMemberTruth(spec, preflight.Candidates)
+	spec = applyAdoptedCodexPromptCommandCapabilityTruth(spec, preflight.Candidates)
 	spec = applyAdoptedCodexLocalSkillCapabilityTruth(spec, preflight.Candidates)
 	spec = applyAdoptedCodexHookHandlerMemberTruth(spec, preflight.Candidates)
 	if _, err := orbitpkg.WriteHostedOrbitSpec(preflight.RepoRoot, spec); err != nil {
@@ -244,6 +519,9 @@ func buildAdoptWriteOutput(cmd *cobra.Command, explicitOrbitID string) (adoptWri
 	convertedHooks, _, err := inspectAdoptableCodexNativeHooks(cmd, preflight.RepoRoot)
 	if err != nil {
 		return adoptWriteOutput{}, err
+	}
+	if options.Candidates != nil {
+		convertedHooks = filterAdoptedCodexNativeHooks(convertedHooks, preflight.Candidates)
 	}
 	hooksConfigWritten := false
 	if len(convertedHooks) > 0 {
@@ -294,6 +572,28 @@ func buildAdoptWriteOutput(cmd *cobra.Command, explicitOrbitID string) (adoptWri
 	}
 	if hooksConfigWritten {
 		writtenPaths = append(writtenPaths, harnesspkg.AgentUnifiedConfigRepoPath())
+	}
+	if options.LayoutPlan != nil && len(options.LayoutPlan.Moves) > 0 {
+		layoutOutput := layoutOptimizeOutput{
+			RepoRoot:       preflight.RepoRoot,
+			Mode:           "apply",
+			RepositoryMode: "ordinary_repository",
+			MovePlan:       *options.LayoutPlan,
+		}
+		if err := applyLayoutOptimizePlan(cmd, layoutOutput); err != nil {
+			return adoptWriteOutput{}, fmt.Errorf("apply confirmed Adoption layout moves: %w", err)
+		}
+		for _, move := range options.LayoutPlan.Moves {
+			writtenPaths = append(writtenPaths, move.To)
+		}
+		checkResult, err = harnesspkg.CheckRuntime(cmd.Context(), preflight.RepoRoot)
+		if err != nil {
+			return adoptWriteOutput{}, fmt.Errorf("validate layout-updated runtime check summary: %w", err)
+		}
+		readiness, err = harnesspkg.EvaluateRuntimeReadiness(cmd.Context(), preflight.RepoRoot)
+		if err != nil {
+			return adoptWriteOutput{}, fmt.Errorf("validate layout-updated runtime readiness: %w", err)
+		}
 	}
 	writtenPaths = uniqueAdoptWritePaths(writtenPaths)
 
@@ -357,6 +657,11 @@ func buildAdoptCheckOutput(cmd *cobra.Command, explicitOrbitID string) (adoptChe
 	}
 	candidates = append(candidates, localSkillCandidates...)
 	candidateDiagnostics = append(candidateDiagnostics, localSkillDiagnostics...)
+	promptCommandCandidates, err := inspectAdoptCheckCodexPromptCommandCandidates(cmd, repo.Root)
+	if err != nil {
+		return adoptCheckOutput{}, err
+	}
+	candidates = append(candidates, promptCommandCandidates...)
 	hookCandidates, hookDiagnostics, err := inspectAdoptCheckCodexHookHandlerCandidates(cmd, repo.Root)
 	if err != nil {
 		return adoptCheckOutput{}, err
@@ -415,6 +720,28 @@ func buildAdoptCheckOutput(cmd *cobra.Command, explicitOrbitID string) (adoptChe
 	}
 
 	return output, nil
+}
+
+func inspectAdoptCheckCodexPromptCommandCandidates(cmd *cobra.Command, repoRoot string) ([]adoptCheckCandidate, error) {
+	trackedFiles, err := gitpkg.TrackedFiles(cmd.Context(), repoRoot)
+	if err != nil {
+		return nil, fmt.Errorf("load tracked files for Codex prompt command discovery: %w", err)
+	}
+
+	promptPaths := layoutCodexPromptCommandPaths(trackedFiles)
+	candidates := make([]adoptCheckCandidate, 0, len(promptPaths))
+	for _, promptPath := range promptPaths {
+		candidates = append(candidates, adoptCheckCandidate{
+			Path:  promptPath,
+			Kind:  "prompt_command_capability",
+			Shape: "file",
+			Evidence: []adoptCheckEvidence{
+				{Kind: "codex_prompt_command", Path: promptPath},
+			},
+		})
+	}
+
+	return candidates, nil
 }
 
 func inspectAdoptCheckFrameworks(repoRoot string) (adoptCheckFrameworks, error) {
@@ -764,6 +1091,122 @@ func adoptCheckCodexLocalSkillNonRecommendedPathDiagnostic(
 	}
 }
 
+func applyAdoptedGuidanceMemberTruth(spec orbitpkg.OrbitSpec, candidates []adoptCheckCandidate) orbitpkg.OrbitSpec {
+	memberNames := map[string]struct{}{}
+	for _, member := range spec.Members {
+		name := member.Name
+		if name == "" {
+			name = member.Key
+		}
+		if name != "" {
+			memberNames[name] = struct{}{}
+		}
+	}
+
+	members := []orbitpkg.OrbitMember{}
+	for _, candidate := range candidates {
+		if candidate.Kind != "referenced_guidance_document" || candidate.RecommendedMemberRole == "ignore" {
+			continue
+		}
+		role, err := orbitpkg.ParseOrbitMemberRole(candidate.RecommendedMemberRole)
+		if err != nil {
+			continue
+		}
+		includePath := candidate.Path
+		if candidate.Shape == "directory" {
+			includePath = strings.TrimSuffix(candidate.Path, "/") + "/**"
+		}
+		name := uniqueAdoptedMemberName(adoptedMemberNameFromPath(candidate.Path), memberNames)
+		members = append(members, orbitpkg.OrbitMember{
+			Name: name,
+			Role: role,
+			Paths: orbitpkg.OrbitMemberPaths{
+				Include: []string{includePath},
+			},
+		})
+	}
+	if len(members) == 0 {
+		return spec
+	}
+	spec.Members = append(spec.Members, members...)
+
+	return spec
+}
+
+func adoptedMemberNameFromPath(repoPath string) string {
+	base := path.Base(strings.TrimSuffix(repoPath, "/"))
+	base = strings.TrimSuffix(base, path.Ext(base))
+	base = strings.ToLower(base)
+	var builder strings.Builder
+	lastSeparator := false
+	for _, char := range base {
+		switch {
+		case char >= 'a' && char <= 'z':
+			builder.WriteRune(char)
+			lastSeparator = false
+		case char >= '0' && char <= '9':
+			builder.WriteRune(char)
+			lastSeparator = false
+		case char == '_' || char == '-':
+			if !lastSeparator {
+				builder.WriteRune(char)
+				lastSeparator = true
+			}
+		default:
+			if !lastSeparator {
+				builder.WriteRune('-')
+				lastSeparator = true
+			}
+		}
+	}
+	name := strings.Trim(builder.String(), "-_")
+	if name == "" || ids.ValidateOrbitID(name) != nil {
+		return "member"
+	}
+
+	return name
+}
+
+func uniqueAdoptedMemberName(name string, seen map[string]struct{}) string {
+	if _, ok := seen[name]; !ok {
+		seen[name] = struct{}{}
+		return name
+	}
+	for index := 2; ; index++ {
+		candidate := fmt.Sprintf("%s-%d", name, index)
+		if _, ok := seen[candidate]; ok {
+			continue
+		}
+		seen[candidate] = struct{}{}
+		return candidate
+	}
+}
+
+func applyAdoptedCodexPromptCommandCapabilityTruth(spec orbitpkg.OrbitSpec, candidates []adoptCheckCandidate) orbitpkg.OrbitSpec {
+	promptPaths := []string{}
+	for _, candidate := range candidates {
+		if candidate.Kind != "prompt_command_capability" {
+			continue
+		}
+		promptPaths = append(promptPaths, candidate.Path)
+	}
+	if len(promptPaths) == 0 {
+		return spec
+	}
+	sort.Strings(promptPaths)
+
+	if spec.Capabilities == nil {
+		spec.Capabilities = &orbitpkg.OrbitCapabilities{}
+	}
+	spec.Capabilities.Commands = &orbitpkg.OrbitCommandCapabilityPaths{
+		Paths: orbitpkg.OrbitMemberPaths{
+			Include: promptPaths,
+		},
+	}
+
+	return spec
+}
+
 func applyAdoptedCodexLocalSkillCapabilityTruth(spec orbitpkg.OrbitSpec, candidates []adoptCheckCandidate) orbitpkg.OrbitSpec {
 	skillRoots := []string{}
 	for _, candidate := range candidates {
@@ -796,26 +1239,33 @@ func applyAdoptedCodexHookHandlerMemberTruth(spec orbitpkg.OrbitSpec, candidates
 	members := []orbitpkg.OrbitMember{}
 	seen := map[string]struct{}{}
 	for _, candidate := range candidates {
-		if candidate.Kind != "codex_hook_handler" {
+		if candidate.Kind != "codex_hook_handler" || candidate.RecommendedMemberRole == "ignore" {
 			continue
 		}
 		if _, ok := seen[candidate.Path]; ok {
 			continue
 		}
 		seen[candidate.Path] = struct{}{}
-		writeScope := true
-		exportScope := true
-		members = append(members, orbitpkg.OrbitMember{
+		role, err := orbitpkg.ParseOrbitMemberRole(candidate.RecommendedMemberRole)
+		if err != nil {
+			continue
+		}
+		member := orbitpkg.OrbitMember{
 			Name: "hook-handler-" + adoptCheckCodexHookCandidateID(candidate),
-			Role: orbitpkg.OrbitMemberProcess,
+			Role: role,
 			Paths: orbitpkg.OrbitMemberPaths{
 				Include: []string{candidate.Path},
 			},
-			Scopes: &orbitpkg.OrbitMemberScopePatch{
+		}
+		if role == orbitpkg.OrbitMemberProcess {
+			writeScope := true
+			exportScope := true
+			member.Scopes = &orbitpkg.OrbitMemberScopePatch{
 				Write:  &writeScope,
 				Export: &exportScope,
-			},
-		})
+			}
+		}
+		members = append(members, member)
 	}
 	if len(members) == 0 {
 		return spec
@@ -826,6 +1276,32 @@ func applyAdoptedCodexHookHandlerMemberTruth(spec orbitpkg.OrbitSpec, candidates
 	spec.Members = append(spec.Members, members...)
 
 	return spec
+}
+
+func filterAdoptedCodexNativeHooks(
+	hooks []adoptedCodexNativeHook,
+	candidates []adoptCheckCandidate,
+) []adoptedCodexNativeHook {
+	acceptedHandlers := map[string]struct{}{}
+	for _, candidate := range candidates {
+		if candidate.Kind != "codex_hook_handler" || candidate.RecommendedMemberRole == "ignore" {
+			continue
+		}
+		acceptedHandlers[candidate.Path] = struct{}{}
+	}
+	if len(acceptedHandlers) == 0 {
+		return []adoptedCodexNativeHook{}
+	}
+
+	filtered := make([]adoptedCodexNativeHook, 0, len(hooks))
+	for _, hook := range hooks {
+		if _, ok := acceptedHandlers[hook.HandlerPath]; !ok {
+			continue
+		}
+		filtered = append(filtered, hook)
+	}
+
+	return filtered
 }
 
 func adoptCheckCodexHookCandidateID(candidate adoptCheckCandidate) string {

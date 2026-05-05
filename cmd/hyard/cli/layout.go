@@ -235,6 +235,10 @@ func buildOrdinaryLayoutOptimizePlan(cmd *cobra.Command, explicitOrbitID string)
 		return layoutOptimizePlan{}, err
 	}
 
+	return buildAdoptionLayoutOptimizePlan(cmd, adoptionPreview)
+}
+
+func buildAdoptionLayoutOptimizePlan(_ *cobra.Command, adoptionPreview adoptCheckOutput) (layoutOptimizePlan, error) {
 	plan := newLayoutOptimizePlan(adoptionPreview.AdoptedOrbit.ID)
 	for _, diagnostic := range adoptionPreview.Diagnostics {
 		if diagnostic.Severity == "error" {
@@ -258,6 +262,14 @@ func buildOrdinaryLayoutOptimizePlan(cmd *cobra.Command, explicitOrbitID string)
 				layoutOrbitTruthPath(adoptionPreview.AdoptedOrbit.ID),
 				"capabilities.skills.local.paths.include",
 			)...)
+		case "prompt_command_capability":
+			plan.Moves = append(plan.Moves, layoutMoveIfDifferent(
+				candidate.Path,
+				layoutRecommendedCommandPath(adoptionPreview.AdoptedOrbit.ID, candidate.Path),
+				"prompt_command_recommended_position",
+				layoutOrbitTruthPath(adoptionPreview.AdoptedOrbit.ID),
+				"capabilities.commands.paths.include",
+			)...)
 		case "referenced_guidance_document":
 			plan.Moves = append(plan.Moves, layoutMoveIfDifferent(
 				candidate.Path,
@@ -275,20 +287,6 @@ func buildOrdinaryLayoutOptimizePlan(cmd *cobra.Command, explicitOrbitID string)
 				"members[].paths.include",
 			)...)
 		}
-	}
-
-	trackedFiles, err := gitpkg.TrackedFiles(cmd.Context(), adoptionPreview.RepoRoot)
-	if err != nil {
-		return layoutOptimizePlan{}, fmt.Errorf("load tracked files for prompt command discovery: %w", err)
-	}
-	for _, promptPath := range layoutCodexPromptCommandPaths(trackedFiles) {
-		plan.Moves = append(plan.Moves, layoutMoveIfDifferent(
-			promptPath,
-			layoutRecommendedCommandPath(adoptionPreview.AdoptedOrbit.ID, promptPath),
-			"prompt_command_recommended_position",
-			layoutOrbitTruthPath(adoptionPreview.AdoptedOrbit.ID),
-			"capabilities.commands.paths.include",
-		)...)
 	}
 
 	finalizeLayoutOptimizePlan(adoptionPreview.RepoRoot, &plan)
@@ -539,6 +537,9 @@ func applyLayoutOptimizePlan(cmd *cobra.Command, output layoutOptimizeOutput) er
 	if err := applyLayoutOptimizeTruthUpdates(cmd, output.RepoRoot, output.MovePlan, allowCreateMissingTruth); err != nil {
 		return err
 	}
+	if err := applyLayoutOptimizeAgentConfigHookPaths(output.RepoRoot, output.MovePlan); err != nil {
+		return err
+	}
 	if err := applyLayoutOptimizeGuidanceLinks(output.RepoRoot, output.MovePlan); err != nil {
 		return err
 	}
@@ -609,6 +610,44 @@ func writeLayoutOptimizeUpdatedSpecs(repoRoot string, specs map[string]orbitpkg.
 		if _, err := orbitpkg.WriteHostedOrbitSpec(repoRoot, specs[orbitID]); err != nil {
 			return fmt.Errorf("write hosted orbit spec %q after layout optimization: %w", orbitID, err)
 		}
+	}
+
+	return nil
+}
+
+func applyLayoutOptimizeAgentConfigHookPaths(repoRoot string, plan layoutOptimizePlan) error {
+	configFile, hasConfig, err := harnesspkg.LoadOptionalAgentUnifiedConfigFile(repoRoot)
+	if err != nil {
+		return fmt.Errorf("load agent config for layout hook path updates: %w", err)
+	}
+	if !hasConfig || len(configFile.Hooks.Entries) == 0 {
+		return nil
+	}
+
+	changed := false
+	for entryIndex := range configFile.Hooks.Entries {
+		handlerPath := configFile.Hooks.Entries[entryIndex].Handler.Path
+		if strings.TrimSpace(handlerPath) == "" {
+			continue
+		}
+		updatedPath := handlerPath
+		for _, move := range plan.Moves {
+			nextPath, pathChanged, err := layoutRewritePathPattern(updatedPath, move.From, move.To)
+			if err != nil {
+				return fmt.Errorf("rewrite agent hook handler path %q: %w", handlerPath, err)
+			}
+			if pathChanged {
+				updatedPath = nextPath
+				changed = true
+			}
+		}
+		configFile.Hooks.Entries[entryIndex].Handler.Path = updatedPath
+	}
+	if !changed {
+		return nil
+	}
+	if _, err := harnesspkg.WriteAgentUnifiedConfigFile(repoRoot, configFile); err != nil {
+		return fmt.Errorf("write agent config after layout hook path updates: %w", err)
 	}
 
 	return nil
