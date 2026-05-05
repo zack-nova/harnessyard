@@ -76,10 +76,12 @@ type hyardAgentCleanupOutput struct {
 
 func newRemoveCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "remove <package>",
-		Short: "Remove an orbit or harness package from the current runtime",
-		Long: "Remove an orbit or harness package from the current runtime through the canonical hyard user surface.\n" +
-			"Use `hyard remove orbit <name>` or `hyard remove harness <name>` when a package name is ambiguous.",
+		Use:    "remove <package>",
+		Short:  "Compatibility alias for package uninstallation",
+		Hidden: true,
+		Long: "`hyard remove` is a compatibility alias for package uninstallation.\n" +
+			"`hyard uninstall` is the preferred command for package uninstallation.\n" +
+			"Use `hyard uninstall orbit <name>` or `hyard uninstall harness <name>` when a package name is ambiguous.",
 		Example: "" +
 			"  hyard remove docs\n" +
 			"  hyard remove orbit docs\n" +
@@ -210,9 +212,9 @@ func runHyardRemoveAuto(cmd *cobra.Command, rawPackage string, surface hyardPack
 			"%s target %q is ambiguous; use `hyard %s orbit %s` or `hyard %s harness %s`",
 			surface.Command,
 			packageName,
-			surface.Command,
+			surface.guidanceCommand(),
 			packageName,
-			surface.Command,
+			surface.guidanceCommand(),
 			packageName,
 		)
 	case matchesOrbit:
@@ -224,9 +226,9 @@ func runHyardRemoveAuto(cmd *cobra.Command, rawPackage string, surface hyardPack
 			"%s target %q was not found in the current runtime; use `hyard %s orbit %s` or `hyard %s harness %s` when the package type is known",
 			surface.Command,
 			packageName,
-			surface.Command,
+			surface.guidanceCommand(),
 			packageName,
-			surface.Command,
+			surface.guidanceCommand(),
 			packageName,
 		)
 	}
@@ -250,7 +252,7 @@ func runHyardRemoveOrbitWithResolvedRoot(cmd *cobra.Command, resolved harnesspkg
 		return fmt.Errorf("read --dry-run flag: %w", err)
 	}
 	if dryRun {
-		return fmt.Errorf("%s orbit --dry-run is not supported; use `hyard %s harness <name> --dry-run` for harness package previews", surface.Command, surface.Command)
+		return fmt.Errorf("%s orbit --dry-run is not supported; use `hyard %s harness <name> --dry-run` for harness package previews", surface.Command, surface.guidanceCommand())
 	}
 	jsonOutput, err := wantHyardJSON(cmd)
 	if err != nil {
@@ -460,6 +462,13 @@ func applyHyardRemoveSurface(output *hyardRemoveOutput, surface hyardPackageRemo
 	if surface.Action != "" {
 		output.Action = surface.Action
 	}
+}
+
+func (surface hyardPackageRemovalSurface) guidanceCommand() string {
+	if surface.Command == hyardRemoveSurface.Command {
+		return hyardUninstallSurface.Command
+	}
+	return surface.Command
 }
 
 func hyardAgentCleanupFromHarness(cleanup harnesspkg.AgentCleanupResult) hyardAgentCleanupOutput {

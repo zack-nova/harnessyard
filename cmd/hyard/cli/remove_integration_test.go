@@ -393,6 +393,20 @@ func TestHyardRemoveRejectsVersionedPackageCoordinate(t *testing.T) {
 	require.Equal(t, "docs", runtimeFile.Members[0].OrbitID)
 }
 
+func TestHyardRemoveOrbitDryRunGuidancePrefersUninstall(t *testing.T) {
+	t.Parallel()
+
+	repo := seedCommittedHyardRuntimeRepo(t)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "remove", "orbit", "docs", "--dry-run")
+	require.Error(t, err)
+	require.Empty(t, stdout)
+	require.Empty(t, stderr)
+	require.ErrorContains(t, err, "remove orbit --dry-run is not supported")
+	require.ErrorContains(t, err, "hyard uninstall harness <name> --dry-run")
+	require.NotContains(t, err.Error(), "hyard remove harness <name> --dry-run")
+}
+
 func TestHyardUninstallOrbitRejectsVersionedPackageCoordinate(t *testing.T) {
 	t.Parallel()
 
@@ -468,8 +482,10 @@ func TestHyardRemoveBareNameFailsClosedWhenOrbitAndHarnessAreAmbiguous(t *testin
 	require.Empty(t, stdout)
 	require.Empty(t, stderr)
 	require.ErrorContains(t, err, `remove target "`+harnessID+`" is ambiguous`)
-	require.ErrorContains(t, err, `hyard remove orbit `+harnessID)
-	require.ErrorContains(t, err, `hyard remove harness `+harnessID)
+	require.ErrorContains(t, err, `hyard uninstall orbit `+harnessID)
+	require.ErrorContains(t, err, `hyard uninstall harness `+harnessID)
+	require.NotContains(t, err.Error(), `hyard remove orbit `+harnessID)
+	require.NotContains(t, err.Error(), `hyard remove harness `+harnessID)
 }
 
 func TestHyardUninstallBareNameFailsClosedWhenOrbitAndHarnessAreAmbiguous(t *testing.T) {
