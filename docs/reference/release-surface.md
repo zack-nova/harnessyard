@@ -52,6 +52,21 @@ curl -fsSL https://raw.githubusercontent.com/zack-nova/harnessyard/main/install.
 
 The install script installs `hyard` from the latest release and points users to the compatibility plumbing interface when they need legacy `orbit` or `harness` behavior.
 
+## Package Lifecycle Surface
+
+The canonical top-level package lifecycle surface is:
+
+```bash
+hyard install <template-source>
+hyard uninstall orbit <orbit-package>
+hyard uninstall harness <harness-package>
+```
+
+User-facing package lifecycle documentation should prefer `uninstall`.
+Scoped member-editing documentation may continue to use add/remove language, such as
+`hyard orbit member add` and `hyard orbit member remove`, when it describes collection
+membership rather than installed package lifecycle.
+
 ## Release Assets
 
 Each release should publish platform archives that contain the `hyard` binary.
