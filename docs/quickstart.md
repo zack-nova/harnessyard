@@ -66,6 +66,12 @@ hyard guide sync
 hyard check --json
 ```
 
+Uninstall an installed orbit package when it is no longer needed:
+
+```bash
+hyard uninstall orbit <orbit-package>
+```
+
 Manage orbit affiliation in the current harness composition:
 
 ```bash
