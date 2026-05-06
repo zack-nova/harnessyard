@@ -131,7 +131,7 @@ func TestEvaluateRuntimeReadinessManualOrbitWithoutAgentsTemplateIsUsable(t *tes
 	orbitReport := requireReadinessOrbitReport(t, report, "docs")
 	require.Equal(t, ReadinessStatusUsable, orbitReport.Status)
 	require.Contains(t, readinessReasonCodes(orbitReport.Reasons), string(ReadinessReasonAgentsNotComposed))
-	require.Contains(t, readinessStepCommands(report.NextSteps), "hyard guide sync --target agents")
+	require.Contains(t, readinessStepCommands(report.NextSteps), "hyard guide sync --target agents --output")
 }
 
 func TestEvaluateRuntimeReadinessBundleOwnedOrbitsWithoutStandaloneAgentsBlocksAreReady(t *testing.T) {

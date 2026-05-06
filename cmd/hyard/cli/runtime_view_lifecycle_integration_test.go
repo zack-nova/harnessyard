@@ -258,25 +258,65 @@ func TestHyardCreateAndInitRuntimeDefaultToRunViewStatus(t *testing.T) {
 	requireHyardRunViewRuntimeContentStatus(t, initRepo.Root)
 }
 
-func TestHyardGuideSyncDefaultsRuntimeGuidanceToRunViewPresentation(t *testing.T) {
+func TestHyardGuideSyncRunViewRequiresExplicitOutputIntent(t *testing.T) {
 	t.Parallel()
 
 	repo := seedHyardRunViewGuidanceRuntimeRepo(t)
 
 	stdout, stderr, err := executeHyardCLI(t, repo.Root, "guide", "sync", "--target", "all", "--json")
+	require.ErrorContains(t, err, "standalone Run View guidance output requires explicit output intent")
+	require.Empty(t, stdout)
+	require.Empty(t, stderr)
+	require.NoFileExists(t, filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "HUMANS.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "BOOTSTRAP.md"))
+}
+
+func TestHyardGuideSyncOutputFlagOutputsRuntimeGuidanceToRunViewPresentation(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardRunViewGuidanceRuntimeRepo(t)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "guide", "sync", "--target", "all", "--output")
 	require.NoError(t, err)
 	require.Empty(t, stderr)
-
-	var payload struct {
-		ArtifactCount int `json:"artifact_count"`
-	}
-	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
-	require.Equal(t, 3, payload.ArtifactCount)
+	require.Contains(t, stdout, "standalone Run View guidance output is presentation output, not authored reconciliation")
+	require.Contains(t, stdout, "artifact_count: 3\n")
 
 	require.Equal(t, "Use docs runtime guidance.\n", readRepoFile(t, repo.Root, "AGENTS.md"))
 	require.Equal(t, "Read the docs workflow.\n", readRepoFile(t, repo.Root, "HUMANS.md"))
 	require.Equal(t, "Bootstrap the docs workflow.\n", readRepoFile(t, repo.Root, "BOOTSTRAP.md"))
 	requireHyardRunViewRuntimeContentStatus(t, repo.Root)
+}
+
+func TestHyardGuideSyncInteractiveConfirmationOutputsRunViewPresentation(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardRunViewGuidanceRuntimeRepo(t)
+
+	stdout, stderr, err := executeHyardCLIWithInteractiveInput(t, repo.Root, "y\n", "guide", "sync", "--target", "agents")
+	require.NoError(t, err)
+	require.Contains(t, stderr, "Output standalone Run View guidance presentation? [y/N] ")
+	require.Contains(t, stdout, "standalone Run View guidance output is presentation output, not authored reconciliation")
+	require.Contains(t, stdout, "artifact_count: 1\n")
+
+	require.Equal(t, "Use docs runtime guidance.\n", readRepoFile(t, repo.Root, "AGENTS.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "HUMANS.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "BOOTSTRAP.md"))
+}
+
+func TestHyardGuideSyncInteractiveCancellationLeavesRunViewPresentationUnchanged(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardRunViewGuidanceRuntimeRepo(t)
+
+	stdout, stderr, err := executeHyardCLIWithInteractiveInput(t, repo.Root, "n\n", "guide", "sync", "--target", "agents")
+	require.ErrorContains(t, err, "standalone Run View guidance output canceled")
+	require.Empty(t, stdout)
+	require.Contains(t, stderr, "Output standalone Run View guidance presentation? [y/N] ")
+	require.NoFileExists(t, filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "HUMANS.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "BOOTSTRAP.md"))
 }
 
 func TestHyardCloneDefaultsInstalledRuntimeToRunViewPresentation(t *testing.T) {

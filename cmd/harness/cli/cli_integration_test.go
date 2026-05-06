@@ -1122,7 +1122,7 @@ func TestHarnessGuidanceComposeUsesTargetContractInJSON(t *testing.T) {
 
 	repo := seedHarnessFrameworkRepo(t)
 
-	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "guidance", "compose", "--target", "all", "--json")
+	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "guidance", "compose", "--target", "all", "--output", "--json")
 	require.NoError(t, err)
 	require.Empty(t, stderr)
 
@@ -1149,12 +1149,26 @@ func TestHarnessGuidanceComposeUsesTargetContractInJSON(t *testing.T) {
 	require.ElementsMatch(t, []string{"agents", "humans", "bootstrap"}, targets)
 }
 
+func TestHarnessGuidanceComposeRunViewRequiresExplicitOutputIntent(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHarnessFrameworkRepo(t)
+
+	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "guidance", "compose", "--target", "all", "--json")
+	require.ErrorContains(t, err, "standalone Run View guidance output requires explicit output intent")
+	require.Empty(t, stdout)
+	require.Empty(t, stderr)
+	require.NoFileExists(t, filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "HUMANS.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "BOOTSTRAP.md"))
+}
+
 func TestHarnessGuidanceComposeAcceptsEquivalentLegacyAudienceAlias(t *testing.T) {
 	t.Parallel()
 
 	repo := seedHarnessFrameworkRepo(t)
 
-	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "guidance", "compose", "--target", "agents", "--audience", "agent", "--json")
+	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "guidance", "compose", "--target", "agents", "--audience", "agent", "--output", "--json")
 	require.NoError(t, err)
 	require.Contains(t, stderr, "warning: --audience is deprecated; use --target")
 
@@ -3017,7 +3031,7 @@ func TestHarnessReadyTextOutputForManualOrbitWithoutAgentsTemplate(t *testing.T)
 		"warning: root AGENTS.md has not been composed for this orbit (orbit_ids=docs, code=agents_not_composed)\n"+
 		"orbit: docs source=manual status=usable\n"+
 		"orbit_warning: docs root AGENTS.md has not been composed for this orbit (code=agents_not_composed)\n"+
-		"suggested_command: hyard guide sync --target agents (refresh root AGENTS orchestration)\n", stdout)
+		"suggested_command: hyard guide sync --target agents --output (refresh root AGENTS orchestration)\n", stdout)
 	require.NotContains(t, stdout, "runtime_reason:")
 	require.NotContains(t, stdout, "reasons=")
 	require.NotContains(t, stdout, "next_step:")
@@ -4414,12 +4428,65 @@ func TestHarnessHelpIncludesBootstrapCommands(t *testing.T) {
 	require.Contains(t, stdout, "template")
 }
 
-func TestHarnessAgentsComposeJSONCreatesRootAgentsFromRuntimeMembers(t *testing.T) {
+func TestHarnessAgentsComposeRunViewRequiresExplicitOutputIntent(t *testing.T) {
 	t.Parallel()
 
 	repo := seedHarnessAgentsComposeRepo(t)
 
 	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "agents", "compose", "--json")
+	require.ErrorContains(t, err, "standalone Run View guidance output requires explicit output intent")
+	require.Empty(t, stdout)
+	require.Empty(t, stderr)
+	require.NoFileExists(t, filepath.Join(repo.Root, "AGENTS.md"))
+}
+
+func TestHarnessHumansComposeRunViewRequiresExplicitOutputIntent(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHarnessFrameworkRepo(t)
+
+	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "humans", "compose", "--json")
+	require.ErrorContains(t, err, "standalone Run View guidance output requires explicit output intent")
+	require.Empty(t, stdout)
+	require.Empty(t, stderr)
+	require.NoFileExists(t, filepath.Join(repo.Root, "HUMANS.md"))
+}
+
+func TestHarnessHumansComposeOutputFlagCreatesRunViewPresentation(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHarnessFrameworkRepo(t)
+
+	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "humans", "compose", "--output", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		HumansPath     string   `json:"humans_path"`
+		ComposedCount  int      `json:"composed_count"`
+		ComposedOrbits []string `json:"composed_orbits"`
+		Notes          []string `json:"notes"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, filepath.Join(repo.Root, "HUMANS.md"), payload.HumansPath)
+	require.Equal(t, 1, payload.ComposedCount)
+	require.Equal(t, []string{"docs"}, payload.ComposedOrbits)
+	require.Contains(t, payload.Notes, "standalone Run View guidance output is presentation output, not authored reconciliation")
+
+	humansData, err := os.ReadFile(filepath.Join(repo.Root, "HUMANS.md"))
+	require.NoError(t, err)
+	humans := string(humansData)
+	require.Contains(t, humans, "Run the docs workflow.\n")
+	require.NotContains(t, humans, "<!-- orbit:begin")
+	require.NotContains(t, humans, "<!-- orbit:end")
+}
+
+func TestHarnessAgentsComposeJSONCreatesRootAgentsFromRuntimeMembers(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHarnessAgentsComposeRepo(t)
+
+	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "agents", "compose", "--output", "--json")
 	require.NoError(t, err)
 	require.Empty(t, stderr)
 
@@ -4456,9 +4523,11 @@ func TestHarnessAgentsComposeJSONCreatesRootAgentsFromRuntimeMembers(t *testing.
 	agentsData, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
 	require.NoError(t, err)
 	agents := string(agentsData)
-	require.Contains(t, agents, "<!-- orbit:begin workflow=\"docs\" -->\nYou are the Acme docs orbit.\n<!-- orbit:end workflow=\"docs\" -->\n")
-	require.Contains(t, agents, "<!-- orbit:begin workflow=\"cmd\" -->\nUse orbitctl for Acme releases.\n<!-- orbit:end workflow=\"cmd\" -->\n")
-	require.Contains(t, agents, "<!-- orbit:begin workflow=\"ops\" -->\nOps orbit\n<!-- orbit:end workflow=\"ops\" -->\n")
+	require.Contains(t, agents, "You are the Acme docs orbit.\n")
+	require.Contains(t, agents, "Use orbitctl for Acme releases.\n")
+	require.Contains(t, agents, "Ops orbit\n")
+	require.NotContains(t, agents, "<!-- orbit:begin")
+	require.NotContains(t, agents, "<!-- orbit:end")
 	require.NotContains(t, agents, "Workspace overview.\n")
 }
 
@@ -4467,7 +4536,7 @@ func TestHarnessAgentsComposeTextOutputIncludesReadinessStatus(t *testing.T) {
 
 	repo := seedHarnessAgentsComposeRepo(t)
 
-	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "agents", "compose")
+	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "agents", "compose", "--output")
 	require.NoError(t, err)
 	require.Empty(t, stderr)
 	require.Contains(t, stdout, "composed root AGENTS.md for harness "+repo.Root+"\n")
@@ -4489,7 +4558,7 @@ func TestHarnessAgentsComposeFailsClosedOnDriftedOrbitBlockWithoutForce(t *testi
 	originalAgents, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
 	require.NoError(t, err)
 
-	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "agents", "compose")
+	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "agents", "compose", "--output")
 	require.Error(t, err)
 	require.Empty(t, stdout)
 	require.Empty(t, stderr)
@@ -4503,7 +4572,7 @@ func TestHarnessAgentsComposeFailsClosedOnDriftedOrbitBlockWithoutForce(t *testi
 	require.Equal(t, string(originalAgents), string(agentsData))
 }
 
-func TestHarnessAgentsComposeForcePreservesProseAndNonTargetBlocks(t *testing.T) {
+func TestHarnessAgentsComposeForcePreservesProseAndOutputsRunViewPresentation(t *testing.T) {
 	t.Parallel()
 
 	repo := seedHarnessAgentsComposeRepo(t)
@@ -4516,7 +4585,7 @@ func TestHarnessAgentsComposeForcePreservesProseAndNonTargetBlocks(t *testing.T)
 		"You are the Drifted docs orbit.\n"+
 		"<!-- orbit:end workflow=\"docs\" -->\n")
 
-	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "agents", "compose", "--force", "--json")
+	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "agents", "compose", "--output", "--force", "--json")
 	require.NoError(t, err)
 	require.Empty(t, stderr)
 
@@ -4538,10 +4607,12 @@ func TestHarnessAgentsComposeForcePreservesProseAndNonTargetBlocks(t *testing.T)
 	require.NoError(t, err)
 	agents := string(agentsData)
 	require.Contains(t, agents, "Workspace overview.\n")
-	require.Contains(t, agents, "<!-- orbit:begin workflow=\"api\" -->\nAPI brief.\n<!-- orbit:end workflow=\"api\" -->\n")
-	require.Contains(t, agents, "<!-- orbit:begin workflow=\"docs\" -->\nYou are the Acme docs orbit.\n<!-- orbit:end workflow=\"docs\" -->\n")
-	require.Contains(t, agents, "<!-- orbit:begin workflow=\"cmd\" -->\nUse orbitctl for Acme releases.\n<!-- orbit:end workflow=\"cmd\" -->\n")
-	require.Contains(t, agents, "<!-- orbit:begin workflow=\"ops\" -->\nOps orbit\n<!-- orbit:end workflow=\"ops\" -->\n")
+	require.Contains(t, agents, "API brief.\n")
+	require.Contains(t, agents, "You are the Acme docs orbit.\n")
+	require.Contains(t, agents, "Use orbitctl for Acme releases.\n")
+	require.Contains(t, agents, "Ops orbit\n")
+	require.NotContains(t, agents, "<!-- orbit:begin")
+	require.NotContains(t, agents, "<!-- orbit:end")
 	require.NotContains(t, agents, "You are the Drifted docs orbit.\n")
 }
 

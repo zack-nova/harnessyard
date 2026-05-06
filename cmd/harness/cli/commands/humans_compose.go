@@ -19,12 +19,14 @@ type humansComposeJSON struct {
 	ComposedOrbits []string                   `json:"composed_orbits"`
 	SkippedOrbits  []string                   `json:"skipped_orbits"`
 	Forced         bool                       `json:"forced"`
+	Notes          []string                   `json:"notes,omitempty"`
 	Readiness      harnesspkg.ReadinessReport `json:"readiness"`
 }
 
 // NewHumansComposeCommand creates the harness humans compose command.
 func NewHumansComposeCommand() *cobra.Command {
 	var force bool
+	var output bool
 
 	cmd := &cobra.Command{
 		Use:   "compose",
@@ -32,11 +34,12 @@ func NewHumansComposeCommand() *cobra.Command {
 		Long: "Compose current runtime orbit human guidance into the root HUMANS.md container,\n" +
 			"preserving unrelated prose and non-target blocks.\n" +
 			"This command is the humans-target alias for `harness guidance compose --target humans`.\n" +
-			"Only runtime members with authored human guidance truth are materialized.",
+			"Only runtime members with authored human guidance truth are materialized. In Run View,\n" +
+			"standalone compose is presentation output and requires interactive confirmation or --output.",
 		Example: "" +
-			"  harness humans compose\n" +
-			"  harness humans compose --force\n" +
-			"  harness humans compose --json\n",
+			"  harness humans compose --output\n" +
+			"  harness humans compose --output --force\n" +
+			"  harness humans compose --output --json\n",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			targetPath, err := pathFromCommand(cmd)
@@ -47,6 +50,11 @@ func NewHumansComposeCommand() *cobra.Command {
 			resolved, err := harnesspkg.ResolveRoot(cmd.Context(), targetPath)
 			if err != nil {
 				return fmt.Errorf("resolve harness root: %w", err)
+			}
+
+			runViewOutput, explicitOutput, err := requireStandaloneRunViewGuidanceOutputIntent(cmd, resolved, output)
+			if err != nil {
+				return err
 			}
 
 			result, readiness, jsonOutput, err := runGuidanceCompose(cmd, resolved.Repo.Root, harnesspkg.GuidanceTargetHumans, force, nil)
@@ -69,12 +77,20 @@ func NewHumansComposeCommand() *cobra.Command {
 				Forced:         result.Forced,
 				Readiness:      readiness,
 			}
+			if runViewOutput && explicitOutput {
+				payload.Notes = append(payload.Notes, guidanceComposeRunViewOutputNote)
+			}
 			if jsonOutput {
 				return emitJSON(cmd.OutOrStdout(), payload)
 			}
 
 			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "composed root HUMANS.md for harness %s\n", resolved.Repo.Root); err != nil {
 				return fmt.Errorf("write command output: %w", err)
+			}
+			if runViewOutput && explicitOutput {
+				if _, err := fmt.Fprintln(cmd.OutOrStdout(), "note: "+guidanceComposeRunViewOutputNote); err != nil {
+					return fmt.Errorf("write command output: %w", err)
+				}
 			}
 			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "humans_path: %s\n", artifact.Path); err != nil {
 				return fmt.Errorf("write command output: %w", err)
@@ -118,6 +134,7 @@ func NewHumansComposeCommand() *cobra.Command {
 	}
 
 	cmd.Flags().BoolVar(&force, "force", false, "Overwrite drifted orbit blocks instead of failing closed")
+	cmd.Flags().BoolVar(&output, "output", false, "Output standalone Run View guidance presentation")
 	addPathFlag(cmd)
 	addJSONFlag(cmd)
 

@@ -65,7 +65,7 @@ func TestInstallReturnsWarningAndRollsBackGuidanceArtifactsWhenScopedGuidanceFai
 	require.NotContains(t, payload.WrittenPaths, "AGENTS.md")
 	require.Len(t, payload.Warnings, 1)
 	require.Contains(t, payload.Warnings[0], "scoped guidance compose was rolled back")
-	require.Contains(t, payload.Warnings[0], "hyard guide sync --target all")
+	require.Contains(t, payload.Warnings[0], "hyard guide sync --target all --output")
 
 	_, statErr := os.Stat(filepath.Join(repo.Root, "AGENTS.md"))
 	require.ErrorIs(t, statErr, os.ErrNotExist)
@@ -142,7 +142,7 @@ func TestInstallBatchReturnsWarningAndRollsBackGuidanceArtifactsWhenScopedGuidan
 	require.NotContains(t, payload.WrittenPaths, "AGENTS.md")
 	require.Len(t, payload.Warnings, 1)
 	require.Contains(t, payload.Warnings[0], "scoped guidance compose was rolled back")
-	require.Contains(t, payload.Warnings[0], "hyard guide sync --target all")
+	require.Contains(t, payload.Warnings[0], "hyard guide sync --target all --output")
 	require.Len(t, payload.Items, 2)
 	for _, item := range payload.Items {
 		require.Empty(t, item.Warnings)

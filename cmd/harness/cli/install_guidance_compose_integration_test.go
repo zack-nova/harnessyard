@@ -181,7 +181,7 @@ func TestHarnessInstallScopedGuidanceIgnoresUnrelatedDriftedBlocks(t *testing.T)
 	require.Contains(t, payload.Warnings[0], "scoped guidance compose was rolled back")
 	require.Contains(t, payload.Warnings[0], "apply Run View presentation")
 	require.Contains(t, payload.Warnings[0], "Run View cleanup blocked by Authored Truth Drift")
-	require.Contains(t, payload.Warnings[0], "hyard guide sync --target all")
+	require.Contains(t, payload.Warnings[0], "hyard guide sync --target all --output")
 
 	humansData, err := os.ReadFile(filepath.Join(repo.Root, "HUMANS.md"))
 	require.NoError(t, err)
@@ -324,7 +324,7 @@ func TestHarnessInstallBatchScopedGuidanceIgnoresUnrelatedDriftedBlocks(t *testi
 	require.Contains(t, payload.Warnings[0], "scoped guidance compose was rolled back")
 	require.Contains(t, payload.Warnings[0], "apply Run View presentation")
 	require.Contains(t, payload.Warnings[0], "Run View cleanup blocked by Authored Truth Drift")
-	require.Contains(t, payload.Warnings[0], "hyard guide sync --target all")
+	require.Contains(t, payload.Warnings[0], "hyard guide sync --target all --output")
 
 	humansData, err := os.ReadFile(filepath.Join(repo.Root, "HUMANS.md"))
 	require.NoError(t, err)

@@ -133,6 +133,7 @@ func executeHyardCLIWithInteractiveInput(t *testing.T, workingDir string, stdin 
 	ctx := harnesscommands.WithWorkingDir(context.Background(), workingDir)
 	ctx = orbitcommands.WithWorkingDir(ctx, workingDir)
 	ctx = hyardcli.WithWorkingDir(ctx, workingDir)
+	ctx = harnesscommands.WithGuidanceComposeInteractive(ctx)
 	ctx = hyardcli.WithViewRunInteractive(ctx)
 	err := rootCmd.ExecuteContext(ctx)
 
@@ -2353,7 +2354,7 @@ func TestHyardGuideSyncCanFilterToOneOrbit(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	stdout, stderr, err := executeHyardCLI(t, repo.Root, "guide", "sync", "--orbit", "docs", "--json")
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "guide", "sync", "--orbit", "docs", "--output", "--json")
 	require.NoError(t, err)
 	require.Empty(t, stderr)
 
@@ -2363,9 +2364,11 @@ func TestHyardGuideSyncCanFilterToOneOrbit(t *testing.T) {
 			Target         string   `json:"target"`
 			ComposedOrbits []string `json:"composed_orbits"`
 		} `json:"artifacts"`
+		Notes []string `json:"notes"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
 	require.Equal(t, 1, payload.MemberCount)
+	require.Contains(t, payload.Notes, "standalone Run View guidance output is presentation output, not authored reconciliation")
 	require.NotEmpty(t, payload.Artifacts)
 	for _, artifact := range payload.Artifacts {
 		if artifact.Target == "agents" {
@@ -4037,7 +4040,7 @@ func TestHyardGuideSyncDelegatesToHarnessGuidanceCompose(t *testing.T) {
 	_, _, err := executeHyardCLI(t, parentDir, "create", "runtime", "demo", "--json")
 	require.NoError(t, err)
 
-	stdout, stderr, err := executeHyardCLI(t, filepath.Join(parentDir, "demo"), "guide", "sync", "--json")
+	stdout, stderr, err := executeHyardCLI(t, filepath.Join(parentDir, "demo"), "guide", "sync", "--output", "--json")
 	require.NoError(t, err)
 	require.Empty(t, stderr)
 

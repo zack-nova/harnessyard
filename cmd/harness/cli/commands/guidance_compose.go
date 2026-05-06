@@ -8,6 +8,8 @@ import (
 	"github.com/spf13/cobra"
 
 	harnesspkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/harness"
+	statepkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/state"
+	orbittemplate "github.com/zack-nova/harnessyard/cmd/orbit/cli/template"
 )
 
 type guidanceComposeJSON struct {
@@ -17,6 +19,7 @@ type guidanceComposeJSON struct {
 	ArtifactCount int                           `json:"artifact_count"`
 	Artifacts     []guidanceComposeArtifactJSON `json:"artifacts"`
 	Forced        bool                          `json:"forced"`
+	Notes         []string                      `json:"notes,omitempty"`
 	Readiness     harnesspkg.ReadinessReport    `json:"readiness"`
 }
 
@@ -30,24 +33,28 @@ type guidanceComposeArtifactJSON struct {
 	SkippedOrbits  []string `json:"skipped_orbits"`
 }
 
+const guidanceComposeRunViewOutputNote = "standalone Run View guidance output is presentation output, not authored reconciliation"
+
 // NewGuidanceComposeCommand creates the harness guidance compose command.
 func NewGuidanceComposeCommand() *cobra.Command {
 	var force bool
 	var target string
 	var audience string
 	var orbitIDs []string
+	var output bool
 
 	cmd := &cobra.Command{
 		Use:   "compose",
 		Short: "Compose runtime guidance artifacts for one or more targets",
 		Long: "Compose current runtime orbit guidance into root guidance artifacts for the requested target.\n" +
 			"`agents` targets AGENTS.md, `humans` targets HUMANS.md, `bootstrap` targets BOOTSTRAP.md,\n" +
-			"and `all` composes all three.\n" +
+			"and `all` composes all three. In Run View, standalone compose is presentation output\n" +
+			"and requires interactive confirmation or --output.\n" +
 			"Unrelated prose and non-target orbit blocks are preserved.",
 		Example: "" +
-			"  harness guidance compose --target all\n" +
-			"  harness guidance compose --target humans --json\n" +
-			"  harness guidance compose --target bootstrap --force\n",
+			"  harness guidance compose --target all --output\n" +
+			"  harness guidance compose --target humans --output --json\n" +
+			"  harness guidance compose --target bootstrap --output --force\n",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			targetPath, err := pathFromCommand(cmd)
@@ -58,6 +65,10 @@ func NewGuidanceComposeCommand() *cobra.Command {
 			resolved, err := harnesspkg.ResolveRoot(cmd.Context(), targetPath)
 			if err != nil {
 				return fmt.Errorf("resolve harness root: %w", err)
+			}
+			runViewOutput, explicitOutput, err := requireStandaloneRunViewGuidanceOutputIntent(cmd, resolved, output)
+			if err != nil {
+				return err
 			}
 
 			composeTarget := normalizeGuidanceComposeCLIValue(strings.TrimSpace(target))
@@ -86,6 +97,9 @@ func NewGuidanceComposeCommand() *cobra.Command {
 				Forced:        result.Forced,
 				Readiness:     readiness,
 			}
+			if runViewOutput && explicitOutput {
+				payload.Notes = append(payload.Notes, guidanceComposeRunViewOutputNote)
+			}
 			for _, artifact := range result.Artifacts {
 				payload.Artifacts = append(payload.Artifacts, guidanceComposeArtifactJSON{
 					Target:         string(artifact.Target),
@@ -103,6 +117,11 @@ func NewGuidanceComposeCommand() *cobra.Command {
 
 			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "composed guidance artifacts for harness %s\n", resolved.Repo.Root); err != nil {
 				return fmt.Errorf("write command output: %w", err)
+			}
+			if runViewOutput && explicitOutput {
+				if _, err := fmt.Fprintln(cmd.OutOrStdout(), "note: "+guidanceComposeRunViewOutputNote); err != nil {
+					return fmt.Errorf("write command output: %w", err)
+				}
 			}
 			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "target: %s\n", result.Target); err != nil {
 				return fmt.Errorf("write command output: %w", err)
@@ -141,10 +160,76 @@ func NewGuidanceComposeCommand() *cobra.Command {
 		panic(err)
 	}
 	cmd.Flags().BoolVar(&force, "force", false, "Overwrite drifted guidance blocks instead of failing closed")
+	cmd.Flags().BoolVar(&output, "output", false, "Output standalone Run View guidance presentation")
 	addPathFlag(cmd)
 	addJSONFlag(cmd)
 
 	return cmd
+}
+
+func requireStandaloneRunViewGuidanceOutputIntent(cmd *cobra.Command, resolved harnesspkg.ResolvedRoot, output bool) (bool, bool, error) {
+	jsonOutput, err := wantJSON(cmd)
+	if err != nil {
+		return false, false, err
+	}
+	runViewOutput, err := guidanceComposeRunViewSelected(resolved)
+	if err != nil {
+		return false, false, err
+	}
+	if !runViewOutput {
+		return false, output, nil
+	}
+	if output {
+		return true, true, nil
+	}
+	if jsonOutput || !shouldPromptGuidanceComposeOutput(cmd) {
+		return true, false, fmt.Errorf("standalone Run View guidance output requires explicit output intent; rerun with --output")
+	}
+	confirmed, err := confirmGuidanceComposeOutput(cmd)
+	if err != nil {
+		return true, false, err
+	}
+	if !confirmed {
+		return true, false, fmt.Errorf("standalone Run View guidance output canceled")
+	}
+
+	return true, true, nil
+}
+
+func guidanceComposeRunViewSelected(resolved harnesspkg.ResolvedRoot) (bool, error) {
+	store, err := statepkg.NewFSStore(resolved.Repo.GitDir)
+	if err != nil {
+		return false, fmt.Errorf("create state store: %w", err)
+	}
+	selection, err := store.ReadRuntimeViewSelection()
+	if err != nil {
+		return false, fmt.Errorf("read runtime view selection: %w", err)
+	}
+
+	return selection.View == statepkg.RuntimeViewRun, nil
+}
+
+func shouldPromptGuidanceComposeOutput(cmd *cobra.Command) bool {
+	if guidanceComposeInteractiveFromContext(cmd.Context()) {
+		return true
+	}
+	return templatePublishStreamIsTerminal(cmd.InOrStdin()) && templatePublishStreamIsTerminal(cmd.ErrOrStderr())
+}
+
+func confirmGuidanceComposeOutput(cmd *cobra.Command) (bool, error) {
+	if _, err := fmt.Fprintln(cmd.ErrOrStderr(), "Standalone Run View guidance output writes presentation text, not authored reconciliation."); err != nil {
+		return false, fmt.Errorf("write command output: %w", err)
+	}
+	prompter := orbittemplate.LineConfirmPrompter{
+		Reader: cmd.InOrStdin(),
+		Writer: cmd.ErrOrStderr(),
+	}
+	confirmed, err := prompter.Confirm(cmd.Context(), "Output standalone Run View guidance presentation? [y/N] ")
+	if err != nil {
+		return false, fmt.Errorf("confirm standalone Run View guidance output: %w", err)
+	}
+
+	return confirmed, nil
 }
 
 func runGuidanceCompose(

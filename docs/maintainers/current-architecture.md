@@ -166,7 +166,7 @@ Use:
 
 - `hyard guide render` to materialize editable root blocks
 - `hyard guide save` to write edited blocks back to hosted truth
-- `hyard guide sync` to compose runtime-wide root guidance artifacts
+- `hyard guide sync --output` to explicitly output runtime-wide root guidance artifacts
 
 ## Readiness
 

@@ -74,7 +74,7 @@ func composeInstallScopedGuidance(
 	if err != nil {
 		return installScopedGuidanceOutcome{
 			Warnings: []string{fmt.Sprintf(
-				"install succeeded, but scoped guidance compose could not start: %v. Fix the issue and run `hyard guide sync --target all`.",
+				"install succeeded, but scoped guidance compose could not start: %v. Fix the issue and run `hyard guide sync --target all --output`.",
 				err,
 			)},
 		}
@@ -118,13 +118,13 @@ func composeInstallScopedGuidance(
 func formatInstallScopedGuidanceWarning(composeErr error, rollbackErr error) string {
 	if rollbackErr == nil {
 		return fmt.Sprintf(
-			"install succeeded, but scoped guidance compose was rolled back: %v. Fix the issue and run `hyard guide sync --target all`.",
+			"install succeeded, but scoped guidance compose was rolled back: %v. Fix the issue and run `hyard guide sync --target all --output`.",
 			composeErr,
 		)
 	}
 
 	return fmt.Sprintf(
-		"install succeeded, but scoped guidance compose failed (%v) and rollback also failed (%v). Guidance artifacts may be in an unknown state; run `hyard check --json` and then `hyard guide sync --target all`.",
+		"install succeeded, but scoped guidance compose failed (%v) and rollback also failed (%v). Guidance artifacts may be in an unknown state; run `hyard check --json` and then `hyard guide sync --target all --output`.",
 		composeErr,
 		rollbackErr,
 	)

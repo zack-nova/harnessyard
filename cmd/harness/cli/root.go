@@ -37,7 +37,7 @@ func newRootCommand(use string, includeCompatibilityLead bool) *cobra.Command {
 			"  harness bindings plan orbit-template/docs orbit-template/cmd\n" +
 			"  harness init\n" +
 			"  harness install batch orbit-template/docs orbit-template/cmd --bindings .harness/vars.yaml\n" +
-			"  harness guidance compose --target all\n" +
+			"  harness guidance compose --target all --output\n" +
 			"  harness bootstrap complete --orbit docs\n" +
 			"  harness bootstrap reopen --orbit docs\n" +
 			"  harness ready\n" +
