@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -40,6 +41,8 @@ type hyardStartDryRunPayload struct {
 		Framework                  string   `json:"framework"`
 		Status                     string   `json:"status"`
 		Launchable                 bool     `json:"launchable"`
+		DetectionStatus            string   `json:"detection_status"`
+		TerminalCLIDetected        bool     `json:"terminal_cli_detected"`
 		ManualFallbackInstructions []string `json:"manual_fallback_instructions"`
 	} `json:"launcher"`
 	StartPrompt string `json:"start_prompt"`
@@ -60,7 +63,7 @@ type recordingStartLauncher struct {
 	sawBootstrap  bool
 }
 
-func (launcher *recordingStartLauncher) Plan(frameworkID string) harnesspkg.StartLauncherPlan {
+func (launcher *recordingStartLauncher) Plan(_ context.Context, _ harnesspkg.StartPlanInput, frameworkID string) harnesspkg.StartLauncherPlan {
 	return harnesspkg.StartLauncherPlan{
 		Framework:  frameworkID,
 		Status:     "test",
@@ -412,4 +415,179 @@ func TestHyardStartDryRunJSONShapesUnsupportedLauncherFallback(t *testing.T) {
 	require.NoFileExists(t, harnesspkg.FrameworkSelectionPath(repo.GitDir(t)))
 	require.NoDirExists(t, filepath.Join(repo.GitDir(t), "orbit", "state", "agents", "activations"))
 	require.NoFileExists(t, filepath.Join(repo.Root, "skills", harnesspkg.BootstrapAgentSkillName, "SKILL.md"))
+}
+
+func TestHyardStartDryRunJSONDistinguishesTerminalCLIFromNonLaunchableDetection(t *testing.T) {
+	t.Run("terminal CLI", func(t *testing.T) {
+		repo := seedCommittedHyardRuntimeRepo(t)
+
+		lockHyardProcessEnv(t)
+		configureHyardStartDetectionPath(t, map[string]string{
+			"openclaw": "#!/bin/sh\nprintf '%s\\n' 'openclaw 0.9.0'\n",
+		})
+
+		stdout, stderr, err := executeHyardCLIUnlocked(t, repo.Root, "start", "--dry-run", "--json")
+		require.NoError(t, err)
+		require.Empty(t, stderr)
+
+		payload := decodeHyardStartDryRunPayload(t, stdout)
+		require.Equal(t, "resolved", payload.FrameworkResolution.Status)
+		require.Equal(t, "openclaw", payload.FrameworkResolution.SelectedFramework)
+		require.Equal(t, "project_detection", payload.FrameworkResolution.SelectionSource)
+		require.Equal(t, "openclaw", payload.Launcher.Framework)
+		require.Equal(t, "unsupported", payload.Launcher.Status)
+		require.Equal(t, "installed_cli", payload.Launcher.DetectionStatus)
+		require.True(t, payload.Launcher.TerminalCLIDetected)
+		require.Contains(t, payload.Launcher.ManualFallbackInstructions, "A terminal OpenClaw CLI was detected, but Harness Start does not yet implement an OpenClaw launcher.")
+	})
+
+	t.Run("gateway only", func(t *testing.T) {
+		repo := seedCommittedHyardRuntimeRepo(t)
+
+		lockHyardProcessEnv(t)
+		configureHyardStartDetectionPath(t, map[string]string{
+			"systemctl": "#!/bin/sh\nif [ \"$1\" = \"--user\" ] && [ \"$2\" = \"is-active\" ] && [ \"$3\" = \"openclaw-gateway.service\" ]; then\n  printf '%s\\n' active\n  exit 0\nfi\nexit 1\n",
+		})
+
+		stdout, stderr, err := executeHyardCLIUnlocked(t, repo.Root, "start", "--dry-run", "--json")
+		require.NoError(t, err)
+		require.Empty(t, stderr)
+
+		payload := decodeHyardStartDryRunPayload(t, stdout)
+		require.Equal(t, "resolved", payload.FrameworkResolution.Status)
+		require.Equal(t, "openclaw", payload.FrameworkResolution.SelectedFramework)
+		require.Equal(t, "project_detection", payload.FrameworkResolution.SelectionSource)
+		require.Equal(t, "openclaw", payload.Launcher.Framework)
+		require.Equal(t, "unsupported", payload.Launcher.Status)
+		require.Equal(t, "running", payload.Launcher.DetectionStatus)
+		require.False(t, payload.Launcher.TerminalCLIDetected)
+		require.Contains(t, payload.Launcher.ManualFallbackInstructions, "OpenClaw was detected as running, but not as a verified terminal CLI launcher.")
+	})
+
+	t.Run("package only", func(t *testing.T) {
+		repo := seedCommittedHyardRuntimeRepo(t)
+
+		lockHyardProcessEnv(t)
+		configureHyardStartDetectionPath(t, map[string]string{
+			"npm": "#!/bin/sh\nprintf '%s\\n' '{\"dependencies\":{\"openclaw\":{\"version\":\"0.9.1\"}}}'\n",
+		})
+
+		stdout, stderr, err := executeHyardCLIUnlocked(t, repo.Root, "start", "--with", "openclaw", "--dry-run", "--json")
+		require.NoError(t, err)
+		require.Empty(t, stderr)
+
+		payload := decodeHyardStartDryRunPayload(t, stdout)
+		require.Equal(t, "resolved", payload.FrameworkResolution.Status)
+		require.Equal(t, "openclaw", payload.FrameworkResolution.SelectedFramework)
+		require.Equal(t, "openclaw", payload.Launcher.Framework)
+		require.Equal(t, "unsupported", payload.Launcher.Status)
+		require.Equal(t, "installed_unverified", payload.Launcher.DetectionStatus)
+		require.False(t, payload.Launcher.TerminalCLIDetected)
+		require.Contains(t, payload.Launcher.ManualFallbackInstructions, "OpenClaw was detected as installed_unverified, but not as a verified terminal CLI launcher.")
+	})
+
+	t.Run("desktop only", func(t *testing.T) {
+		repo := seedCommittedHyardRuntimeRepo(t)
+
+		lockHyardProcessEnv(t)
+		homeDir := configureHyardStartDetectionPath(t, map[string]string{})
+		require.NoError(t, os.MkdirAll(filepath.Join(homeDir, "Applications", "Codex.app"), 0o750))
+
+		stdout, stderr, err := executeHyardCLIUnlocked(t, repo.Root, "start", "--dry-run", "--json")
+		require.NoError(t, err)
+		require.Empty(t, stderr)
+
+		payload := decodeHyardStartDryRunPayload(t, stdout)
+		require.Equal(t, "resolved", payload.FrameworkResolution.Status)
+		require.Equal(t, "codex", payload.FrameworkResolution.SelectedFramework)
+		require.Equal(t, "project_detection", payload.FrameworkResolution.SelectionSource)
+		require.Equal(t, "codex", payload.Launcher.Framework)
+		require.Equal(t, "unverified", payload.Launcher.Status)
+		require.Equal(t, "installed_desktop", payload.Launcher.DetectionStatus)
+		require.False(t, payload.Launcher.TerminalCLIDetected)
+		require.Contains(t, payload.Launcher.ManualFallbackInstructions, "Codex was detected as installed_desktop, but not as a verified terminal CLI launcher.")
+	})
+}
+
+func TestHyardStartFailsClosedWithPromptFallbackForUnsupportedLaunchers(t *testing.T) {
+	cases := []struct {
+		name          string
+		argument      string
+		framework     string
+		bootstrapPath string
+	}{
+		{
+			name:          "OpenClaw",
+			argument:      "openclaw",
+			framework:     "openclaw",
+			bootstrapPath: "skills",
+		},
+		{
+			name:          "Claude Code",
+			argument:      "claude-code",
+			framework:     "claudecode",
+			bootstrapPath: ".claude/skills",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := seedCommittedHyardRuntimeRepo(t)
+			beforeStatus := repo.Run(t, "status", "--short")
+
+			lockHyardProcessEnv(t)
+			configureHyardStartDetectionPath(t, map[string]string{})
+
+			stdout, stderr, err := executeHyardCLIUnlocked(t, repo.Root, "start", "--with", tc.argument)
+			require.Error(t, err)
+			require.ErrorContains(t, err, "cannot launch "+tc.framework+" interactively")
+			require.Empty(t, stdout)
+
+			require.Contains(t, stderr, "Harness Start cannot launch "+tc.framework+" interactively.")
+			require.Contains(t, stderr, "launcher_status: unsupported")
+			require.Contains(t, stderr, "launcher_detection_status: not_found")
+			require.Contains(t, stderr, "terminal_cli_detected: false")
+			require.Contains(t, stderr, "manual_next_action:")
+			require.Contains(t, stderr, "hyard start --print-prompt")
+			require.Contains(t, stderr, "usage:")
+			require.Contains(t, stderr, "hyard start --dry-run --json")
+			require.Contains(t, stderr, "Start Prompt")
+			require.Contains(t, stderr, "First handle any pending Harness Runtime bootstrap work.")
+			require.NotContains(t, stderr, "interactive_start: success")
+
+			require.Equal(t, beforeStatus, repo.Run(t, "status", "--short"))
+			require.NoFileExists(t, harnesspkg.FrameworkSelectionPath(repo.GitDir(t)))
+			require.NoDirExists(t, filepath.Join(repo.GitDir(t), "orbit", "state", "agents", "activations"))
+			require.NoFileExists(t, filepath.Join(repo.Root, tc.bootstrapPath, harnesspkg.BootstrapAgentSkillName, "SKILL.md"))
+		})
+	}
+}
+
+func configureHyardStartDetectionPath(t *testing.T, executables map[string]string) string {
+	t.Helper()
+
+	gitExecutable, err := exec.LookPath("git")
+	require.NoError(t, err)
+
+	binDir := t.TempDir()
+	homeDir := t.TempDir()
+	writeHyardStartExecutable(t, filepath.Join(binDir, "git"), "#!/bin/sh\nexec "+strconv.Quote(gitExecutable)+" \"$@\"\n")
+	for name, contents := range executables {
+		writeHyardStartExecutable(t, filepath.Join(binDir, name), contents)
+	}
+
+	t.Setenv("PATH", binDir)
+	t.Setenv("HOME", homeDir)
+	t.Setenv("CODEX_HOME", filepath.Join(t.TempDir(), ".codex"))
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(t.TempDir(), ".claude"))
+	t.Setenv("OPENCLAW_STATE_DIR", filepath.Join(t.TempDir(), ".openclaw"))
+
+	return homeDir
+}
+
+func writeHyardStartExecutable(t *testing.T, path string, contents string) {
+	t.Helper()
+
+	require.NoError(t, os.WriteFile(path, []byte(contents), 0o700))
+	require.NoError(t, os.Chmod(path, 0o700))
 }

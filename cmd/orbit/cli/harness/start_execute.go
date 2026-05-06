@@ -66,12 +66,18 @@ func ExecuteStart(ctx context.Context, input StartExecutionInput) (StartExecutio
 		Warnings:    append([]string(nil), resolution.Warnings...),
 	}
 	if resolution.Source == FrameworkSelectionSourceUnresolvedConflict {
-		result.Launcher = startLaunchResultFromPlan(launcher.Plan(""))
+		result.Launcher = startLaunchResultFromPlan(launcher.Plan(ctx, planInput, ""))
 		return result, fmt.Errorf("framework resolution is ambiguous: %s", strings.Join(resolution.Candidates, ", "))
 	}
 	if resolution.Framework == "" {
-		result.Launcher = startLaunchResultFromPlan(launcher.Plan(""))
+		result.Launcher = startLaunchResultFromPlan(launcher.Plan(ctx, planInput, ""))
 		return result, fmt.Errorf("framework resolution is unresolved")
+	}
+
+	launcherPlan := launcher.Plan(ctx, planInput, resolution.Framework)
+	if !launcherPlan.Launchable {
+		result.Launcher = startLaunchResultFromPlan(launcherPlan)
+		return result, fmt.Errorf("cannot launch %s interactively: launcher status %s", resolution.Framework, launcherPlan.Status)
 	}
 
 	if strings.TrimSpace(input.FrameworkOverride) != "" {
@@ -115,12 +121,6 @@ func ExecuteStart(ctx context.Context, input StartExecutionInput) (StartExecutio
 		return result, fmt.Errorf("apply bootstrap agent skill setup: %w", err)
 	}
 	result.BootstrapAgentSkill = bootstrap
-
-	launcherPlan := launcher.Plan(resolution.Framework)
-	if !launcherPlan.Launchable {
-		result.Launcher = startLaunchResultFromPlan(launcherPlan)
-		return result, fmt.Errorf("framework %s is not launchable by hyard start", resolution.Framework)
-	}
 
 	launchResult, err := launcher.Launch(ctx, StartLaunchRequest{
 		RepoRoot:    input.RepoRoot,

@@ -112,13 +112,63 @@ func startLauncherFromCommand(cmd *cobra.Command) harnesspkg.StartLauncher {
 }
 
 func emitHyardStartManualFallback(cmd *cobra.Command, result harnesspkg.StartExecutionResult) error {
-	for _, instruction := range result.Launcher.ManualFallbackInstructions {
-		if _, err := fmt.Fprintf(cmd.ErrOrStderr(), "next_action: %s\n", instruction); err != nil {
-			return fmt.Errorf("write start fallback instruction: %w", err)
+	frameworkID := result.Launcher.Framework
+	if frameworkID == "" {
+		frameworkID = result.FrameworkResolution.SelectedFramework
+	}
+
+	if frameworkID == "" {
+		if _, err := fmt.Fprintln(cmd.ErrOrStderr(), "Harness Start cannot resolve a launchable Agent Framework."); err != nil {
+			return fmt.Errorf("write start fallback: %w", err)
+		}
+	} else {
+		if _, err := fmt.Fprintf(cmd.ErrOrStderr(), "Harness Start cannot launch %s interactively.\n", frameworkID); err != nil {
+			return fmt.Errorf("write start fallback: %w", err)
 		}
 	}
+	if _, err := fmt.Fprintf(cmd.ErrOrStderr(), "framework_resolution: %s\n", result.FrameworkResolution.Status); err != nil {
+		return fmt.Errorf("write start fallback: %w", err)
+	}
+	if result.FrameworkResolution.SelectionSource != "" {
+		if _, err := fmt.Fprintf(cmd.ErrOrStderr(), "selection_source: %s\n", result.FrameworkResolution.SelectionSource); err != nil {
+			return fmt.Errorf("write start fallback: %w", err)
+		}
+	}
+	if frameworkID != "" {
+		if _, err := fmt.Fprintf(cmd.ErrOrStderr(), "framework: %s\n", frameworkID); err != nil {
+			return fmt.Errorf("write start fallback: %w", err)
+		}
+	}
+	if _, err := fmt.Fprintf(cmd.ErrOrStderr(), "launcher_status: %s\n", result.Launcher.Status); err != nil {
+		return fmt.Errorf("write start fallback: %w", err)
+	}
+	if result.Launcher.DetectionStatus != "" {
+		if _, err := fmt.Fprintf(cmd.ErrOrStderr(), "launcher_detection_status: %s\n", result.Launcher.DetectionStatus); err != nil {
+			return fmt.Errorf("write start fallback: %w", err)
+		}
+	}
+	if _, err := fmt.Fprintf(cmd.ErrOrStderr(), "terminal_cli_detected: %t\n", result.Launcher.TerminalCLIDetected); err != nil {
+		return fmt.Errorf("write start fallback: %w", err)
+	}
+	for _, instruction := range result.Launcher.ManualFallbackInstructions {
+		if _, err := fmt.Fprintf(cmd.ErrOrStderr(), "manual_next_action: %s\n", instruction); err != nil {
+			return fmt.Errorf("write start fallback: %w", err)
+		}
+	}
+	if _, err := fmt.Fprintln(cmd.ErrOrStderr(), "usage:"); err != nil {
+		return fmt.Errorf("write start fallback: %w", err)
+	}
+	if _, err := fmt.Fprintln(cmd.ErrOrStderr(), "  hyard start --print-prompt"); err != nil {
+		return fmt.Errorf("write start fallback: %w", err)
+	}
+	if _, err := fmt.Fprintln(cmd.ErrOrStderr(), "  hyard start --dry-run --json"); err != nil {
+		return fmt.Errorf("write start fallback: %w", err)
+	}
+	if _, err := fmt.Fprintln(cmd.ErrOrStderr()); err != nil {
+		return fmt.Errorf("write start fallback: %w", err)
+	}
 	if _, err := fmt.Fprint(cmd.ErrOrStderr(), result.StartPrompt); err != nil {
-		return fmt.Errorf("write start fallback prompt: %w", err)
+		return fmt.Errorf("write start fallback: %w", err)
 	}
 
 	return nil
