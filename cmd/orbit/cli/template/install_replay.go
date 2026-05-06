@@ -251,7 +251,9 @@ func AnalyzeInstalledTemplateDrift(ctx context.Context, repoRoot string, orbitID
 		}
 	}
 
-	agentsDrift, err := runtimeAgentsHasDrift(repoRoot, orbitID, replay.RenderedSharedAgentsFile)
+	agentsDrift, err := runtimeAgentsHasDrift(repoRoot, orbitID, replay.RenderedSharedAgentsFile, runtimeAgentsDriftOptions{
+		AllowMarkerlessPresentation: true,
+	})
 	if err != nil || agentsDrift {
 		findings = append(findings, InstallDriftFinding{
 			Kind: DriftKindRuntimeFile,
@@ -387,7 +389,11 @@ func ensureRuntimeAgentsBlockMatches(repoRoot string, orbitID string, payload []
 	return nil
 }
 
-func runtimeAgentsHasDrift(repoRoot string, orbitID string, expected *CandidateFile) (bool, error) {
+type runtimeAgentsDriftOptions struct {
+	AllowMarkerlessPresentation bool
+}
+
+func runtimeAgentsHasDrift(repoRoot string, orbitID string, expected *CandidateFile, options runtimeAgentsDriftOptions) (bool, error) {
 	filename := filepath.Join(repoRoot, sharedFilePathAgents)
 	//nolint:gosec // The AGENTS path is fixed under the repo root.
 	data, err := os.ReadFile(filename)
@@ -408,6 +414,9 @@ func runtimeAgentsHasDrift(repoRoot string, orbitID string, expected *CandidateF
 		return found, nil
 	}
 	if !found {
+		if options.AllowMarkerlessPresentation && runtimeAgentsDocumentHasMarkerlessPresentationContent(document) {
+			return false, nil
+		}
 		if runtimeAgentsDocumentContainsRunViewPayload(document, data, expected.Content) {
 			return false, nil
 		}

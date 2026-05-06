@@ -86,6 +86,50 @@ func TestHyardCheckTreatsCleanedRunViewRootGuidanceAsPresentationState(t *testin
 	require.Empty(t, payload.Findings)
 }
 
+func TestHyardInstallKeepsRunViewRootGuidanceIncremental(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardRunViewSequentialOrbitInstallRepo(t)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "install", "orbit-template/docs", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+	require.NotEmpty(t, stdout)
+
+	repo.WriteFile(t, "AGENTS.md", "Locally edited docs runtime guidance.\n")
+	repo.WriteFile(t, "HUMANS.md", "Locally edited docs human guidance.\n")
+	repo.WriteFile(t, "BOOTSTRAP.md", "Locally edited docs bootstrap guidance.\n")
+
+	stdout, stderr, err = executeHyardCLI(t, repo.Root, "install", "orbit-template/api", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var installPayload struct {
+		Warnings []string `json:"warnings"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &installPayload))
+	require.Empty(t, installPayload.Warnings)
+
+	require.Equal(t, "Locally edited docs runtime guidance.\n\nUse api runtime guidance.\n", readRepoFile(t, repo.Root, "AGENTS.md"))
+	require.Equal(t, "Locally edited docs human guidance.\n\nRead the api workflow.\n", readRepoFile(t, repo.Root, "HUMANS.md"))
+	require.Equal(t, "Locally edited docs bootstrap guidance.\n\nBootstrap the api workflow.\n", readRepoFile(t, repo.Root, "BOOTSTRAP.md"))
+
+	stdout, stderr, err = executeHyardCLI(t, repo.Root, "check", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var checkPayload struct {
+		OK       bool `json:"ok"`
+		Findings []struct {
+			Kind string `json:"kind"`
+			Path string `json:"path"`
+		} `json:"findings"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &checkPayload))
+	require.True(t, checkPayload.OK)
+	require.Empty(t, checkPayload.Findings)
+}
+
 func TestHyardCheckReportsDuplicateMarkedRunViewRootGuidance(t *testing.T) {
 	t.Parallel()
 
@@ -323,6 +367,97 @@ func seedHyardRunViewOrbitInstallRepo(t *testing.T) *testutil.Repo {
 	repo.AddAndCommit(t, "clear docs runtime content")
 
 	return repo
+}
+
+func seedHyardRunViewSequentialOrbitInstallRepo(t *testing.T) *testutil.Repo {
+	t.Helper()
+
+	repo := testutil.NewRepo(t)
+	now := time.Date(2026, time.May, 5, 8, 0, 0, 0, time.UTC)
+	_, err := harnesspkg.BootstrapRuntimeControlPlane(repo.Root, now)
+	require.NoError(t, err)
+
+	writeHyardRunViewOrbitTemplate(t, repo.Root, "docs", "Docs", "Use docs runtime guidance.\n", "Read the docs workflow.\n", "Bootstrap the docs workflow.\n")
+	repo.WriteFile(t, "docs/guide.md", "# Docs guide\n")
+	repo.AddAndCommit(t, "seed docs template source")
+	_, err = orbittemplate.SaveTemplateBranch(context.Background(), orbittemplate.TemplateSaveInput{
+		Preview: orbittemplate.TemplateSavePreviewInput{
+			RepoRoot:     repo.Root,
+			OrbitID:      "docs",
+			TargetBranch: "orbit-template/docs",
+			Now:          now,
+		},
+	})
+	require.NoError(t, err)
+
+	writeHyardRunViewOrbitTemplate(t, repo.Root, "api", "API", "Use api runtime guidance.\n", "Read the api workflow.\n", "Bootstrap the api workflow.\n")
+	repo.WriteFile(t, "api/guide.md", "# API guide\n")
+	repo.AddAndCommit(t, "seed api template source")
+	_, err = orbittemplate.SaveTemplateBranch(context.Background(), orbittemplate.TemplateSaveInput{
+		Preview: orbittemplate.TemplateSavePreviewInput{
+			RepoRoot:     repo.Root,
+			OrbitID:      "api",
+			TargetBranch: "orbit-template/api",
+			Now:          now.Add(time.Minute),
+		},
+	})
+	require.NoError(t, err)
+
+	repo.Run(t, "rm", "-f",
+		filepath.Join(".harness", "orbits", "docs.yaml"),
+		filepath.Join(".harness", "orbits", "api.yaml"),
+		filepath.Join("docs", "guide.md"),
+		filepath.Join("api", "guide.md"),
+	)
+	repo.AddAndCommit(t, "clear package source content")
+
+	return repo
+}
+
+func writeHyardRunViewOrbitTemplate(
+	t *testing.T,
+	repoRoot string,
+	orbitID string,
+	description string,
+	agentsTemplate string,
+	humansTemplate string,
+	bootstrapTemplate string,
+) {
+	t.Helper()
+
+	spec, err := orbitpkg.DefaultHostedMemberSchemaSpec(orbitID)
+	require.NoError(t, err)
+	spec.Description = description + " orbit"
+	require.NotNil(t, spec.Meta)
+	spec.Meta.AgentsTemplate = agentsTemplate
+	spec.Meta.HumansTemplate = humansTemplate
+	spec.Meta.BootstrapTemplate = bootstrapTemplate
+	spec.Members = []orbitpkg.OrbitMember{{
+		Key:  "guide",
+		Role: orbitpkg.OrbitMemberSubject,
+		Paths: orbitpkg.OrbitMemberPaths{
+			Include: []string{orbitID + "/**"},
+		},
+	}}
+	require.NotNil(t, spec.Behavior)
+	spec.Behavior.Scope.WriteRoles = []orbitpkg.OrbitMemberRole{
+		orbitpkg.OrbitMemberMeta,
+		orbitpkg.OrbitMemberRule,
+		orbitpkg.OrbitMemberSubject,
+	}
+	spec.Behavior.Scope.ExportRoles = []orbitpkg.OrbitMemberRole{
+		orbitpkg.OrbitMemberMeta,
+		orbitpkg.OrbitMemberRule,
+		orbitpkg.OrbitMemberSubject,
+	}
+	spec.Behavior.Scope.OrchestrationRoles = []orbitpkg.OrbitMemberRole{
+		orbitpkg.OrbitMemberMeta,
+		orbitpkg.OrbitMemberRule,
+		orbitpkg.OrbitMemberProcess,
+		orbitpkg.OrbitMemberSubject,
+	}
+	_, err = orbitpkg.WriteHostedOrbitSpec(repoRoot, spec)
+	require.NoError(t, err)
 }
 
 func seedHyardRunViewGuidanceRuntimeRepo(t *testing.T) *testutil.Repo {
