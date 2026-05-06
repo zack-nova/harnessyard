@@ -18,6 +18,7 @@ This directory contains the product, contributor, reference, and maintainer docu
 ## Maintainer Docs
 
 - [Release Guide](./maintainers/release.md)
+- [Root Guidance Workflow Marker Plan](./maintainers/root-guidance-workflow-marker-plan.md)
 - [Testing Strategy](./maintainers/testing-strategy.md)
 
 Design and implementation specs live alongside these pages while they are active references. Older or lower-frequency background documents can move into a dedicated background directory when needed.
