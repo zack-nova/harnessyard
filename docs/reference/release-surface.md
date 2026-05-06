@@ -87,9 +87,15 @@ typed Package Installation and Package Uninstallation:
 hyard init runtime
 hyard install https://github.com/acme/harness-templates.git --ref harness-template/frontend-lab
 hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/docs --bindings .harness/vars.yaml
+hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/api --bindings .harness/vars.yaml
+hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/ui --bindings .harness/vars.yaml
+hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/ops --bindings .harness/vars.yaml
 hyard uninstall harness frontend-lab
 hyard uninstall orbit docs
 ```
+
+Run View Package Installation outputs package guidance incrementally so each
+newly installed package can be used immediately.
 
 The lower-level explanatory path for `hyard start --with codex` is repo-local Agent
 Framework selection plus project-only Framework Activation:

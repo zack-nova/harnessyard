@@ -130,6 +130,62 @@ func TestHyardInstallKeepsRunViewRootGuidanceIncremental(t *testing.T) {
 	require.Empty(t, checkPayload.Findings)
 }
 
+func TestHyardInstallFourRunViewOrbitsOutputsGuidanceIncrementally(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardRunViewSequentialOrbitInstallRepo(t)
+
+	for _, orbitID := range []string{"docs", "api", "ui", "ops"} {
+		stdout, stderr, err := executeHyardCLI(t, repo.Root, "install", "orbit-template/"+orbitID, "--json")
+		require.NoError(t, err)
+		require.Empty(t, stderr)
+
+		var payload struct {
+			Warnings []string `json:"warnings"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+		require.Empty(t, payload.Warnings)
+	}
+
+	require.Equal(t, ""+
+		"Use docs runtime guidance.\n\n"+
+		"Use api runtime guidance.\n\n"+
+		"Use ui runtime guidance.\n\n"+
+		"Use ops runtime guidance.\n",
+		readRepoFile(t, repo.Root, "AGENTS.md"),
+	)
+	require.Equal(t, ""+
+		"Read the docs workflow.\n\n"+
+		"Read the api workflow.\n\n"+
+		"Read the ui workflow.\n\n"+
+		"Read the ops workflow.\n",
+		readRepoFile(t, repo.Root, "HUMANS.md"),
+	)
+	require.Equal(t, ""+
+		"Bootstrap the docs workflow.\n\n"+
+		"Bootstrap the api workflow.\n\n"+
+		"Bootstrap the ui workflow.\n\n"+
+		"Bootstrap the ops workflow.\n",
+		readRepoFile(t, repo.Root, "BOOTSTRAP.md"),
+	)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "check", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var checkPayload struct {
+		OK       bool `json:"ok"`
+		Findings []struct {
+			Kind string `json:"kind"`
+			Path string `json:"path"`
+		} `json:"findings"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &checkPayload))
+	require.True(t, checkPayload.OK)
+	require.Empty(t, checkPayload.Findings)
+	requireHyardRunViewRuntimeContentStatus(t, repo.Root)
+}
+
 func TestHyardCheckReportsDuplicateMarkedRunViewRootGuidance(t *testing.T) {
 	t.Parallel()
 
@@ -443,11 +499,41 @@ func seedHyardRunViewSequentialOrbitInstallRepo(t *testing.T) *testutil.Repo {
 	})
 	require.NoError(t, err)
 
+	writeHyardRunViewOrbitTemplate(t, repo.Root, "ui", "UI", "Use ui runtime guidance.\n", "Read the ui workflow.\n", "Bootstrap the ui workflow.\n")
+	repo.WriteFile(t, "ui/guide.md", "# UI guide\n")
+	repo.AddAndCommit(t, "seed ui template source")
+	_, err = orbittemplate.SaveTemplateBranch(context.Background(), orbittemplate.TemplateSaveInput{
+		Preview: orbittemplate.TemplateSavePreviewInput{
+			RepoRoot:     repo.Root,
+			OrbitID:      "ui",
+			TargetBranch: "orbit-template/ui",
+			Now:          now.Add(2 * time.Minute),
+		},
+	})
+	require.NoError(t, err)
+
+	writeHyardRunViewOrbitTemplate(t, repo.Root, "ops", "Ops", "Use ops runtime guidance.\n", "Read the ops workflow.\n", "Bootstrap the ops workflow.\n")
+	repo.WriteFile(t, "ops/guide.md", "# Ops guide\n")
+	repo.AddAndCommit(t, "seed ops template source")
+	_, err = orbittemplate.SaveTemplateBranch(context.Background(), orbittemplate.TemplateSaveInput{
+		Preview: orbittemplate.TemplateSavePreviewInput{
+			RepoRoot:     repo.Root,
+			OrbitID:      "ops",
+			TargetBranch: "orbit-template/ops",
+			Now:          now.Add(3 * time.Minute),
+		},
+	})
+	require.NoError(t, err)
+
 	repo.Run(t, "rm", "-f",
 		filepath.Join(".harness", "orbits", "docs.yaml"),
 		filepath.Join(".harness", "orbits", "api.yaml"),
+		filepath.Join(".harness", "orbits", "ui.yaml"),
+		filepath.Join(".harness", "orbits", "ops.yaml"),
 		filepath.Join("docs", "guide.md"),
 		filepath.Join("api", "guide.md"),
+		filepath.Join("ui", "guide.md"),
+		filepath.Join("ops", "guide.md"),
 	)
 	repo.AddAndCommit(t, "clear package source content")
 

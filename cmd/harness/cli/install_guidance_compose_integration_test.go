@@ -140,7 +140,7 @@ func TestHarnessInstallAutoComposesDescriptionBackedAgentsAndKeepsHarnessCheckCl
 	require.Contains(t, checkStdout, `"ok": true`)
 }
 
-func TestHarnessInstallScopedGuidanceIgnoresUnrelatedDriftedBlocks(t *testing.T) {
+func TestHarnessInstallScopedGuidanceWarnsOnUnresolvedMarkedGuidanceDrift(t *testing.T) {
 	t.Parallel()
 
 	repo := seedHarnessInstallGuidanceRepo(t, []installGuidanceTemplateSpec{
@@ -178,7 +178,8 @@ func TestHarnessInstallScopedGuidanceIgnoresUnrelatedDriftedBlocks(t *testing.T)
 	}
 	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
 	require.Len(t, payload.Warnings, 1)
-	require.Contains(t, payload.Warnings[0], "scoped guidance compose was rolled back")
+	require.Contains(t, payload.Warnings[0], "Run View cleanup found unresolved drifted marked guidance; scoped guidance output was rolled back")
+	require.NotContains(t, payload.Warnings[0], "scoped guidance compose was rolled back")
 	require.Contains(t, payload.Warnings[0], "apply Run View presentation")
 	require.Contains(t, payload.Warnings[0], "Run View cleanup blocked by Authored Truth Drift")
 	require.Contains(t, payload.Warnings[0], "hyard guide sync --target all --output")
@@ -276,7 +277,7 @@ func TestHarnessInstallBatchAutoComposesScopedGuidanceArtifacts(t *testing.T) {
 	require.Contains(t, string(bootstrapData), "Bootstrap the Installed Orbit docs orbit.\n")
 }
 
-func TestHarnessInstallBatchScopedGuidanceIgnoresUnrelatedDriftedBlocks(t *testing.T) {
+func TestHarnessInstallBatchScopedGuidanceWarnsOnUnresolvedMarkedGuidanceDrift(t *testing.T) {
 	t.Parallel()
 
 	repo := seedHarnessInstallGuidanceRepo(t, []installGuidanceTemplateSpec{
@@ -321,7 +322,8 @@ func TestHarnessInstallBatchScopedGuidanceIgnoresUnrelatedDriftedBlocks(t *testi
 	}
 	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
 	require.Len(t, payload.Warnings, 1)
-	require.Contains(t, payload.Warnings[0], "scoped guidance compose was rolled back")
+	require.Contains(t, payload.Warnings[0], "Run View cleanup found unresolved drifted marked guidance; scoped guidance output was rolled back")
+	require.NotContains(t, payload.Warnings[0], "scoped guidance compose was rolled back")
 	require.Contains(t, payload.Warnings[0], "apply Run View presentation")
 	require.Contains(t, payload.Warnings[0], "Run View cleanup blocked by Authored Truth Drift")
 	require.Contains(t, payload.Warnings[0], "hyard guide sync --target all --output")

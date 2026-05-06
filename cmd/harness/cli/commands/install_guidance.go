@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -116,6 +117,22 @@ func composeInstallScopedGuidance(
 }
 
 func formatInstallScopedGuidanceWarning(composeErr error, rollbackErr error) string {
+	var cleanupBlocked harnesspkg.RuntimeViewCleanupBlockedError
+	if errors.As(composeErr, &cleanupBlocked) && installScopedGuidanceBlockedByMarkedGuidanceDrift(cleanupBlocked) {
+		if rollbackErr == nil {
+			return fmt.Sprintf(
+				"install succeeded, but Run View cleanup found unresolved drifted marked guidance; scoped guidance output was rolled back: %v. Fix the issue and run `hyard guide sync --target all --output`.",
+				composeErr,
+			)
+		}
+
+		return fmt.Sprintf(
+			"install succeeded, but Run View cleanup found unresolved drifted marked guidance (%v) and rollback also failed (%v). Guidance artifacts may be in an unknown state; run `hyard check --json` and then `hyard guide sync --target all --output`.",
+			composeErr,
+			rollbackErr,
+		)
+	}
+
 	if rollbackErr == nil {
 		return fmt.Sprintf(
 			"install succeeded, but scoped guidance compose was rolled back: %v. Fix the issue and run `hyard guide sync --target all --output`.",
@@ -128,6 +145,18 @@ func formatInstallScopedGuidanceWarning(composeErr error, rollbackErr error) str
 		composeErr,
 		rollbackErr,
 	)
+}
+
+func installScopedGuidanceBlockedByMarkedGuidanceDrift(err harnesspkg.RuntimeViewCleanupBlockedError) bool {
+	if len(err.Blockers) == 0 {
+		return false
+	}
+	for _, blocker := range err.Blockers {
+		if !strings.Contains(blocker, " block ") || !strings.Contains(blocker, "authored truth drift") {
+			return false
+		}
+	}
+	return true
 }
 
 func appendInstallGuidancePaths(
