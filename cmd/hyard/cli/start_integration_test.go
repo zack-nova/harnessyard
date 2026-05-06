@@ -45,6 +45,10 @@ type hyardStartDryRunPayload struct {
 		TerminalCLIDetected        bool     `json:"terminal_cli_detected"`
 		ManualFallbackInstructions []string `json:"manual_fallback_instructions"`
 	} `json:"launcher"`
+	WriteConflicts []struct {
+		Path    string `json:"path"`
+		Message string `json:"message"`
+	} `json:"write_conflicts"`
 	StartPrompt string `json:"start_prompt"`
 }
 
@@ -191,6 +195,140 @@ func TestHyardStartSelectsOnlyReadyAgentThroughInjectedLauncher(t *testing.T) {
 	require.Equal(t, beforeHead, strings.TrimSpace(repo.Run(t, "rev-parse", "HEAD")))
 }
 
+func TestHyardStartFailsBeforeWritesWhenBootstrapSkillHasLocalEdits(t *testing.T) {
+	repo := seedCommittedHyardRuntimeRepo(t)
+	repo.WriteFile(t, ".codex/skills/"+harnesspkg.BootstrapAgentSkillName+"/SKILL.md", "local bootstrap edits\n")
+
+	lockHyardProcessEnv(t)
+	t.Setenv("HOME", t.TempDir())
+	stubCodexExecutableOnPath(t)
+	beforeStatus := repo.Run(t, "status", "--short")
+	launcher := &recordingStartLauncher{}
+
+	stdout, stderr, err := executeHyardCLIWithStartLauncherUnlocked(t, repo.Root, launcher, "start")
+	require.Error(t, err)
+	require.Empty(t, stdout)
+	require.Empty(t, stderr)
+	require.ErrorContains(t, err, ".codex/skills/"+harnesspkg.BootstrapAgentSkillName+"/SKILL.md")
+
+	require.Equal(t, beforeStatus, repo.Run(t, "status", "--short"))
+	require.Empty(t, launcher.requests)
+	require.NoDirExists(t, filepath.Join(repo.GitDir(t), "orbit", "state", "agents", "activations"))
+}
+
+func TestHyardStartFailsBeforeWritesWhenFrameworkOutputHasLocalEdits(t *testing.T) {
+	repo := seedCommittedHyardRuntimeRepo(t)
+	addHyardStartAgentCapability(t, repo)
+	repo.WriteFile(t, ".codex/skills/review/SKILL.md", "local review skill edits\n")
+
+	lockHyardProcessEnv(t)
+	t.Setenv("HOME", t.TempDir())
+	beforeStatus := repo.Run(t, "status", "--short")
+	launcher := &recordingStartLauncher{}
+
+	stdout, stderr, err := executeHyardCLIWithStartLauncherUnlocked(t, repo.Root, launcher, "start", "--with", "codex")
+	require.Error(t, err)
+	require.Empty(t, stdout)
+	require.Empty(t, stderr)
+	require.ErrorContains(t, err, ".codex/skills/review")
+
+	require.Equal(t, beforeStatus, repo.Run(t, "status", "--short"))
+	require.Empty(t, launcher.requests)
+	require.NoFileExists(t, harnesspkg.FrameworkSelectionPath(repo.GitDir(t)))
+	require.NoFileExists(t, filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoDirExists(t, filepath.Join(repo.GitDir(t), "orbit", "state", "agents", "activations"))
+}
+
+func TestHyardStartFailsBeforeOverwritingRepoLocalFrameworkSelection(t *testing.T) {
+	repo := seedCommittedHyardRuntimeRepo(t)
+	_, err := harnesspkg.WriteFrameworkSelection(repo.GitDir(t), harnesspkg.FrameworkSelection{
+		SelectedFramework: "claudecode",
+		SelectionSource:   harnesspkg.FrameworkSelectionSourceExplicitLocal,
+		UpdatedAt:         time.Date(2026, time.May, 5, 13, 0, 0, 0, time.UTC),
+	})
+	require.NoError(t, err)
+
+	lockHyardProcessEnv(t)
+	t.Setenv("HOME", t.TempDir())
+	beforeStatus := repo.Run(t, "status", "--short")
+	launcher := &recordingStartLauncher{}
+
+	stdout, stderr, err := executeHyardCLIWithStartLauncherUnlocked(t, repo.Root, launcher, "start", "--with", "codex")
+	require.Error(t, err)
+	require.Empty(t, stdout)
+	require.Empty(t, stderr)
+	require.ErrorContains(t, err, ".git/orbit/state/agents/selection.json")
+
+	selection, err := harnesspkg.LoadFrameworkSelection(repo.GitDir(t))
+	require.NoError(t, err)
+	require.Equal(t, "claudecode", selection.SelectedFramework)
+	require.Equal(t, beforeStatus, repo.Run(t, "status", "--short"))
+	require.Empty(t, launcher.requests)
+	require.NoDirExists(t, filepath.Join(repo.GitDir(t), "orbit", "state", "agents", "activations"))
+}
+
+func TestHyardStartFailsBeforeOverwritingInvalidActivationState(t *testing.T) {
+	repo := seedCommittedHyardRuntimeRepo(t)
+	activationPath := harnesspkg.FrameworkActivationPath(repo.GitDir(t), "codex")
+	require.NoError(t, os.MkdirAll(filepath.Dir(activationPath), 0o750))
+	require.NoError(t, os.WriteFile(activationPath, []byte("local activation edits\n"), 0o600))
+
+	lockHyardProcessEnv(t)
+	t.Setenv("HOME", t.TempDir())
+	stubCodexExecutableOnPath(t)
+	beforeStatus := repo.Run(t, "status", "--short")
+	launcher := &recordingStartLauncher{}
+
+	stdout, stderr, err := executeHyardCLIWithStartLauncherUnlocked(t, repo.Root, launcher, "start")
+	require.Error(t, err)
+	require.Empty(t, stdout)
+	require.Empty(t, stderr)
+	require.ErrorContains(t, err, ".git/orbit/state/agents/activations/codex.json")
+
+	data, err := os.ReadFile(activationPath)
+	require.NoError(t, err)
+	require.Equal(t, "local activation edits\n", string(data))
+	require.Equal(t, beforeStatus, repo.Run(t, "status", "--short"))
+	require.Empty(t, launcher.requests)
+}
+
+func TestHyardStartAllowsUnrelatedDirtyWorktreeChanges(t *testing.T) {
+	repo := seedCommittedHyardRuntimeRepo(t)
+	repo.WriteFile(t, "scratch/notes.md", "local notes\n")
+
+	lockHyardProcessEnv(t)
+	t.Setenv("HOME", t.TempDir())
+	launcher := &recordingStartLauncher{}
+
+	stdout, stderr, err := executeHyardCLIWithStartLauncherUnlocked(t, repo.Root, launcher, "start", "--with", "codex")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+	require.Contains(t, stdout, "harness start handed off to codex")
+
+	require.Len(t, launcher.requests, 1)
+	require.Contains(t, repo.Run(t, "status", "--short"), "?? scratch/")
+}
+
+func TestHyardStartAllowsExistingOwnedFrameworkOutputs(t *testing.T) {
+	repo := seedCommittedHyardRuntimeRepo(t)
+	addHyardStartAgentCapability(t, repo)
+
+	lockHyardProcessEnv(t)
+	t.Setenv("HOME", t.TempDir())
+	firstLauncher := &recordingStartLauncher{}
+	_, _, err := executeHyardCLIWithStartLauncherUnlocked(t, repo.Root, firstLauncher, "start", "--with", "codex")
+	require.NoError(t, err)
+	require.Len(t, firstLauncher.requests, 1)
+	require.Contains(t, repo.Run(t, "status", "--short"), "?? .codex/")
+
+	secondLauncher := &recordingStartLauncher{}
+	stdout, stderr, err := executeHyardCLIWithStartLauncherUnlocked(t, repo.Root, secondLauncher, "start", "--with", "codex")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+	require.Contains(t, stdout, "harness start handed off to codex")
+	require.Len(t, secondLauncher.requests, 1)
+}
+
 func TestHyardStartPrintPromptPrintsStartPromptInRuntime(t *testing.T) {
 	t.Parallel()
 
@@ -239,6 +377,23 @@ func TestHyardStartPrintPromptDoesNotMutateRuntimeOrAgentState(t *testing.T) {
 	require.NoFileExists(t, filepath.Join(repo.Root, "BOOTSTRAP.md"))
 }
 
+func TestHyardStartPrintPromptIgnoresWouldWriteConflicts(t *testing.T) {
+	t.Parallel()
+
+	repo := seedCommittedHyardRuntimeRepo(t)
+	repo.WriteFile(t, ".codex/skills/"+harnesspkg.BootstrapAgentSkillName+"/SKILL.md", "local bootstrap edits\n")
+	beforeStatus := repo.Run(t, "status", "--short")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "start", "--print-prompt")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+	require.Contains(t, stdout, "Harness Start")
+
+	require.Equal(t, beforeStatus, repo.Run(t, "status", "--short"))
+	require.NoFileExists(t, harnesspkg.FrameworkSelectionPath(repo.GitDir(t)))
+	require.NoDirExists(t, filepath.Join(repo.GitDir(t), "orbit", "state", "agents", "activations"))
+}
+
 func TestHyardStartDryRunJSONPlansHarnessStartWithoutMutatingRuntime(t *testing.T) {
 	repo := seedCommittedHyardRuntimeRepo(t)
 	_, err := harnesspkg.WriteFrameworksFile(repo.Root, harnesspkg.FrameworksFile{
@@ -283,6 +438,27 @@ func TestHyardStartDryRunJSONPlansHarnessStartWithoutMutatingRuntime(t *testing.
 	require.NoDirExists(t, filepath.Join(repo.GitDir(t), "orbit", "state", "agents", "activations"))
 	require.NoFileExists(t, filepath.Join(repo.Root, ".codex", "skills", harnesspkg.BootstrapAgentSkillName, "SKILL.md"))
 	require.NoFileExists(t, filepath.Join(repo.Root, "BOOTSTRAP.md"))
+}
+
+func TestHyardStartDryRunJSONReportsWriteConflictsWithoutMutatingRuntime(t *testing.T) {
+	t.Parallel()
+
+	repo := seedCommittedHyardRuntimeRepo(t)
+	repo.WriteFile(t, ".codex/skills/"+harnesspkg.BootstrapAgentSkillName+"/SKILL.md", "local bootstrap edits\n")
+	beforeStatus := repo.Run(t, "status", "--short")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "start", "--with", "codex", "--dry-run", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	payload := decodeHyardStartDryRunPayload(t, stdout)
+	require.Len(t, payload.WriteConflicts, 1)
+	require.Equal(t, ".codex/skills/"+harnesspkg.BootstrapAgentSkillName+"/SKILL.md", payload.WriteConflicts[0].Path)
+	require.Contains(t, payload.WriteConflicts[0].Message, "local edits")
+
+	require.Equal(t, beforeStatus, repo.Run(t, "status", "--short"))
+	require.NoFileExists(t, harnesspkg.FrameworkSelectionPath(repo.GitDir(t)))
+	require.NoDirExists(t, filepath.Join(repo.GitDir(t), "orbit", "state", "agents", "activations"))
 }
 
 func TestHyardStartDryRunJSONSelectsOnlyReadyAgentWithoutMutatingDetectionCache(t *testing.T) {

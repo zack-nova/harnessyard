@@ -24,6 +24,7 @@ type StartPlan struct {
 	Activation          StartActivationPlan          `json:"activation"`
 	BootstrapAgentSkill BootstrapAgentSkillSetupPlan `json:"bootstrap_agent_skill"`
 	Launcher            StartLauncherPlan            `json:"launcher"`
+	WriteConflicts      []StartWriteConflict         `json:"write_conflicts,omitempty"`
 	StartPrompt         string                       `json:"start_prompt"`
 	Warnings            []string                     `json:"warnings,omitempty"`
 }
@@ -60,6 +61,12 @@ type StartLauncherPlan struct {
 	TerminalCLIDetected        bool                 `json:"terminal_cli_detected"`
 	ManualFallbackInstructions []string             `json:"manual_fallback_instructions,omitempty"`
 	Warnings                   []string             `json:"warnings,omitempty"`
+}
+
+// StartWriteConflict reports one local path that would be overwritten by Harness Start.
+type StartWriteConflict struct {
+	Path    string `json:"path"`
+	Message string `json:"message"`
 }
 
 type startLauncherDetection struct {
@@ -132,6 +139,11 @@ func BuildStartPlan(ctx context.Context, input StartPlanInput) (StartPlan, error
 		return StartPlan{}, fmt.Errorf("plan bootstrap agent skill setup: %w", err)
 	}
 	plan.BootstrapAgentSkill = bootstrapPlan
+	writeConflicts, err := detectStartWriteConflicts(ctx, input, resolution, frameworkPlan, bootstrapPlan)
+	if err != nil {
+		return StartPlan{}, fmt.Errorf("detect start write conflicts: %w", err)
+	}
+	plan.WriteConflicts = writeConflicts
 
 	return plan, nil
 }

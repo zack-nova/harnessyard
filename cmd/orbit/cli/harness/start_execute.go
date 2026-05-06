@@ -26,6 +26,7 @@ type StartExecutionResult struct {
 	Activation          FrameworkApplyResult         `json:"activation"`
 	BootstrapAgentSkill BootstrapAgentSkillSetupPlan `json:"bootstrap_agent_skill"`
 	Launcher            StartLaunchResult            `json:"launcher"`
+	WriteConflicts      []StartWriteConflict         `json:"write_conflicts,omitempty"`
 	StartPrompt         string                       `json:"start_prompt"`
 	Warnings            []string                     `json:"warnings,omitempty"`
 }
@@ -78,6 +79,28 @@ func ExecuteStart(ctx context.Context, input StartExecutionInput) (StartExecutio
 	if !launcherPlan.Launchable {
 		result.Launcher = startLaunchResultFromPlan(launcherPlan)
 		return result, fmt.Errorf("cannot launch %s interactively: launcher status %s", resolution.Framework, launcherPlan.Status)
+	}
+
+	frameworkPlan, err := buildStartFrameworkPlan(ctx, planInput, resolution.Framework)
+	if err != nil {
+		return result, fmt.Errorf("build project-only activation plan: %w", err)
+	}
+	bootstrapPlan, err := PlanBootstrapAgentSkillSetup(BootstrapAgentSkillSetupInput{
+		RepoRoot:  input.RepoRoot,
+		GitDir:    input.GitDir,
+		Framework: resolution.Framework,
+	})
+	if err != nil {
+		return result, fmt.Errorf("plan bootstrap agent skill setup: %w", err)
+	}
+	result.BootstrapAgentSkill = bootstrapPlan
+	conflicts, err := detectStartWriteConflicts(ctx, planInput, resolution, frameworkPlan, bootstrapPlan)
+	if err != nil {
+		return result, fmt.Errorf("detect start write conflicts: %w", err)
+	}
+	if len(conflicts) > 0 {
+		result.WriteConflicts = conflicts
+		return result, startWriteConflictsError(conflicts)
 	}
 
 	if strings.TrimSpace(input.FrameworkOverride) != "" {
