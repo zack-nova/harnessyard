@@ -107,6 +107,17 @@ type adoptWriteOutput struct {
 	NextActions   []adoptCheckNextAction              `json:"next_actions"`
 }
 
+type adoptSourceWriteOutput struct {
+	SchemaVersion      string                 `json:"schema_version"`
+	RepoRoot           string                 `json:"repo_root"`
+	Mode               string                 `json:"mode"`
+	AdoptedOrbit       adoptCheckAdoptedOrbit `json:"adopted_orbit"`
+	SourceManifestPath string                 `json:"source_manifest_path"`
+	SourceBranch       string                 `json:"source_branch"`
+	WrittenPaths       []string               `json:"written_paths"`
+	NextActions        []adoptCheckNextAction `json:"next_actions"`
+}
+
 type adoptWriteValidation struct {
 	Target string `json:"target"`
 	OK     bool   `json:"ok"`
@@ -172,6 +183,43 @@ func newAdoptCommand() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&check, "check", false, "Inspect Adoption readiness without mutating")
 	cmd.Flags().StringVar(&orbitID, "orbit", "", "Adopted Orbit id to use instead of deriving one from the repository name")
+	addHyardJSONFlag(cmd)
+	cmd.AddCommand(newAdoptSourceCommand())
+
+	return cmd
+}
+
+func newAdoptSourceCommand() *cobra.Command {
+	var orbitID string
+
+	cmd := &cobra.Command{
+		Use:   "source",
+		Short: "Convert the current repository or branch into source authoring truth",
+		Long: "Convert the current repository or branch into Harness Yard source authoring truth.\n" +
+			"Source Adoption writes source revision identity and hosted OrbitSpec truth without\n" +
+			"creating Harness Runtime state.",
+		Example: "" +
+			"  hyard adopt source\n" +
+			"  hyard adopt source --orbit docs --json\n",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			output, err := buildAdoptSourceWriteOutput(cmd, orbitID)
+			if err != nil {
+				return err
+			}
+
+			jsonOutput, err := wantHyardJSON(cmd)
+			if err != nil {
+				return err
+			}
+			if jsonOutput {
+				return emitHyardJSON(cmd, output)
+			}
+
+			return printAdoptSourceWriteText(cmd, output)
+		},
+	}
+	cmd.Flags().StringVar(&orbitID, "orbit", "", "Orbit Package id to use instead of deriving one from the Git repository root basename")
 	addHyardJSONFlag(cmd)
 
 	return cmd
@@ -607,6 +655,272 @@ func buildAdoptWriteOutputWithOptions(
 		Readiness:     readiness,
 		NextActions:   adoptWriteNextActions(writtenPaths),
 	}, nil
+}
+
+func buildAdoptSourceWriteOutput(cmd *cobra.Command, explicitOrbitID string) (adoptSourceWriteOutput, error) {
+	workingDir, err := hyardWorkingDirFromCommand(cmd)
+	if err != nil {
+		return adoptSourceWriteOutput{}, err
+	}
+	repo, err := gitpkg.DiscoverRepo(cmd.Context(), workingDir)
+	if err != nil {
+		return adoptSourceWriteOutput{}, fmt.Errorf("discover git repository: %w", err)
+	}
+	if err := ensureAdoptSourceCompatibleRevision(repo.Root); err != nil {
+		return adoptSourceWriteOutput{}, err
+	}
+
+	orbitID, derivedFrom, err := adoptSourceOrbitID(repo.Root, explicitOrbitID)
+	if err != nil {
+		return adoptSourceWriteOutput{}, err
+	}
+
+	state, err := orbittemplate.LoadCurrentRepoState(cmd.Context(), repo.Root)
+	if err != nil {
+		return adoptSourceWriteOutput{}, fmt.Errorf("load current repo state: %w", err)
+	}
+	sourceBranch, err := orbittemplate.RequireCurrentBranch(state, "source adoption")
+	if err != nil {
+		return adoptSourceWriteOutput{}, fmt.Errorf("resolve source adoption branch: %w", err)
+	}
+
+	spec, err := loadOrCreateAdoptSourceOrbitSpec(cmd, repo.Root, orbitID)
+	if err != nil {
+		return adoptSourceWriteOutput{}, err
+	}
+	spec, err = applyAdoptSourceRootGuidanceMeta(repo.Root, spec)
+	if err != nil {
+		return adoptSourceWriteOutput{}, err
+	}
+	worktreeFiles, err := gitpkg.WorktreeFiles(cmd.Context(), repo.Root)
+	if err != nil {
+		return adoptSourceWriteOutput{}, fmt.Errorf("list worktree files for source member hints: %w", err)
+	}
+	memberHintInspection, err := orbitpkg.InspectMemberHints(repo.Root, spec, worktreeFiles)
+	if err != nil {
+		return adoptSourceWriteOutput{}, fmt.Errorf("inspect source member hints: %w", err)
+	}
+	if !memberHintInspection.BackfillAllowed {
+		return adoptSourceWriteOutput{}, adoptSourceMemberHintPreflightError(memberHintInspection.Hints)
+	}
+
+	specPath, err := orbitpkg.WriteHostedOrbitSpec(repo.Root, spec)
+	if err != nil {
+		return adoptSourceWriteOutput{}, fmt.Errorf("write source hosted orbit spec: %w", err)
+	}
+
+	manifestPath, err := harnesspkg.WriteManifestFile(repo.Root, harnesspkg.ManifestFile{
+		SchemaVersion: 1,
+		Kind:          harnesspkg.ManifestKindSource,
+		Source: &harnesspkg.ManifestSourceMetadata{
+			Package:      ids.PackageIdentity{Type: ids.PackageTypeOrbit, Name: orbitID},
+			OrbitID:      orbitID,
+			SourceBranch: sourceBranch,
+		},
+	})
+	if err != nil {
+		return adoptSourceWriteOutput{}, fmt.Errorf("write source manifest: %w", err)
+	}
+
+	validatedSpec, err := orbitpkg.LoadHostedOrbitSpec(cmd.Context(), repo.Root, orbitID)
+	if err != nil {
+		return adoptSourceWriteOutput{}, fmt.Errorf("validate source hosted orbit spec: %w", err)
+	}
+	backfill, err := orbitpkg.BackfillMemberHints(repo.Root, validatedSpec, worktreeFiles)
+	if err != nil {
+		return adoptSourceWriteOutput{}, fmt.Errorf("backfill source member hints: %w", err)
+	}
+	if _, err := harnesspkg.LoadManifestFile(repo.Root); err != nil {
+		return adoptSourceWriteOutput{}, fmt.Errorf("validate generated source manifest: %w", err)
+	}
+
+	specRepoPath, err := adoptSourceRepoRelativePath(repo.Root, specPath)
+	if err != nil {
+		return adoptSourceWriteOutput{}, err
+	}
+	writtenPaths := []string{
+		harnesspkg.ManifestRepoPath(),
+		specRepoPath,
+	}
+	writtenPaths = append(writtenPaths, backfill.ConsumedHints...)
+	writtenPaths = uniqueAdoptWritePaths(writtenPaths)
+
+	return adoptSourceWriteOutput{
+		SchemaVersion: adoptionCheckSchemaVersion,
+		RepoRoot:      repo.Root,
+		Mode:          "source_write",
+		AdoptedOrbit: adoptCheckAdoptedOrbit{
+			ID:          orbitID,
+			DerivedFrom: derivedFrom,
+		},
+		SourceManifestPath: manifestPath,
+		SourceBranch:       sourceBranch,
+		WrittenPaths:       writtenPaths,
+		NextActions:        adoptSourceWriteNextActions(writtenPaths),
+	}, nil
+}
+
+func ensureAdoptSourceCompatibleRevision(repoRoot string) error {
+	manifest, err := harnesspkg.LoadManifestFile(repoRoot)
+	switch {
+	case err == nil:
+		if manifest.Kind != harnesspkg.ManifestKindSource {
+			return fmt.Errorf(
+				"source adoption requires a plain or source authoring revision; current revision kind is %q",
+				manifest.Kind,
+			)
+		}
+		return nil
+	case errors.Is(err, os.ErrNotExist):
+		return nil
+	default:
+		return fmt.Errorf("inspect harness manifest: %w", err)
+	}
+}
+
+func adoptSourceOrbitID(repoRoot string, explicitOrbitID string) (string, string, error) {
+	if explicitOrbitID != "" {
+		if err := ids.ValidateOrbitID(explicitOrbitID); err != nil {
+			return "", "", fmt.Errorf("validate --orbit: %w", err)
+		}
+		return explicitOrbitID, "flag", nil
+	}
+
+	base := filepath.Base(filepath.Clean(repoRoot))
+	if err := ids.ValidateOrbitID(base); err != nil {
+		return "", "", fmt.Errorf(
+			"derive default orbit id from Git repo root basename %q: %w; pass --orbit <orbit-id>",
+			base,
+			err,
+		)
+	}
+
+	return base, "repository_root_basename", nil
+}
+
+func loadOrCreateAdoptSourceOrbitSpec(cmd *cobra.Command, repoRoot string, orbitID string) (orbitpkg.OrbitSpec, error) {
+	spec, err := orbitpkg.LoadHostedOrbitSpec(cmd.Context(), repoRoot, orbitID)
+	if err == nil {
+		return spec, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return orbitpkg.OrbitSpec{}, fmt.Errorf("load existing source hosted orbit spec: %w", err)
+	}
+
+	spec, err = orbitpkg.DefaultHostedMemberSchemaSpec(orbitID)
+	if err != nil {
+		return orbitpkg.OrbitSpec{}, fmt.Errorf("build source hosted orbit spec: %w", err)
+	}
+	spec, err = orbitpkg.SeedDefaultCapabilityTruth(spec)
+	if err != nil {
+		return orbitpkg.OrbitSpec{}, fmt.Errorf("seed source capability truth: %w", err)
+	}
+
+	return spec, nil
+}
+
+func applyAdoptSourceRootGuidanceMeta(repoRoot string, spec orbitpkg.OrbitSpec) (orbitpkg.OrbitSpec, error) {
+	next := spec
+	if next.Meta == nil {
+		defaultSpec, err := orbitpkg.DefaultHostedMemberSchemaSpec(next.ID)
+		if err != nil {
+			return orbitpkg.OrbitSpec{}, fmt.Errorf("build source meta defaults: %w", err)
+		}
+		next.Meta = defaultSpec.Meta
+	}
+
+	agentsTemplate, found, err := readAdoptSourceRootGuidance(repoRoot, "AGENTS.md")
+	if err != nil {
+		return orbitpkg.OrbitSpec{}, err
+	}
+	if found {
+		next.Meta.AgentsTemplate = agentsTemplate
+	}
+	humansTemplate, found, err := readAdoptSourceRootGuidance(repoRoot, "HUMANS.md")
+	if err != nil {
+		return orbitpkg.OrbitSpec{}, err
+	}
+	if found {
+		next.Meta.HumansTemplate = humansTemplate
+	}
+	bootstrapTemplate, found, err := readAdoptSourceRootGuidance(repoRoot, "BOOTSTRAP.md")
+	if err != nil {
+		return orbitpkg.OrbitSpec{}, err
+	}
+	if found {
+		next.Meta.BootstrapTemplate = bootstrapTemplate
+	}
+
+	return next, nil
+}
+
+func readAdoptSourceRootGuidance(repoRoot string, repoPath string) (string, bool, error) {
+	filename := filepath.Join(repoRoot, filepath.FromSlash(repoPath))
+	info, err := os.Stat(filename)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("stat source root guidance %s: %w", repoPath, err)
+	}
+	if info.IsDir() {
+		return "", false, fmt.Errorf("source root guidance %s must be a file", repoPath)
+	}
+
+	//nolint:gosec // The path is one of the fixed repo-local root guidance artifacts.
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return "", false, fmt.Errorf("read source root guidance %s: %w", repoPath, err)
+	}
+
+	return string(data), true, nil
+}
+
+func adoptSourceRepoRelativePath(repoRoot string, filename string) (string, error) {
+	relativePath, err := filepath.Rel(repoRoot, filename)
+	if err != nil {
+		return "", fmt.Errorf("resolve source adoption written path %s: %w", filename, err)
+	}
+	normalized, err := ids.NormalizeRepoRelativePath(filepath.ToSlash(relativePath))
+	if err != nil {
+		return "", fmt.Errorf("normalize source adoption written path %s: %w", filename, err)
+	}
+
+	return normalized, nil
+}
+
+func adoptSourceMemberHintPreflightError(hints []orbitpkg.DetectedMemberHint) error {
+	diagnostics := make([]string, 0)
+	for _, hint := range hints {
+		if hint.Action != orbitpkg.MemberHintActionConflict && hint.Action != orbitpkg.MemberHintActionInvalidHint {
+			continue
+		}
+		if len(hint.Diagnostics) == 0 {
+			diagnostics = append(diagnostics, fmt.Sprintf("%s at %s", hint.Action, hint.HintPath))
+			continue
+		}
+		for _, diagnostic := range hint.Diagnostics {
+			if hint.HintPath != "" {
+				diagnostics = append(diagnostics, adoptSourceMemberHintDiagnostic(hint.HintPath, diagnostic))
+				continue
+			}
+			diagnostics = append(diagnostics, diagnostic)
+		}
+	}
+	sort.Strings(diagnostics)
+	if len(diagnostics) == 0 {
+		return errors.New("source member hints are not ready")
+	}
+
+	return fmt.Errorf("source member hints are not ready: %s", strings.Join(diagnostics, "; "))
+}
+
+func adoptSourceMemberHintDiagnostic(hintPath string, diagnostic string) string {
+	if strings.HasPrefix(diagnostic, hintPath+" ") || strings.HasPrefix(diagnostic, hintPath+":") {
+		return diagnostic
+	}
+
+	return hintPath + ": " + diagnostic
 }
 
 func uniqueAdoptWritePaths(paths []string) []string {
@@ -1937,6 +2251,19 @@ func adoptWriteNextActions(writtenPaths []string) []adoptCheckNextAction {
 	}
 }
 
+func adoptSourceWriteNextActions(writtenPaths []string) []adoptCheckNextAction {
+	return []adoptCheckNextAction{
+		{
+			Command: "hyard publish orbit",
+			Reason:  "publish the adopted Orbit Package after review",
+		},
+		{
+			Command: "git status && git add " + strings.Join(writtenPaths, " ") + " && git commit",
+			Reason:  "review and commit Source Adoption changes when ready",
+		},
+	}
+}
+
 func adoptWriteReviewPaths(writtenPaths []string) []string {
 	reviewPaths := make([]string, 0, len(writtenPaths))
 	for _, path := range writtenPaths {
@@ -1994,6 +2321,27 @@ func printAdoptCheckText(cmd *cobra.Command, output adoptCheckOutput) error {
 	if err != nil {
 		return fmt.Errorf("write command output: %w", err)
 	}
+	return nil
+}
+
+func printAdoptSourceWriteText(cmd *cobra.Command, output adoptSourceWriteOutput) error {
+	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "source_adopted: true\nadopted_orbit: %s\n", output.AdoptedOrbit.ID); err != nil {
+		return fmt.Errorf("write command output: %w", err)
+	}
+	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "source_branch: %s\n", output.SourceBranch); err != nil {
+		return fmt.Errorf("write command output: %w", err)
+	}
+	for _, path := range output.WrittenPaths {
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "written: %s\n", path); err != nil {
+			return fmt.Errorf("write command output: %w", err)
+		}
+	}
+	for _, action := range output.NextActions {
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "next_action: %s (%s)\n", action.Command, action.Reason); err != nil {
+			return fmt.Errorf("write command output: %w", err)
+		}
+	}
+
 	return nil
 }
 
