@@ -60,6 +60,142 @@ func TestHyardInstallDefaultsRuntimeGuidanceToRunViewPresentation(t *testing.T) 
 	require.Equal(t, []string{"current_runtime_harness_package"}, statusPayload.AllowedPublicationActions)
 }
 
+func TestHyardCheckTreatsCleanedRunViewRootGuidanceAsPresentationState(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardRunViewOrbitInstallRepo(t)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "install", "orbit-template/docs", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+	require.NotEmpty(t, stdout)
+
+	stdout, stderr, err = executeHyardCLI(t, repo.Root, "check", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		OK       bool `json:"ok"`
+		Findings []struct {
+			Kind string `json:"kind"`
+			Path string `json:"path"`
+		} `json:"findings"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.True(t, payload.OK)
+	require.Empty(t, payload.Findings)
+}
+
+func TestHyardCheckReportsDuplicateMarkedRunViewRootGuidance(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardRunViewOrbitInstallRepo(t)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "install", "orbit-template/docs", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+	require.NotEmpty(t, stdout)
+
+	humansBlock, err := orbittemplate.WrapRuntimeAgentsBlock("docs", []byte("Read the docs workflow.\n"))
+	require.NoError(t, err)
+	repo.WriteFile(t, "HUMANS.md", string(humansBlock)+string(humansBlock))
+
+	stdout, stderr, err = executeHyardCLI(t, repo.Root, "check", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		OK       bool `json:"ok"`
+		Findings []struct {
+			Kind    string `json:"kind"`
+			Path    string `json:"path"`
+			Message string `json:"message"`
+		} `json:"findings"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.False(t, payload.OK)
+	require.Contains(t, payload.Findings, struct {
+		Kind    string `json:"kind"`
+		Path    string `json:"path"`
+		Message string `json:"message"`
+	}{
+		Kind:    "root_guidance_invalid",
+		Path:    "HUMANS.md",
+		Message: `duplicate orbit block for "docs"`,
+	})
+}
+
+func TestHyardCheckReportsMalformedMarkedRunViewAgentsGuidance(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardRunViewOrbitInstallRepo(t)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "install", "orbit-template/docs", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+	require.NotEmpty(t, stdout)
+
+	repo.WriteFile(t, "AGENTS.md", "<!-- orbit:begin workflow='docs' -->\nUse docs runtime guidance.\n")
+
+	stdout, stderr, err = executeHyardCLI(t, repo.Root, "check", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		OK       bool `json:"ok"`
+		Findings []struct {
+			Kind    string `json:"kind"`
+			Path    string `json:"path"`
+			Message string `json:"message"`
+		} `json:"findings"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.False(t, payload.OK)
+	require.Contains(t, payload.Findings, struct {
+		Kind    string `json:"kind"`
+		Path    string `json:"path"`
+		Message string `json:"message"`
+	}{
+		Kind:    "root_guidance_invalid",
+		Path:    "AGENTS.md",
+		Message: `malformed orbit block marker "<!-- orbit:begin workflow='docs' -->"`,
+	})
+}
+
+func TestHyardCheckStillReportsNonGuidanceInstallBackedDrift(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardRunViewOrbitInstallRepo(t)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "install", "orbit-template/docs", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+	require.NotEmpty(t, stdout)
+
+	repo.WriteFile(t, "docs/guide.md", "# Locally changed guide\n")
+
+	stdout, stderr, err = executeHyardCLI(t, repo.Root, "check", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		OK       bool `json:"ok"`
+		Findings []struct {
+			Kind string `json:"kind"`
+			Path string `json:"path"`
+		} `json:"findings"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.False(t, payload.OK)
+	require.Contains(t, payload.Findings, struct {
+		Kind string `json:"kind"`
+		Path string `json:"path"`
+	}{
+		Kind: "runtime_file_drift",
+		Path: "docs/guide.md",
+	})
+}
+
 func TestHyardCreateAndInitRuntimeDefaultToRunViewStatus(t *testing.T) {
 	t.Parallel()
 
