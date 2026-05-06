@@ -3,6 +3,7 @@ package harness
 import (
 	"context"
 	"fmt"
+	"os"
 )
 
 // StartPlanInput captures one mutation-free Harness Start planning request.
@@ -52,11 +53,19 @@ type StartActivationPlan struct {
 
 // StartLauncherPlan previews whether Harness Start can launch the selected framework.
 type StartLauncherPlan struct {
-	Framework                  string   `json:"framework,omitempty"`
-	Status                     string   `json:"status"`
-	Launchable                 bool     `json:"launchable"`
-	ManualFallbackInstructions []string `json:"manual_fallback_instructions,omitempty"`
-	Warnings                   []string `json:"warnings,omitempty"`
+	Framework                  string               `json:"framework,omitempty"`
+	Status                     string               `json:"status"`
+	Launchable                 bool                 `json:"launchable"`
+	DetectionStatus            AgentDetectionStatus `json:"detection_status,omitempty"`
+	TerminalCLIDetected        bool                 `json:"terminal_cli_detected"`
+	ManualFallbackInstructions []string             `json:"manual_fallback_instructions,omitempty"`
+	Warnings                   []string             `json:"warnings,omitempty"`
+}
+
+type startLauncherDetection struct {
+	Status              AgentDetectionStatus
+	TerminalCLIDetected bool
+	Warnings            []string
 }
 
 // BuildStartPlan returns a mutation-free Harness Start plan for automation callers.
@@ -92,7 +101,7 @@ func BuildStartPlan(ctx context.Context, input StartPlanInput) (StartPlan, error
 			Changed:   false,
 			Remove:    false,
 		},
-		Launcher:    buildStartLauncherPlan(resolution.Framework),
+		Launcher:    buildStartLauncherPlan(ctx, input, resolution.Framework),
 		StartPrompt: BuildStartPrompt(StartPromptInput{RepoRoot: input.RepoRoot}),
 		Warnings:    append([]string(nil), resolution.Warnings...),
 	}
@@ -143,6 +152,7 @@ func resolveFrameworkForStartPlan(ctx context.Context, input StartPlanInput) (Fr
 	agentReport, err := DetectAgents(ctx, AgentDetectionInput{
 		RepoRoot: input.RepoRoot,
 		GitDir:   input.GitDir,
+		Deep:     true,
 		Refresh:  true,
 		NoCache:  true,
 	})
@@ -196,7 +206,7 @@ func startFrameworkResolutionStatus(resolution FrameworkResolution) string {
 	return "resolved"
 }
 
-func buildStartLauncherPlan(frameworkID string) StartLauncherPlan {
+func buildStartLauncherPlan(ctx context.Context, input StartPlanInput, frameworkID string) StartLauncherPlan {
 	if frameworkID == "" {
 		return StartLauncherPlan{
 			Status:     "skipped",
@@ -207,26 +217,114 @@ func buildStartLauncherPlan(frameworkID string) StartLauncherPlan {
 		}
 	}
 
+	detection := detectStartLauncher(ctx, input, frameworkID)
 	switch frameworkID {
 	case "codex":
 		return StartLauncherPlan{
-			Framework:  frameworkID,
-			Status:     "unverified",
-			Launchable: false,
-			ManualFallbackInstructions: []string{
-				"From the runtime root, start Codex manually.",
-				"Run `hyard start --print-prompt` and paste the Start Prompt into Codex.",
-			},
+			Framework:                  frameworkID,
+			Status:                     "unverified",
+			Launchable:                 false,
+			DetectionStatus:            detection.Status,
+			TerminalCLIDetected:        detection.TerminalCLIDetected,
+			ManualFallbackInstructions: startLauncherManualFallbackInstructions(frameworkID, detection),
+			Warnings:                   detection.Warnings,
 		}
 	default:
 		return StartLauncherPlan{
-			Framework:  frameworkID,
-			Status:     "unsupported",
-			Launchable: false,
-			ManualFallbackInstructions: []string{
-				fmt.Sprintf("Harness Start does not yet have an interactive launcher for %s.", frameworkID),
-				"Run `hyard start --print-prompt` and paste the Start Prompt into the selected agent.",
-			},
+			Framework:                  frameworkID,
+			Status:                     "unsupported",
+			Launchable:                 false,
+			DetectionStatus:            detection.Status,
+			TerminalCLIDetected:        detection.TerminalCLIDetected,
+			ManualFallbackInstructions: startLauncherManualFallbackInstructions(frameworkID, detection),
+			Warnings:                   detection.Warnings,
 		}
+	}
+}
+
+func detectStartLauncher(ctx context.Context, input StartPlanInput, frameworkID string) startLauncherDetection {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		homeDir = ""
+	}
+	signature, ok := startLauncherAgentSignature(homeDir, frameworkID)
+	if !ok {
+		return startLauncherDetection{}
+	}
+	tool := detectAgentTool(ctx, input.RepoRoot, homeDir, signature, true)
+
+	return startLauncherDetection{
+		Status:              tool.Summary.Status,
+		TerminalCLIDetected: startLauncherTerminalCLIDetected(tool),
+	}
+}
+
+func startLauncherAgentSignature(homeDir string, frameworkID string) (agentSignature, bool) {
+	for _, signature := range agentSignatures(homeDir) {
+		if signature.ID == frameworkID {
+			return signature, true
+		}
+	}
+
+	return agentSignature{}, false
+}
+
+func startLauncherTerminalCLIDetected(tool AgentToolDetection) bool {
+	for _, component := range tool.Components {
+		if component.Component == "cli" && component.Status == AgentDetectionStatusInstalledCLI {
+			return true
+		}
+	}
+
+	return false
+}
+
+func startLauncherManualFallbackInstructions(frameworkID string, detection startLauncherDetection) []string {
+	displayName := startLauncherFrameworkDisplayName(frameworkID)
+	instructions := []string{}
+	if frameworkID == "codex" {
+		if detection.TerminalCLIDetected {
+			instructions = append(instructions, "A terminal Codex CLI was detected, but Harness Start has not verified a Codex interactive launcher contract yet.")
+		} else if detection.Status != "" && detection.Status != AgentDetectionStatusNotFound {
+			instructions = append(instructions, fmt.Sprintf("Codex was detected as %s, but not as a verified terminal CLI launcher.", detection.Status))
+		}
+		instructions = append(instructions,
+			"From the runtime root, start Codex manually.",
+			"Run `hyard start --print-prompt` and paste the Start Prompt into Codex.",
+		)
+
+		return instructions
+	}
+
+	instructions = append(instructions, fmt.Sprintf("Harness Start does not yet have an interactive launcher for %s.", frameworkID))
+	if detection.TerminalCLIDetected {
+		instructions = append(instructions, fmt.Sprintf("A terminal %s CLI was detected, but Harness Start does not yet implement %s launcher.", displayName, startLauncherArticle(displayName)))
+	} else if detection.Status != "" && detection.Status != AgentDetectionStatusNotFound {
+		instructions = append(instructions, fmt.Sprintf("%s was detected as %s, but not as a verified terminal CLI launcher.", displayName, detection.Status))
+	}
+	instructions = append(instructions, "Run `hyard start --print-prompt` and paste the Start Prompt into the selected agent.")
+
+	return instructions
+}
+
+func startLauncherFrameworkDisplayName(frameworkID string) string {
+	switch frameworkID {
+	case "claudecode":
+		return "Claude Code"
+	case "codex":
+		return "Codex"
+	case "openclaw":
+		return "OpenClaw"
+	default:
+		return frameworkID
+	}
+}
+
+func startLauncherArticle(displayName string) string {
+	switch displayName {
+	case "OpenClaw":
+		return "an OpenClaw"
+	default:
+		return "a " + displayName
 	}
 }

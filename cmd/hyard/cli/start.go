@@ -32,9 +32,6 @@ func newStartCommand() *cobra.Command {
 			if dryRun && !jsonOutput {
 				return fmt.Errorf("hyard start --dry-run currently requires --json")
 			}
-			if !printPrompt && !dryRun {
-				return fmt.Errorf("hyard start currently supports --print-prompt or --dry-run --json")
-			}
 			if jsonOutput && !dryRun {
 				return fmt.Errorf("hyard start --json requires --dry-run")
 			}
@@ -62,6 +59,20 @@ func newStartCommand() *cobra.Command {
 				return emitHyardJSON(cmd, plan)
 			}
 
+			if !printPrompt {
+				plan, err := harnesspkg.BuildStartPlan(cmd.Context(), harnesspkg.StartPlanInput{
+					RepoRoot:          resolved.Repo.Root,
+					GitDir:            resolved.Repo.GitDir,
+					HarnessID:         resolved.Manifest.Runtime.ID,
+					FrameworkOverride: frameworkOverride,
+				})
+				if err != nil {
+					return fmt.Errorf("build start plan: %w", err)
+				}
+
+				return emitHyardStartFallback(cmd, plan)
+			}
+
 			prompt := harnesspkg.BuildStartPrompt(harnesspkg.StartPromptInput{
 				RepoRoot: resolved.Repo.Root,
 			})
@@ -78,4 +89,71 @@ func newStartCommand() *cobra.Command {
 	addHyardJSONFlag(cmd)
 
 	return cmd
+}
+
+func emitHyardStartFallback(cmd *cobra.Command, plan harnesspkg.StartPlan) error {
+	frameworkID := plan.Launcher.Framework
+	if frameworkID == "" {
+		frameworkID = plan.FrameworkResolution.SelectedFramework
+	}
+
+	if frameworkID == "" {
+		if _, err := fmt.Fprintln(cmd.OutOrStdout(), "Harness Start cannot resolve a launchable Agent Framework."); err != nil {
+			return fmt.Errorf("write start fallback: %w", err)
+		}
+	} else {
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Harness Start cannot launch %s interactively.\n", frameworkID); err != nil {
+			return fmt.Errorf("write start fallback: %w", err)
+		}
+	}
+	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "framework_resolution: %s\n", plan.FrameworkResolution.Status); err != nil {
+		return fmt.Errorf("write start fallback: %w", err)
+	}
+	if plan.FrameworkResolution.SelectionSource != "" {
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "selection_source: %s\n", plan.FrameworkResolution.SelectionSource); err != nil {
+			return fmt.Errorf("write start fallback: %w", err)
+		}
+	}
+	if frameworkID != "" {
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "framework: %s\n", frameworkID); err != nil {
+			return fmt.Errorf("write start fallback: %w", err)
+		}
+	}
+	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "launcher_status: %s\n", plan.Launcher.Status); err != nil {
+		return fmt.Errorf("write start fallback: %w", err)
+	}
+	if plan.Launcher.DetectionStatus != "" {
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "launcher_detection_status: %s\n", plan.Launcher.DetectionStatus); err != nil {
+			return fmt.Errorf("write start fallback: %w", err)
+		}
+	}
+	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "terminal_cli_detected: %t\n", plan.Launcher.TerminalCLIDetected); err != nil {
+		return fmt.Errorf("write start fallback: %w", err)
+	}
+	for _, instruction := range plan.Launcher.ManualFallbackInstructions {
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "manual_next_action: %s\n", instruction); err != nil {
+			return fmt.Errorf("write start fallback: %w", err)
+		}
+	}
+	if _, err := fmt.Fprintln(cmd.OutOrStdout(), "usage:"); err != nil {
+		return fmt.Errorf("write start fallback: %w", err)
+	}
+	if _, err := fmt.Fprintln(cmd.OutOrStdout(), "  hyard start --print-prompt"); err != nil {
+		return fmt.Errorf("write start fallback: %w", err)
+	}
+	if _, err := fmt.Fprintln(cmd.OutOrStdout(), "  hyard start --dry-run --json"); err != nil {
+		return fmt.Errorf("write start fallback: %w", err)
+	}
+	if _, err := fmt.Fprintln(cmd.OutOrStdout()); err != nil {
+		return fmt.Errorf("write start fallback: %w", err)
+	}
+	if _, err := fmt.Fprint(cmd.OutOrStdout(), plan.StartPrompt); err != nil {
+		return fmt.Errorf("write start fallback: %w", err)
+	}
+
+	if frameworkID == "" {
+		return fmt.Errorf("cannot launch interactively without a resolved Agent Framework")
+	}
+
+	return fmt.Errorf("cannot launch %s interactively: launcher status %s", frameworkID, plan.Launcher.Status)
 }
