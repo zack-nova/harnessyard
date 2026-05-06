@@ -8,6 +8,18 @@ Harness Yard turns ordinary Git repositories and authored package truth into reu
 A Git repository that has Harness Yard control-plane truth and can install, activate, check, and publish harness content.
 _Avoid_: workspace, plain repo
 
+**Runtime View**:
+A repository-local presentation intent that distinguishes runtime consumption from package authoring.
+_Avoid_: projection mode, global mode
+
+**Run View**:
+The runtime-user view where root guidance is presentation output and publication targets the composed Harness Runtime.
+_Avoid_: authoring view, orbit publishing view
+
+**Author View**:
+The authored-truth view where materialized guidance blocks and content hints may be reconciled back into package truth.
+_Avoid_: runtime view, run mode
+
 **Ordinary Repository**:
 A Git repository that may already contain agent-facing files but has not yet been initialized as a Harness Runtime.
 _Avoid_: normal repo
@@ -47,6 +59,10 @@ _Avoid_: review, check, prepare
 **Audit Finding**:
 A stable diagnostic emitted by Audit with severity, code, path, message, and optional package or revision scope.
 _Avoid_: check finding, readiness reason
+
+**Runtime Check**:
+A read-only diagnostic for one Harness Runtime's structure, readiness, and view-aware presentation state.
+_Avoid_: audit, package authoring reconciliation
 
 **Harness Template**:
 A reusable branch-form package exported from a Harness Runtime for installation into another repository.
@@ -124,6 +140,22 @@ _Avoid_: printed next command, detached task
 A repository artifact intended to shape agent behavior, such as root guidance, local skills, hooks, commands, or agent configuration.
 _Avoid_: config file, AI stuff
 
+**Run View Root Guidance**:
+Root guidance presented for runtime consumption after authoring markers have been removed or ignored.
+_Avoid_: authored truth, backfill lane
+
+**Run View Guidance Output**:
+An explicit Run View action that writes runtime-facing root guidance into presentation files.
+_Avoid_: guide sync, authoring render
+
+**Run View Cleanup**:
+The presentation operation that removes visible authoring markers and consumed hints from a Harness Runtime.
+_Avoid_: backfill, authored truth sync
+
+**Marked Guidance Resolution**:
+The explicit choice made before Run View Cleanup removes a drifted marked root guidance block's authoring identity.
+_Avoid_: force, overwrite
+
 **Referenced Guidance Document**:
 A document linked from root agent guidance that supplies agent-facing rules, constraints, or operating context.
 _Avoid_: normal documentation
@@ -173,6 +205,14 @@ _Avoid_: rule
 - A **Package Registry** lets public commands resolve **Package Handles** without exposing Git branch locators in ordinary demos.
 - Early demos may use explicit GitHub package locators before **Package Registry** resolution is ready.
 - A **Harness Runtime** may install and uninstall **Orbit Packages** and **Harness Packages** through package lifecycle commands.
+- **Package Installation** in **Run View** may automatically compose root guidance and apply **Run View Cleanup** after package truth is written.
+- **Package Installation** in **Run View** outputs guidance incrementally for the newly installed package rather than recomposing existing markerless presentation guidance.
+- **Package Installation** appends incremental **Run View Root Guidance** to the end of the relevant root guidance file with stable separation.
+- **Package Installation** succeeds when package truth is written even if **Run View Cleanup** is deferred by marked guidance with unsaved author edits.
+- A deferred **Run View Cleanup** should be reported as presentation cleanup work, not as failed installation or generic authored-truth drift.
+- **Package Installation** should not prompt for **Marked Guidance Resolution**; explicit `view run` owns that choice.
+- **Package Installation** should defer **Run View Cleanup** instead of implicitly saving, re-rendering, or stripping drifted marked guidance.
+- **Package Installation** in **Run View** should leave users with markerless **Run View Root Guidance** when automatic output and cleanup complete safely.
 - A **Harness Start** does not replace **Package Installation** or **Package Uninstallation**; public package lifecycle examples should use `install` and `uninstall`.
 - A **Harness Start** may choose an **Agent Framework** from explicit user choice, local readiness, or package recommendation.
 - **Harness Start** framework resolution prefers explicit `--with`, then existing repo-local selection, then an unambiguous ready or recommended ready Agent Framework.
@@ -231,6 +271,26 @@ _Avoid_: rule
 - Preview and confirmation output from the canonical `uninstall` surface should describe targets as items to uninstall.
 - Package uninstallation error guidance should prefer `uninstall` commands, including when reached through the compatibility `remove` surface.
 - The `uninstall` and compatibility `remove` command surfaces should share one package-uninstallation implementation so lifecycle semantics do not drift.
+- **Runtime View** selection changes presentation and publication defaults, not package identity or canonical authored truth.
+- **Run View Root Guidance** is a materialized presentation artifact, not an authored backfill lane.
+- Markerless **Run View Root Guidance** must not create authored-truth drift by differing from Orbit Package guidance templates.
+- Existing markerless **Run View Root Guidance** is presentation text and should not be recomposed from package truth during later **Package Installation**.
+- Existing markerless **Run View Root Guidance** should not be reordered by later **Package Installation** because it no longer has owner identity.
+- Existing markerless **Run View Root Guidance** should not be deduplicated automatically because repeated text cannot be safely attributed to an owner.
+- **Runtime Check** should not report duplicate-looking markerless **Run View Root Guidance** because repeated presentation text has no reliable owner identity.
+- Standalone **Run View Guidance Output** outside **Package Installation** requires explicit user confirmation or an explicit non-interactive option.
+- The explicit non-interactive option for standalone **Run View Guidance Output** should use output language, not force language.
+- Standalone **Run View Guidance Output** is presentation output and must be treated as additive or replace-risky because markerless guidance no longer carries owner identity for precise block replacement.
+- Marked root guidance blocks preserve owner identity for explicit reconciliation before **Run View** cleanup removes that identity.
+- **Run View Cleanup** must fail closed on marked root guidance blocks with unsaved author edits unless the user explicitly chooses to discard the authoring identity.
+- **Run View Cleanup** must not fail closed on markerless **Run View Root Guidance** merely because it differs from package guidance templates.
+- Interactive **Run View Cleanup** resolves drifted marked guidance through **Marked Guidance Resolution** before deleting markers.
+- **Marked Guidance Resolution** choices are: save current block to authored truth before cleanup, re-render authored truth before cleanup, or strip markers in place and keep the current text as **Run View Root Guidance**.
+- Non-interactive **Run View Cleanup** must fail closed on unresolved drifted marked guidance and report the available **Marked Guidance Resolution** paths.
+- **Runtime Check** must not report markerless **Run View Root Guidance** as install-backed runtime file drift.
+- **Runtime Check** should report root guidance diagnostics according to **Runtime View**: Run View checks presentation usability, while **Author View** checks authored reconciliation risk.
+- **Runtime Check** should still fail closed on malformed or duplicate root guidance markers because those make owner identity ambiguous.
+- **Author View** is the correct view for `guide render`, `guide save`, content hint reconciliation, and Orbit Package publication.
 - A **Referenced Guidance Document** discovered during **Adoption** is a candidate for rule content, but its final member role requires user confirmation.
 - **Guidance Discovery** follows references from root guidance one hop by default; recursive discovery requires an explicit user choice.
 - A directory reference found during **Guidance Discovery** stays a directory member rather than expanding into separate file members.
