@@ -51,6 +51,31 @@ assert_contains_line() {
   fi
 }
 
+assert_occurs_before() {
+  file=$1
+  first=$2
+  second=$3
+
+  first_line=$(grep -Fn "$first" "$file" | head -n 1 | cut -d: -f1 || true)
+  second_line=$(grep -Fn "$second" "$file" | head -n 1 | cut -d: -f1 || true)
+
+  if [ -z "$first_line" ]; then
+    echo "expected ${file#$repo_root/} to contain before-check text: $first" >&2
+    cat "$file" >&2
+    exit 1
+  fi
+  if [ -z "$second_line" ]; then
+    echo "expected ${file#$repo_root/} to contain after-check text: $second" >&2
+    cat "$file" >&2
+    exit 1
+  fi
+  if [ "$first_line" -ge "$second_line" ]; then
+    echo "expected ${file#$repo_root/} to place '$first' before '$second'" >&2
+    cat "$file" >&2
+    exit 1
+  fi
+}
+
 quickstart_doc="$repo_root/docs/quickstart.md"
 installation_doc="$repo_root/docs/installation.md"
 release_surface_doc="$repo_root/docs/reference/release-surface.md"
@@ -82,18 +107,32 @@ assert_contains "$quickstart_doc" "brew install hyard"
 assert_contains "$quickstart_doc" "raw.githubusercontent.com/zack-nova/harnessyard/main/install.sh"
 assert_contains "$quickstart_doc" "hyard --version"
 assert_contains "$quickstart_doc" "## Runtime User Path"
+assert_contains "$quickstart_doc" "hyard clone https://github.com/acme/harness-templates.git demo-runtime --ref harness-template/frontend-lab"
+assert_contains "$quickstart_doc" "hyard start --with codex"
+assert_contains "$quickstart_doc" "### Lower-Level Agent Handoff"
+assert_contains "$quickstart_doc" "hyard agent use codex"
+assert_contains "$quickstart_doc" "hyard agent apply --project-only --yes"
 assert_contains "$quickstart_doc" "Run View is the default runtime-user presentation"
 assert_contains "$quickstart_doc" "hyard view status"
 assert_contains "$quickstart_doc" "hyard view run --check"
 assert_contains "$quickstart_doc" "hyard current"
 assert_contains "$quickstart_doc" "hyard enter docs"
 assert_contains "$quickstart_doc" "hyard create runtime demo-repo"
+assert_contains "$quickstart_doc" "### Existing Repository Assembly"
+assert_contains "$quickstart_doc" "hyard init runtime"
+assert_contains "$quickstart_doc" "hyard install https://github.com/acme/harness-templates.git --ref harness-template/frontend-lab"
+assert_contains "$quickstart_doc" "hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/docs --bindings .harness/vars.yaml"
 assert_contains "$quickstart_doc" "hyard orbit list"
 assert_contains "$quickstart_doc" "hyard publish harness workspace"
 assert_contains "$quickstart_doc" "hyard assign orbit <orbit-package>"
 assert_contains "$quickstart_doc" "hyard unassign orbit <orbit-package>"
+assert_contains "$quickstart_doc" "git status --short"
+assert_contains "$quickstart_doc" "git add ."
+assert_contains "$quickstart_doc" 'git commit -m "Optimize frontend lab harness"'
 assert_contains "$quickstart_doc" "hyard install <template-source>"
 assert_contains "$quickstart_doc" "hyard uninstall orbit <orbit-package>"
+assert_contains "$quickstart_doc" "hyard uninstall harness frontend-lab"
+assert_contains "$quickstart_doc" "hyard uninstall orbit docs"
 assert_contains "$quickstart_doc" "## Author Path"
 assert_contains "$quickstart_doc" "hyard view author"
 assert_contains "$quickstart_doc" "hyard guide render --orbit docs --target all"
@@ -109,6 +148,7 @@ assert_contains_line "$quickstart_doc" "hyard bootstrap setup codex"
 assert_contains_line "$quickstart_doc" "hyard bootstrap setup --remove"
 assert_contains_line "$quickstart_doc" "hyard bootstrap reopen"
 assert_contains_line "$quickstart_doc" "hyard bootstrap reopen --restore-surface"
+assert_occurs_before "$quickstart_doc" 'git commit -m "Optimize frontend lab harness"' "hyard publish harness workspace"
 assert_not_contains "$quickstart_doc" "hyard assign orbit <orbit-id> --harness <harness-id>"
 assert_not_contains "$quickstart_doc" "hyard plumbing orbit list"
 assert_not_contains "$quickstart_doc" "hyard plumbing harness template publish"
@@ -141,6 +181,17 @@ assert_contains "$release_surface_doc" "hyard install <template-source>"
 assert_contains "$release_surface_doc" "hyard uninstall orbit <orbit-package>"
 assert_contains "$release_surface_doc" "hyard uninstall harness <harness-package>"
 assert_contains "$release_surface_doc" "hyard orbit member remove"
+assert_contains "$release_surface_doc" "## Harness Start Demo Paths"
+assert_contains "$release_surface_doc" "hyard clone https://github.com/acme/harness-templates.git demo-runtime --ref harness-template/frontend-lab"
+assert_contains "$release_surface_doc" "hyard start --with codex"
+assert_contains "$release_surface_doc" "hyard init runtime"
+assert_contains "$release_surface_doc" "hyard install https://github.com/acme/harness-templates.git --ref harness-template/frontend-lab"
+assert_contains "$release_surface_doc" "hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/docs --bindings .harness/vars.yaml"
+assert_contains "$release_surface_doc" "hyard agent use codex"
+assert_contains "$release_surface_doc" "hyard agent apply --project-only --yes"
+assert_contains "$release_surface_doc" 'git commit -m "Optimize frontend lab harness"'
+assert_contains "$release_surface_doc" "hyard publish harness workspace"
+assert_occurs_before "$release_surface_doc" 'git commit -m "Optimize frontend lab harness"' "hyard publish harness workspace"
 assert_contains "$release_surface_doc" "Run View is the recommended runtime-user view"
 assert_contains "$release_surface_doc" 'Run View publication should use `hyard publish harness <harness-package>`'
 assert_contains "$release_surface_doc" "Author View is the authored-truth view"
