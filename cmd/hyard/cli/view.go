@@ -1,8 +1,12 @@
 package cli
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
+	"io"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -71,8 +75,19 @@ func newViewRunCommand() *cobra.Command {
 				Check:                    check,
 				MarkedGuidanceResolution: resolveMarked,
 			})
+			var blocked harnesspkg.RuntimeViewCleanupBlockedError
+			if cleanupErr != nil &&
+				errors.As(cleanupErr, &blocked) &&
+				shouldOfferHyardViewRunMarkedGuidancePrompt(cmd, jsonOutput, check, resolveMarked, result) {
+				resolution, err := promptHyardViewRunMarkedGuidanceResolution(cmd, result)
+				if err != nil {
+					return err
+				}
+				result, cleanupErr = harnesspkg.RuntimeViewCleanupWithOptions(cmd.Context(), repo, store, harnesspkg.RuntimeViewCleanupInput{
+					MarkedGuidanceResolution: resolution,
+				})
+			}
 			if jsonOutput {
-				var blocked harnesspkg.RuntimeViewCleanupBlockedError
 				if cleanupErr == nil || errors.As(cleanupErr, &blocked) {
 					if err := emitHyardJSON(cmd, result); err != nil {
 						return err
@@ -96,6 +111,123 @@ func newViewRunCommand() *cobra.Command {
 	cmd.Flags().String("resolve-marked", "", "Resolve drifted marked guidance before cleanup: save, render, or strip")
 
 	return cmd
+}
+
+func shouldOfferHyardViewRunMarkedGuidancePrompt(
+	cmd *cobra.Command,
+	jsonOutput bool,
+	check bool,
+	resolveMarked harnesspkg.RuntimeViewMarkedGuidanceResolution,
+	result harnesspkg.RuntimeViewCleanupPlanResult,
+) bool {
+	if jsonOutput || check || resolveMarked != harnesspkg.RuntimeViewMarkedGuidanceResolutionNone {
+		return false
+	}
+	if !harnesspkg.RuntimeViewCleanupCanResolveMarkedGuidance(result, harnesspkg.RuntimeViewMarkedGuidanceResolutionSave) ||
+		!harnesspkg.RuntimeViewCleanupCanResolveMarkedGuidance(result, harnesspkg.RuntimeViewMarkedGuidanceResolutionRender) ||
+		!harnesspkg.RuntimeViewCleanupCanResolveMarkedGuidance(result, harnesspkg.RuntimeViewMarkedGuidanceResolutionStrip) {
+		return false
+	}
+	if hyardViewRunInteractiveFromContext(cmd.Context()) {
+		return true
+	}
+	return hyardViewRunStreamIsTerminal(cmd.InOrStdin()) && hyardViewRunStreamIsTerminal(cmd.ErrOrStderr())
+}
+
+func promptHyardViewRunMarkedGuidanceResolution(
+	cmd *cobra.Command,
+	result harnesspkg.RuntimeViewCleanupPlanResult,
+) (harnesspkg.RuntimeViewMarkedGuidanceResolution, error) {
+	select {
+	case <-cmd.Context().Done():
+		return harnesspkg.RuntimeViewMarkedGuidanceResolutionNone, fmt.Errorf("marked guidance resolution prompt canceled: %w", cmd.Context().Err())
+	default:
+	}
+	if _, err := fmt.Fprint(cmd.ErrOrStderr(), formatHyardViewRunMarkedGuidancePrompt(result)); err != nil {
+		return harnesspkg.RuntimeViewMarkedGuidanceResolutionNone, fmt.Errorf("write marked guidance resolution prompt: %w", err)
+	}
+	line, err := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return harnesspkg.RuntimeViewMarkedGuidanceResolutionNone, fmt.Errorf("read marked guidance resolution choice: %w", err)
+	}
+	if errors.Is(err, io.EOF) && line == "" {
+		return harnesspkg.RuntimeViewMarkedGuidanceResolutionNone, fmt.Errorf("run view cleanup canceled")
+	}
+
+	resolution, err := parseHyardViewRunMarkedGuidanceResolutionChoice(line)
+	if err != nil {
+		return harnesspkg.RuntimeViewMarkedGuidanceResolutionNone, err
+	}
+
+	return resolution, nil
+}
+
+func formatHyardViewRunMarkedGuidancePrompt(result harnesspkg.RuntimeViewCleanupPlanResult) string {
+	lines := []string{
+		"Drifted marked Run View guidance blocks must be resolved before marker deletion.",
+	}
+	blocks := hyardViewRunMarkedGuidancePromptBlocks(result)
+	if len(blocks) > 0 {
+		lines = append(lines, "Blocks:")
+		for _, block := range blocks {
+			lines = append(lines, "  - "+block)
+		}
+	}
+	lines = append(lines,
+		"Choices:",
+		"  save   preserves current root guidance by writing it to authored truth; discards prior authored guidance for those targets, then strips markers.",
+		"  render preserves authored truth by replacing current root edits; discards current root edits, then strips markers.",
+		"  strip  preserves current root text and leaves authored truth unchanged; discards marker ownership metadata while deleting markers.",
+		"  cancel leaves files unchanged.",
+		"Resolve marked guidance [save/render/strip/cancel]: ",
+	)
+
+	return strings.Join(lines, "\n")
+}
+
+func hyardViewRunMarkedGuidancePromptBlocks(result harnesspkg.RuntimeViewCleanupPlanResult) []string {
+	blocks := make([]string, 0)
+	for _, diagnostic := range result.DriftDiagnostics {
+		if diagnostic.Kind != harnesspkg.RuntimeViewDriftKindRootGuidance || diagnostic.Path == "" {
+			continue
+		}
+		parts := []string{diagnostic.Path}
+		if diagnostic.Target != "" {
+			parts = append(parts, "target="+diagnostic.Target)
+		}
+		if diagnostic.OrbitID != "" {
+			parts = append(parts, "orbit="+diagnostic.OrbitID)
+		}
+		blocks = append(blocks, strings.Join(parts, " "))
+	}
+	return blocks
+}
+
+func parseHyardViewRunMarkedGuidanceResolutionChoice(value string) (harnesspkg.RuntimeViewMarkedGuidanceResolution, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "save", "s":
+		return harnesspkg.RuntimeViewMarkedGuidanceResolutionSave, nil
+	case "render", "r":
+		return harnesspkg.RuntimeViewMarkedGuidanceResolutionRender, nil
+	case "strip":
+		return harnesspkg.RuntimeViewMarkedGuidanceResolutionStrip, nil
+	case "", "cancel", "c", "q", "quit":
+		return harnesspkg.RuntimeViewMarkedGuidanceResolutionNone, fmt.Errorf("run view cleanup canceled")
+	default:
+		return harnesspkg.RuntimeViewMarkedGuidanceResolutionNone, fmt.Errorf("marked guidance resolution must be save, render, strip, or cancel")
+	}
+}
+
+func hyardViewRunStreamIsTerminal(stream any) bool {
+	file, ok := stream.(*os.File)
+	if !ok {
+		return false
+	}
+	info, err := file.Stat()
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeCharDevice != 0
 }
 
 type hyardViewAuthorResult struct {

@@ -24,6 +24,7 @@ type hyardContextKey string
 
 const hyardWorkingDirContextKey hyardContextKey = "hyard_working_dir"
 const hyardStartLauncherContextKey hyardContextKey = "hyard_start_launcher"
+const hyardViewRunInteractiveContextKey hyardContextKey = "hyard_view_run_interactive"
 
 type cloneSourceJSON struct {
 	Kind               string `json:"kind"`
@@ -64,6 +65,16 @@ func WithWorkingDir(ctx context.Context, workingDir string) context.Context {
 // WithStartLauncher injects the Harness Start launcher used by command tests.
 func WithStartLauncher(ctx context.Context, launcher harnesspkg.StartLauncher) context.Context {
 	return context.WithValue(ctx, hyardStartLauncherContextKey, launcher)
+}
+
+// WithViewRunInteractive preserves terminal interactivity after tests or wrappers replace command streams.
+func WithViewRunInteractive(ctx context.Context) context.Context {
+	return context.WithValue(ctx, hyardViewRunInteractiveContextKey, true)
+}
+
+func hyardViewRunInteractiveFromContext(ctx context.Context) bool {
+	interactive, ok := ctx.Value(hyardViewRunInteractiveContextKey).(bool)
+	return ok && interactive
 }
 
 func newCloneCommand() *cobra.Command {

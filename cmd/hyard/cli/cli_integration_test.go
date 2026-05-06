@@ -115,6 +115,30 @@ func executeHyardCLIWithInputUnlocked(t *testing.T, workingDir string, stdin str
 	return stdout.String(), stderr.String(), err
 }
 
+func executeHyardCLIWithInteractiveInput(t *testing.T, workingDir string, stdin string, args ...string) (string, string, error) {
+	t.Helper()
+
+	hyardCLITestEnvMu.RLock()
+	defer hyardCLITestEnvMu.RUnlock()
+
+	rootCmd := hyardcli.NewRootCommand()
+	rootCmd.SetArgs(args)
+	rootCmd.SetIn(strings.NewReader(stdin))
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	rootCmd.SetOut(&stdout)
+	rootCmd.SetErr(&stderr)
+
+	ctx := harnesscommands.WithWorkingDir(context.Background(), workingDir)
+	ctx = orbitcommands.WithWorkingDir(ctx, workingDir)
+	ctx = hyardcli.WithWorkingDir(ctx, workingDir)
+	ctx = hyardcli.WithViewRunInteractive(ctx)
+	err := rootCmd.ExecuteContext(ctx)
+
+	return stdout.String(), stderr.String(), err
+}
+
 func executeHarnessCLIForHyardTest(t *testing.T, workingDir string, args ...string) error {
 	t.Helper()
 

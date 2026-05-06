@@ -902,6 +902,16 @@ func runtimeViewCleanupHasMarkedGuidanceResolutionPath(
 	return false
 }
 
+// RuntimeViewCleanupCanResolveMarkedGuidance reports whether one marked guidance resolution
+// can clear every current Run View cleanup blocker without bypassing unrelated drift.
+func RuntimeViewCleanupCanResolveMarkedGuidance(
+	result RuntimeViewCleanupPlanResult,
+	resolution RuntimeViewMarkedGuidanceResolution,
+) bool {
+	resolutionDiagnostics, _, unresolvedBlockers := runtimeViewMarkedGuidanceResolutionScope(result, resolution)
+	return len(resolutionDiagnostics) > 0 && len(unresolvedBlockers) == 0
+}
+
 func runtimeViewCleanupNotes(result RuntimeViewCleanupPlanResult) []string {
 	if result.Check {
 		return []string{}

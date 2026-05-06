@@ -587,6 +587,69 @@ func TestHyardViewRunResolveMarkedStripKeepsDriftedGuidanceAsRunViewText(t *test
 	require.Equal(t, "Edited docs guidance\n", readRepoFile(t, repo.Root, "AGENTS.md"))
 }
 
+func TestHyardViewRunInteractivePromptsForMarkedGuidanceResolutionAndAppliesChoice(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardViewRunRootGuidanceRuntimeRepo(t)
+	agentsBlock, err := orbittemplate.WrapRuntimeAgentsBlock("docs", []byte("Edited docs guidance\n"))
+	require.NoError(t, err)
+	repo.WriteFile(t, "AGENTS.md", string(agentsBlock))
+
+	stdout, stderr, err := executeHyardCLIWithInteractiveInput(t, repo.Root, "strip\n", "view", "run")
+	require.NoError(t, err)
+
+	require.Contains(t, stderr, "Drifted marked Run View guidance blocks must be resolved before marker deletion.")
+	require.Contains(t, stderr, "save   preserves current root guidance by writing it to authored truth")
+	require.Contains(t, stderr, "render preserves authored truth by replacing current root edits")
+	require.Contains(t, stderr, "strip  preserves current root text and leaves authored truth unchanged")
+	require.Contains(t, stderr, "cancel leaves files unchanged")
+	require.Contains(t, stdout, "ready: true\n")
+	require.Contains(t, stdout, "changed: true\n")
+
+	spec, err := orbitpkg.LoadHostedOrbitSpec(t.Context(), repo.Root, "docs")
+	require.NoError(t, err)
+	require.NotNil(t, spec.Meta)
+	require.Equal(t, "Docs orbit guidance\n", spec.Meta.AgentsTemplate)
+	require.Equal(t, "Edited docs guidance\n", readRepoFile(t, repo.Root, "AGENTS.md"))
+}
+
+func TestHyardViewRunInteractiveCancelLeavesMarkedGuidanceUnchanged(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardViewRunRootGuidanceRuntimeRepo(t)
+	agentsBlock, err := orbittemplate.WrapRuntimeAgentsBlock("docs", []byte("Edited docs guidance\n"))
+	require.NoError(t, err)
+	repo.WriteFile(t, "AGENTS.md", string(agentsBlock))
+	agentsBefore := readRepoFile(t, repo.Root, "AGENTS.md")
+
+	stdout, stderr, err := executeHyardCLIWithInteractiveInput(t, repo.Root, "cancel\n", "view", "run")
+	require.ErrorContains(t, err, "run view cleanup canceled")
+	require.Empty(t, stdout)
+	require.Contains(t, stderr, "Resolve marked guidance [save/render/strip/cancel]: ")
+
+	spec, err := orbitpkg.LoadHostedOrbitSpec(t.Context(), repo.Root, "docs")
+	require.NoError(t, err)
+	require.NotNil(t, spec.Meta)
+	require.Equal(t, "Docs orbit guidance\n", spec.Meta.AgentsTemplate)
+	require.Equal(t, agentsBefore, readRepoFile(t, repo.Root, "AGENTS.md"))
+}
+
+func TestHyardViewRunTextNonInteractiveDoesNotPromptForMarkedGuidanceResolution(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardViewRunRootGuidanceRuntimeRepo(t)
+	agentsBlock, err := orbittemplate.WrapRuntimeAgentsBlock("docs", []byte("Edited docs guidance\n"))
+	require.NoError(t, err)
+	repo.WriteFile(t, "AGENTS.md", string(agentsBlock))
+	agentsBefore := readRepoFile(t, repo.Root, "AGENTS.md")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "view", "run")
+	require.ErrorContains(t, err, "Run View cleanup blocked by Authored Truth Drift")
+	require.Empty(t, stdout)
+	require.Empty(t, stderr)
+	require.Equal(t, agentsBefore, readRepoFile(t, repo.Root, "AGENTS.md"))
+}
+
 func TestHyardViewRunJSONBlocksAmbiguousFlatMemberHintBeforeMutation(t *testing.T) {
 	t.Parallel()
 
