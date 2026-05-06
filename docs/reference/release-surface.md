@@ -67,6 +67,50 @@ Scoped member-editing documentation may continue to use add/remove language, suc
 `hyard orbit member add` and `hyard orbit member remove`, when it describes collection
 membership rather than installed package lifecycle.
 
+## Harness Start Demo Paths
+
+Public demo examples should use explicit GitHub locators until registry-backed
+package handles are part of the public release surface.
+
+Clone a Harness Template and hand off to Codex:
+
+```bash
+hyard clone https://github.com/acme/harness-templates.git demo-runtime --ref harness-template/frontend-lab
+cd demo-runtime
+hyard start --with codex
+```
+
+Assemble packages into an existing Git repository with Runtime Initialization and
+typed Package Installation and Package Uninstallation:
+
+```bash
+hyard init runtime
+hyard install https://github.com/acme/harness-templates.git --ref harness-template/frontend-lab
+hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/docs --bindings .harness/vars.yaml
+hyard uninstall harness frontend-lab
+hyard uninstall orbit docs
+```
+
+The lower-level explanatory path for `hyard start --with codex` is repo-local Agent
+Framework selection plus project-only Framework Activation:
+
+```bash
+hyard agent use codex
+hyard agent apply --project-only --yes
+hyard bootstrap setup codex
+hyard start --print-prompt
+```
+
+Publish demos should make a normal Git checkpoint before publishing the current
+runtime as a Harness Package:
+
+```bash
+git status --short
+git add .
+git commit -m "Optimize frontend lab harness"
+hyard publish harness workspace
+```
+
 ## Runtime View And Publication Surface
 
 Run View is the recommended runtime-user view for a Harness Runtime. Runtime-user

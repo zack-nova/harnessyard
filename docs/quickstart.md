@@ -38,6 +38,15 @@ Run View is the default runtime-user presentation: it keeps authored scaffolding
 of the ordinary working tree and makes current runtime publication the recommended
 sharing path.
 
+Clone a published Harness Template from an explicit GitHub locator and start the
+agent handoff:
+
+```bash
+hyard clone https://github.com/acme/harness-templates.git demo-runtime --ref harness-template/frontend-lab
+cd demo-runtime
+hyard start --with codex
+```
+
 Create and inspect a runtime:
 
 ```bash
@@ -46,6 +55,25 @@ cd demo-repo
 hyard check --json
 hyard ready
 hyard view status
+```
+
+### Existing Repository Assembly
+
+Use this path when you already have a Git repository and want to assemble a
+Harness Runtime around it:
+
+```bash
+hyard init runtime
+hyard install https://github.com/acme/harness-templates.git --ref harness-template/frontend-lab
+hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/docs --bindings .harness/vars.yaml
+hyard check --json
+```
+
+Uninstall package content with the typed package lifecycle commands:
+
+```bash
+hyard uninstall harness frontend-lab
+hyard uninstall orbit docs
 ```
 
 Install a reusable template or package:
@@ -88,10 +116,25 @@ When a runtime contains multiple harness packages, select the target explicitly:
 hyard assign orbit <orbit-package> --harness <harness-package>
 ```
 
-Publish the current runtime as a Harness Package:
+Publish the current runtime as a Harness Package after a normal Git checkpoint:
 
 ```bash
+git status --short
+git add .
+git commit -m "Optimize frontend lab harness"
 hyard publish harness workspace
+```
+
+### Lower-Level Agent Handoff
+
+When you need to explain what the high-level handoff composes, select Codex and
+apply only project-local agent assets before using the generated Start Prompt:
+
+```bash
+hyard agent use codex
+hyard agent apply --project-only --yes
+hyard bootstrap setup codex
+hyard start --print-prompt
 ```
 
 ## Author Path
