@@ -45,6 +45,14 @@ func newViewRunCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("read --json flag: %w", err)
 			}
+			resolveMarkedValue, err := cmd.Flags().GetString("resolve-marked")
+			if err != nil {
+				return fmt.Errorf("read --resolve-marked flag: %w", err)
+			}
+			resolveMarked, err := harnesspkg.NormalizeRuntimeViewMarkedGuidanceResolution(resolveMarkedValue)
+			if err != nil {
+				return fmt.Errorf("read --resolve-marked flag: %w", err)
+			}
 
 			workingDir, err := hyardWorkingDirFromCommand(cmd)
 			if err != nil {
@@ -59,7 +67,10 @@ func newViewRunCommand() *cobra.Command {
 				return fmt.Errorf("create state store: %w", err)
 			}
 
-			result, cleanupErr := harnesspkg.RuntimeViewCleanup(cmd.Context(), repo, store, check)
+			result, cleanupErr := harnesspkg.RuntimeViewCleanupWithOptions(cmd.Context(), repo, store, harnesspkg.RuntimeViewCleanupInput{
+				Check:                    check,
+				MarkedGuidanceResolution: resolveMarked,
+			})
 			if jsonOutput {
 				var blocked harnesspkg.RuntimeViewCleanupBlockedError
 				if cleanupErr == nil || errors.As(cleanupErr, &blocked) {
@@ -82,6 +93,7 @@ func newViewRunCommand() *cobra.Command {
 	}
 	cmd.Flags().Bool("check", false, "Preview Run View cleanup without writing files")
 	cmd.Flags().Bool("json", false, "Output machine-readable JSON")
+	cmd.Flags().String("resolve-marked", "", "Resolve drifted marked guidance before cleanup: save, render, or strip")
 
 	return cmd
 }

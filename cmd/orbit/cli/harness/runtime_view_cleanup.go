@@ -34,6 +34,22 @@ const (
 
 const runtimeViewCleanupPresentationNote = "marker removal is presentation cleanup only; later authoring requires explicit `hyard guide render` or reconciliation"
 
+// RuntimeViewMarkedGuidanceResolution identifies one non-interactive choice for drifted marked root guidance.
+type RuntimeViewMarkedGuidanceResolution string
+
+const (
+	RuntimeViewMarkedGuidanceResolutionNone   RuntimeViewMarkedGuidanceResolution = ""
+	RuntimeViewMarkedGuidanceResolutionSave   RuntimeViewMarkedGuidanceResolution = "save"
+	RuntimeViewMarkedGuidanceResolutionRender RuntimeViewMarkedGuidanceResolution = "render"
+	RuntimeViewMarkedGuidanceResolutionStrip  RuntimeViewMarkedGuidanceResolution = "strip"
+)
+
+// RuntimeViewCleanupInput captures one Run View cleanup request.
+type RuntimeViewCleanupInput struct {
+	Check                    bool
+	MarkedGuidanceResolution RuntimeViewMarkedGuidanceResolution
+}
+
 // RuntimeViewCleanupPlanResult reports Run View cleanup planning and write results.
 type RuntimeViewCleanupPlanResult struct {
 	Check             bool                              `json:"check"`
@@ -93,6 +109,12 @@ type runtimeViewCleanupGuidanceTarget struct {
 	path   string
 }
 
+type runtimeViewMarkedGuidanceResolutionKey struct {
+	target  string
+	path    string
+	orbitID string
+}
+
 // RuntimeViewCleanupBlockedError reports authored-truth drift that prevented writes.
 type RuntimeViewCleanupBlockedError struct {
 	Blockers []string
@@ -106,36 +128,141 @@ func (err RuntimeViewCleanupBlockedError) Error() string {
 	return "Run View cleanup blocked by Authored Truth Drift: " + strings.Join(err.Blockers, "; ")
 }
 
+// NormalizeRuntimeViewMarkedGuidanceResolution validates one user-facing marked guidance resolution token.
+func NormalizeRuntimeViewMarkedGuidanceResolution(value string) (RuntimeViewMarkedGuidanceResolution, error) {
+	switch RuntimeViewMarkedGuidanceResolution(strings.TrimSpace(value)) {
+	case RuntimeViewMarkedGuidanceResolutionNone:
+		return RuntimeViewMarkedGuidanceResolutionNone, nil
+	case RuntimeViewMarkedGuidanceResolutionSave:
+		return RuntimeViewMarkedGuidanceResolutionSave, nil
+	case RuntimeViewMarkedGuidanceResolutionRender:
+		return RuntimeViewMarkedGuidanceResolutionRender, nil
+	case RuntimeViewMarkedGuidanceResolutionStrip:
+		return RuntimeViewMarkedGuidanceResolutionStrip, nil
+	default:
+		return RuntimeViewMarkedGuidanceResolutionNone, fmt.Errorf("unsupported marked guidance resolution %q; use save, render, or strip", value)
+	}
+}
+
 // RuntimeViewCleanup applies Run View cleanup unless check mode is requested.
 func RuntimeViewCleanup(ctx context.Context, repo gitpkg.Repo, store statepkg.FSStore, check bool) (RuntimeViewCleanupPlanResult, error) {
-	result, err := RuntimeViewCleanupPlan(ctx, repo, store, check)
+	return RuntimeViewCleanupWithOptions(ctx, repo, store, RuntimeViewCleanupInput{Check: check})
+}
+
+// RuntimeViewCleanupWithOptions applies Run View cleanup with explicit non-interactive resolution choices.
+func RuntimeViewCleanupWithOptions(ctx context.Context, repo gitpkg.Repo, store statepkg.FSStore, input RuntimeViewCleanupInput) (RuntimeViewCleanupPlanResult, error) {
+	result, err := RuntimeViewCleanupPlan(ctx, repo, store, input.Check)
 	if err != nil {
 		return RuntimeViewCleanupPlanResult{}, err
 	}
-	if check {
+	if input.Check {
 		return result, nil
 	}
 	if len(result.Blockers) > 0 {
-		return result, RuntimeViewCleanupBlockedError{Blockers: append([]string(nil), result.Blockers...)}
+		if input.MarkedGuidanceResolution == RuntimeViewMarkedGuidanceResolutionNone {
+			return result, RuntimeViewCleanupBlockedError{Blockers: append([]string(nil), result.Blockers...)}
+		}
+		resolutionDiagnostics, unresolvedDiagnostics, unresolvedBlockers := runtimeViewMarkedGuidanceResolutionScope(result, input.MarkedGuidanceResolution)
+		if len(unresolvedBlockers) > 0 || len(resolutionDiagnostics) == 0 {
+			return result, RuntimeViewCleanupBlockedError{Blockers: append([]string(nil), result.Blockers...)}
+		}
+
+		transactionPaths, err := runtimeViewMarkedGuidanceResolutionTransactionPaths(result, resolutionDiagnostics, input.MarkedGuidanceResolution)
+		if err != nil {
+			return result, err
+		}
+		tx, err := BeginInstallTransaction(ctx, repo.Root, transactionPaths)
+		if err != nil {
+			return result, fmt.Errorf("begin marked guidance resolution transaction: %w", err)
+		}
+
+		if input.MarkedGuidanceResolution != RuntimeViewMarkedGuidanceResolutionStrip {
+			if err := applyRuntimeViewMarkedGuidanceResolution(ctx, repo.Root, resolutionDiagnostics, input.MarkedGuidanceResolution); err != nil {
+				if rollbackErr := tx.Rollback(); rollbackErr != nil {
+					return result, errors.Join(
+						fmt.Errorf("resolve marked guidance: %w", err),
+						fmt.Errorf("rollback marked guidance resolution: %w", rollbackErr),
+					)
+				}
+				return result, fmt.Errorf("resolve marked guidance: %w", err)
+			}
+			result, err = RuntimeViewCleanupPlan(ctx, repo, store, false)
+			if err != nil {
+				if rollbackErr := tx.Rollback(); rollbackErr != nil {
+					return result, errors.Join(
+						fmt.Errorf("replan Run View cleanup: %w", err),
+						fmt.Errorf("rollback marked guidance resolution: %w", rollbackErr),
+					)
+				}
+				return result, fmt.Errorf("replan Run View cleanup: %w", err)
+			}
+			if len(result.Blockers) > 0 {
+				if rollbackErr := tx.Rollback(); rollbackErr != nil {
+					return result, errors.Join(
+						RuntimeViewCleanupBlockedError{Blockers: append([]string(nil), result.Blockers...)},
+						fmt.Errorf("rollback marked guidance resolution: %w", rollbackErr),
+					)
+				}
+				return result, RuntimeViewCleanupBlockedError{Blockers: append([]string(nil), result.Blockers...)}
+			}
+		} else {
+			result.Blockers = []string{}
+			result.DriftDiagnostics = unresolvedDiagnostics
+			result.Ready = true
+		}
+
+		changedFiles, skippedTargets, err := applyRuntimeViewCleanupPlan(repo.Root, result)
+		if err != nil {
+			if rollbackErr := tx.Rollback(); rollbackErr != nil {
+				return result, errors.Join(
+					fmt.Errorf("apply Run View cleanup: %w", err),
+					fmt.Errorf("rollback marked guidance resolution: %w", rollbackErr),
+				)
+			}
+			return result, err
+		}
+		tx.Commit()
+		return finalizeRuntimeViewCleanupResult(result, changedFiles, skippedTargets), nil
 	}
 
-	changedFiles, skippedTargets, err := applyRuntimeViewRootGuidanceCleanup(repo.Root)
+	changedFiles, skippedTargets, err := applyRuntimeViewCleanupPlan(repo.Root, result)
 	if err != nil {
 		return result, err
 	}
-	memberHintChangedFiles, err := applyRuntimeViewMemberHintCleanup(repo.Root, result.CleanupCandidates)
+
+	return finalizeRuntimeViewCleanupResult(result, changedFiles, skippedTargets), nil
+}
+
+func applyRuntimeViewCleanupPlan(
+	repoRoot string,
+	result RuntimeViewCleanupPlanResult,
+) ([]RuntimeViewCleanupChangedFile, []RuntimeViewCleanupSkippedTarget, error) {
+	changedFiles, skippedTargets, err := applyRuntimeViewRootGuidanceCleanup(repoRoot)
 	if err != nil {
-		return result, err
+		return nil, nil, err
+	}
+	memberHintChangedFiles, err := applyRuntimeViewMemberHintCleanup(repoRoot, result.CleanupCandidates)
+	if err != nil {
+		return nil, nil, err
 	}
 	changedFiles = append(changedFiles, memberHintChangedFiles...)
 	sortRuntimeViewCleanupChangedFiles(changedFiles)
+
+	return changedFiles, skippedTargets, nil
+}
+
+func finalizeRuntimeViewCleanupResult(
+	result RuntimeViewCleanupPlanResult,
+	changedFiles []RuntimeViewCleanupChangedFile,
+	skippedTargets []RuntimeViewCleanupSkippedTarget,
+) RuntimeViewCleanupPlanResult {
 	result.ChangedFiles = changedFiles
 	result.SkippedTargets = skippedTargets
 	result.Changed = len(changedFiles) > 0
 	result.Notes = runtimeViewCleanupNotes(result)
 	result.NextActions = runtimeViewCleanupNextActions(result)
 
-	return result, nil
+	return result
 }
 
 // RuntimeViewCleanupPlan computes the Run View cleanup preview without mutating files.
@@ -446,6 +573,190 @@ func appendRuntimeViewGuidanceDrift(
 	*blockers = append(*blockers, message+"; run `"+recovery+"`")
 }
 
+func runtimeViewMarkedGuidanceResolutionScope(
+	result RuntimeViewCleanupPlanResult,
+	resolution RuntimeViewMarkedGuidanceResolution,
+) ([]RuntimeViewDriftDiagnostic, []RuntimeViewDriftDiagnostic, []string) {
+	resolvedDiagnostics := make([]RuntimeViewDriftDiagnostic, 0)
+	unresolvedDiagnostics := make([]RuntimeViewDriftDiagnostic, 0)
+	resolvedBlockers := make(map[string]struct{})
+
+	for _, diagnostic := range result.DriftDiagnostics {
+		if runtimeViewDriftDiagnosticMatchesMarkedGuidanceResolution(diagnostic, resolution) {
+			resolvedDiagnostics = append(resolvedDiagnostics, diagnostic)
+			resolvedBlockers[runtimeViewDriftDiagnosticBlocker(diagnostic)] = struct{}{}
+			continue
+		}
+		unresolvedDiagnostics = append(unresolvedDiagnostics, diagnostic)
+	}
+
+	unresolvedBlockers := make([]string, 0, len(result.Blockers))
+	for _, blocker := range result.Blockers {
+		if _, resolved := resolvedBlockers[blocker]; resolved {
+			continue
+		}
+		unresolvedBlockers = append(unresolvedBlockers, blocker)
+	}
+
+	return resolvedDiagnostics, unresolvedDiagnostics, unresolvedBlockers
+}
+
+func runtimeViewDriftDiagnosticMatchesMarkedGuidanceResolution(
+	diagnostic RuntimeViewDriftDiagnostic,
+	resolution RuntimeViewMarkedGuidanceResolution,
+) bool {
+	if diagnostic.Kind != RuntimeViewDriftKindRootGuidance ||
+		diagnostic.OrbitID == "" ||
+		diagnostic.Target == "" ||
+		diagnostic.Path == "" {
+		return false
+	}
+
+	switch resolution {
+	case RuntimeViewMarkedGuidanceResolutionSave, RuntimeViewMarkedGuidanceResolutionStrip:
+		return diagnostic.State == string(orbittemplate.BriefLaneStateMaterializedDrifted) ||
+			diagnostic.State == string(orbittemplate.BriefLaneStateMissingTruth)
+	case RuntimeViewMarkedGuidanceResolutionRender:
+		return diagnostic.State == string(orbittemplate.BriefLaneStateMaterializedDrifted)
+	default:
+		return false
+	}
+}
+
+func runtimeViewDriftDiagnosticBlocker(diagnostic RuntimeViewDriftDiagnostic) string {
+	return diagnostic.Message + "; run `" + diagnostic.RecoveryCommand + "`"
+}
+
+func runtimeViewMarkedGuidanceResolutionTransactionPaths(
+	result RuntimeViewCleanupPlanResult,
+	diagnostics []RuntimeViewDriftDiagnostic,
+	resolution RuntimeViewMarkedGuidanceResolution,
+) ([]string, error) {
+	paths := runtimeViewCleanupTransactionPaths(result)
+	for _, diagnostic := range diagnostics {
+		switch resolution {
+		case RuntimeViewMarkedGuidanceResolutionSave:
+			path, err := orbitpkg.HostedDefinitionRelativePath(diagnostic.OrbitID)
+			if err != nil {
+				return nil, fmt.Errorf("build hosted definition path for %q: %w", diagnostic.OrbitID, err)
+			}
+			paths = append(paths, path)
+		case RuntimeViewMarkedGuidanceResolutionRender:
+			paths = append(paths, diagnostic.Path)
+		case RuntimeViewMarkedGuidanceResolutionStrip:
+		}
+	}
+
+	return slicesCompactStrings(paths), nil
+}
+
+func applyRuntimeViewMarkedGuidanceResolution(
+	ctx context.Context,
+	repoRoot string,
+	diagnostics []RuntimeViewDriftDiagnostic,
+	resolution RuntimeViewMarkedGuidanceResolution,
+) error {
+	targets := sortedRuntimeViewMarkedGuidanceResolutionTargets(diagnostics)
+	for _, target := range targets {
+		switch resolution {
+		case RuntimeViewMarkedGuidanceResolutionSave:
+			if err := saveRuntimeViewMarkedGuidance(ctx, repoRoot, target); err != nil {
+				return err
+			}
+		case RuntimeViewMarkedGuidanceResolutionRender:
+			if err := renderRuntimeViewMarkedGuidance(ctx, repoRoot, target); err != nil {
+				return err
+			}
+		case RuntimeViewMarkedGuidanceResolutionStrip:
+			return nil
+		default:
+			return fmt.Errorf("unsupported marked guidance resolution %q", resolution)
+		}
+	}
+
+	return nil
+}
+
+func sortedRuntimeViewMarkedGuidanceResolutionTargets(
+	diagnostics []RuntimeViewDriftDiagnostic,
+) []runtimeViewMarkedGuidanceResolutionKey {
+	seen := make(map[runtimeViewMarkedGuidanceResolutionKey]struct{}, len(diagnostics))
+	targets := make([]runtimeViewMarkedGuidanceResolutionKey, 0, len(diagnostics))
+	for _, diagnostic := range diagnostics {
+		key := runtimeViewMarkedGuidanceResolutionKey{
+			target:  diagnostic.Target,
+			path:    diagnostic.Path,
+			orbitID: diagnostic.OrbitID,
+		}
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		targets = append(targets, key)
+	}
+	sort.Slice(targets, func(left, right int) bool {
+		if targets[left].path != targets[right].path {
+			return targets[left].path < targets[right].path
+		}
+		if targets[left].target != targets[right].target {
+			return targets[left].target < targets[right].target
+		}
+		return targets[left].orbitID < targets[right].orbitID
+	})
+
+	return targets
+}
+
+func saveRuntimeViewMarkedGuidance(
+	ctx context.Context,
+	repoRoot string,
+	target runtimeViewMarkedGuidanceResolutionKey,
+) error {
+	switch orbittemplate.GuidanceTarget(target.target) {
+	case orbittemplate.GuidanceTargetAgents:
+		if _, err := orbittemplate.BackfillOrbitBrief(ctx, orbittemplate.BriefBackfillInput{RepoRoot: repoRoot, OrbitID: target.orbitID}); err != nil {
+			return fmt.Errorf("save marked AGENTS guidance for %q: %w", target.orbitID, err)
+		}
+	case orbittemplate.GuidanceTargetHumans:
+		if _, err := orbittemplate.BackfillOrbitHumans(ctx, orbittemplate.HumansBackfillInput{RepoRoot: repoRoot, OrbitID: target.orbitID}); err != nil {
+			return fmt.Errorf("save marked HUMANS guidance for %q: %w", target.orbitID, err)
+		}
+	case orbittemplate.GuidanceTargetBootstrap:
+		if _, err := orbittemplate.BackfillOrbitBootstrap(ctx, orbittemplate.BootstrapBackfillInput{RepoRoot: repoRoot, OrbitID: target.orbitID}); err != nil {
+			return fmt.Errorf("save marked BOOTSTRAP guidance for %q: %w", target.orbitID, err)
+		}
+	default:
+		return fmt.Errorf("unsupported marked guidance target %q", target.target)
+	}
+
+	return nil
+}
+
+func renderRuntimeViewMarkedGuidance(
+	ctx context.Context,
+	repoRoot string,
+	target runtimeViewMarkedGuidanceResolutionKey,
+) error {
+	switch orbittemplate.GuidanceTarget(target.target) {
+	case orbittemplate.GuidanceTargetAgents:
+		if _, err := orbittemplate.MaterializeOrbitBrief(ctx, orbittemplate.BriefMaterializeInput{RepoRoot: repoRoot, OrbitID: target.orbitID, Force: true}); err != nil {
+			return fmt.Errorf("render marked AGENTS guidance for %q: %w", target.orbitID, err)
+		}
+	case orbittemplate.GuidanceTargetHumans:
+		if _, err := orbittemplate.MaterializeOrbitHumans(ctx, orbittemplate.HumansMaterializeInput{RepoRoot: repoRoot, OrbitID: target.orbitID, Force: true}); err != nil {
+			return fmt.Errorf("render marked HUMANS guidance for %q: %w", target.orbitID, err)
+		}
+	case orbittemplate.GuidanceTargetBootstrap:
+		if _, err := orbittemplate.MaterializeOrbitBootstrap(ctx, orbittemplate.BootstrapMaterializeInput{RepoRoot: repoRoot, OrbitID: target.orbitID, Force: true}); err != nil {
+			return fmt.Errorf("render marked BOOTSTRAP guidance for %q: %w", target.orbitID, err)
+		}
+	default:
+		return fmt.Errorf("unsupported marked guidance target %q", target.target)
+	}
+
+	return nil
+}
+
 func runtimeViewMemberHintCleanupPlan(
 	summary RuntimeViewMemberHintSummary,
 	orbits []RuntimeViewMemberHintOrbitInfo,
@@ -550,6 +861,15 @@ func runtimeViewCleanupNextActions(result RuntimeViewCleanupPlanResult) []string
 			}
 			actions = append(actions, diagnostic.RecoveryCommand)
 		}
+		if runtimeViewCleanupHasMarkedGuidanceResolutionPath(result, RuntimeViewMarkedGuidanceResolutionSave) {
+			actions = append(actions, "hyard view run --resolve-marked save")
+		}
+		if runtimeViewCleanupHasMarkedGuidanceResolutionPath(result, RuntimeViewMarkedGuidanceResolutionRender) {
+			actions = append(actions, "hyard view run --resolve-marked render")
+		}
+		if runtimeViewCleanupHasMarkedGuidanceResolutionPath(result, RuntimeViewMarkedGuidanceResolutionStrip) {
+			actions = append(actions, "hyard view run --resolve-marked strip")
+		}
 		if len(actions) == 0 {
 			actions = append(actions, "hyard check --json")
 		}
@@ -568,6 +888,18 @@ func runtimeViewCleanupNextActions(result RuntimeViewCleanupPlanResult) []string
 	}
 
 	return []string{"run `hyard view run` to apply Run View cleanup"}
+}
+
+func runtimeViewCleanupHasMarkedGuidanceResolutionPath(
+	result RuntimeViewCleanupPlanResult,
+	resolution RuntimeViewMarkedGuidanceResolution,
+) bool {
+	for _, diagnostic := range result.DriftDiagnostics {
+		if runtimeViewDriftDiagnosticMatchesMarkedGuidanceResolution(diagnostic, resolution) {
+			return true
+		}
+	}
+	return false
 }
 
 func runtimeViewCleanupNotes(result RuntimeViewCleanupPlanResult) []string {

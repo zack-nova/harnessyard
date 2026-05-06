@@ -424,18 +424,167 @@ func TestHyardViewRunJSONRefusesActualCleanupWhenPlannerReportsAuthoredTruthDrif
 		ChangedFiles []struct {
 			Path string `json:"path"`
 		} `json:"changed_files"`
-		Blockers []string `json:"blockers"`
+		Blockers    []string `json:"blockers"`
+		NextActions []string `json:"next_actions"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
 	require.False(t, payload.Ready)
 	require.False(t, payload.Changed)
 	require.Empty(t, payload.ChangedFiles)
 	require.Contains(t, payload.Blockers, "AGENTS.md agents block \"docs\" has authored truth drift; run `hyard guide save --orbit docs --target agents`")
+	require.Contains(t, payload.NextActions, "hyard view run --resolve-marked save")
+	require.Contains(t, payload.NextActions, "hyard view run --resolve-marked render")
+	require.Contains(t, payload.NextActions, "hyard view run --resolve-marked strip")
 
 	agentsAfter, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
 	require.NoError(t, err)
 	require.Equal(t, agentsBefore, agentsAfter)
 	require.FileExists(t, filepath.Join(repo.Root, "docs", "process", ".orbit-member.yaml"))
+}
+
+func TestHyardViewRunResolveMarkedSaveWritesDriftedGuidanceBeforeCleanup(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardViewRunRootGuidanceRuntimeRepo(t)
+	agentsBlock, err := orbittemplate.WrapRuntimeAgentsBlock("docs", []byte("Edited docs guidance\n"))
+	require.NoError(t, err)
+	repo.WriteFile(t, "AGENTS.md", string(agentsBlock))
+	humansBlock, err := orbittemplate.WrapRuntimeAgentsBlock("docs", []byte("Edited human guidance\n"))
+	require.NoError(t, err)
+	repo.WriteFile(t, "HUMANS.md", string(humansBlock))
+	bootstrapBlock, err := orbittemplate.WrapRuntimeAgentsBlock("docs", []byte("Edited bootstrap guidance\n"))
+	require.NoError(t, err)
+	repo.WriteFile(t, "BOOTSTRAP.md", string(bootstrapBlock))
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "view", "run", "--resolve-marked", "save", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Ready        bool `json:"ready"`
+		Changed      bool `json:"changed"`
+		ChangedFiles []struct {
+			Path   string `json:"path"`
+			Target string `json:"target"`
+			Action string `json:"action"`
+		} `json:"changed_files"`
+		Blockers []string `json:"blockers"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.True(t, payload.Ready)
+	require.True(t, payload.Changed)
+	require.Empty(t, payload.Blockers)
+	require.Contains(t, payload.ChangedFiles, struct {
+		Path   string `json:"path"`
+		Target string `json:"target"`
+		Action string `json:"action"`
+	}{
+		Path:   "AGENTS.md",
+		Target: "agents",
+		Action: "strip_marker_lines_preserve_content",
+	})
+
+	spec, err := orbitpkg.LoadHostedOrbitSpec(t.Context(), repo.Root, "docs")
+	require.NoError(t, err)
+	require.NotNil(t, spec.Meta)
+	require.Equal(t, "Edited docs guidance\n", spec.Meta.AgentsTemplate)
+	require.Equal(t, "Edited human guidance\n", spec.Meta.HumansTemplate)
+	require.Equal(t, "Edited bootstrap guidance\n", spec.Meta.BootstrapTemplate)
+	require.Equal(t, "Edited docs guidance\n", readRepoFile(t, repo.Root, "AGENTS.md"))
+	require.Equal(t, "Edited human guidance\n", readRepoFile(t, repo.Root, "HUMANS.md"))
+	require.Equal(t, "Edited bootstrap guidance\n", readRepoFile(t, repo.Root, "BOOTSTRAP.md"))
+}
+
+func TestHyardViewRunResolveMarkedSaveDoesNotBypassOtherCleanupBlockers(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardViewRunDriftRuntimeRepo(t)
+	agentsBefore, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoError(t, err)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "view", "run", "--resolve-marked", "save", "--json")
+	require.ErrorContains(t, err, "Run View cleanup blocked by Authored Truth Drift")
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Ready        bool `json:"ready"`
+		Changed      bool `json:"changed"`
+		ChangedFiles []struct {
+			Path string `json:"path"`
+		} `json:"changed_files"`
+		Blockers []string `json:"blockers"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.False(t, payload.Ready)
+	require.False(t, payload.Changed)
+	require.Empty(t, payload.ChangedFiles)
+	require.Contains(t, payload.Blockers, "docs docs/process/.orbit-member.yaml has pending member hint drift; run `hyard orbit content apply docs --check --json`")
+
+	spec, err := orbitpkg.LoadHostedOrbitSpec(t.Context(), repo.Root, "docs")
+	require.NoError(t, err)
+	require.NotNil(t, spec.Meta)
+	require.Equal(t, "Docs orbit guidance\n", spec.Meta.AgentsTemplate)
+	agentsAfter, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoError(t, err)
+	require.Equal(t, agentsBefore, agentsAfter)
+}
+
+func TestHyardViewRunResolveMarkedRenderDiscardsDriftedGuidanceBeforeCleanup(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardViewRunRootGuidanceRuntimeRepo(t)
+	agentsBlock, err := orbittemplate.WrapRuntimeAgentsBlock("docs", []byte("Edited docs guidance\n"))
+	require.NoError(t, err)
+	repo.WriteFile(t, "AGENTS.md", string(agentsBlock))
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "view", "run", "--resolve-marked", "render", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Ready    bool     `json:"ready"`
+		Changed  bool     `json:"changed"`
+		Blockers []string `json:"blockers"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.True(t, payload.Ready)
+	require.True(t, payload.Changed)
+	require.Empty(t, payload.Blockers)
+
+	spec, err := orbitpkg.LoadHostedOrbitSpec(t.Context(), repo.Root, "docs")
+	require.NoError(t, err)
+	require.NotNil(t, spec.Meta)
+	require.Equal(t, "Docs orbit guidance\n", spec.Meta.AgentsTemplate)
+	require.Equal(t, "Docs orbit guidance\n", readRepoFile(t, repo.Root, "AGENTS.md"))
+}
+
+func TestHyardViewRunResolveMarkedStripKeepsDriftedGuidanceAsRunViewText(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardViewRunRootGuidanceRuntimeRepo(t)
+	agentsBlock, err := orbittemplate.WrapRuntimeAgentsBlock("docs", []byte("Edited docs guidance\n"))
+	require.NoError(t, err)
+	repo.WriteFile(t, "AGENTS.md", string(agentsBlock))
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "view", "run", "--resolve-marked", "strip", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Ready    bool     `json:"ready"`
+		Changed  bool     `json:"changed"`
+		Blockers []string `json:"blockers"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.True(t, payload.Ready)
+	require.True(t, payload.Changed)
+	require.Empty(t, payload.Blockers)
+
+	spec, err := orbitpkg.LoadHostedOrbitSpec(t.Context(), repo.Root, "docs")
+	require.NoError(t, err)
+	require.NotNil(t, spec.Meta)
+	require.Equal(t, "Docs orbit guidance\n", spec.Meta.AgentsTemplate)
+	require.Equal(t, "Edited docs guidance\n", readRepoFile(t, repo.Root, "AGENTS.md"))
 }
 
 func TestHyardViewRunJSONBlocksAmbiguousFlatMemberHintBeforeMutation(t *testing.T) {
