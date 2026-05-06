@@ -66,6 +66,26 @@ func executeHyardCLIUnlocked(t *testing.T, workingDir string, args ...string) (s
 	return stdout.String(), stderr.String(), err
 }
 
+func executeHyardCLIWithStartLauncherUnlocked(t *testing.T, workingDir string, launcher harnesspkg.StartLauncher, args ...string) (string, string, error) {
+	t.Helper()
+
+	rootCmd := hyardcli.NewRootCommand()
+	rootCmd.SetArgs(args)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	rootCmd.SetOut(&stdout)
+	rootCmd.SetErr(&stderr)
+
+	ctx := harnesscommands.WithWorkingDir(context.Background(), workingDir)
+	ctx = orbitcommands.WithWorkingDir(ctx, workingDir)
+	ctx = hyardcli.WithWorkingDir(ctx, workingDir)
+	ctx = hyardcli.WithStartLauncher(ctx, launcher)
+	err := rootCmd.ExecuteContext(ctx)
+
+	return stdout.String(), stderr.String(), err
+}
+
 func executeHyardCLIWithInput(t *testing.T, workingDir string, stdin string, args ...string) (string, string, error) {
 	t.Helper()
 

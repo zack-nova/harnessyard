@@ -1,10 +1,12 @@
 package cli_test
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -50,6 +52,140 @@ func decodeHyardStartDryRunPayload(t *testing.T, stdout string) hyardStartDryRun
 	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
 
 	return payload
+}
+
+type recordingStartLauncher struct {
+	requests      []harnesspkg.StartLaunchRequest
+	sawActivation bool
+	sawBootstrap  bool
+}
+
+func (launcher *recordingStartLauncher) Plan(frameworkID string) harnesspkg.StartLauncherPlan {
+	return harnesspkg.StartLauncherPlan{
+		Framework:  frameworkID,
+		Status:     "test",
+		Launchable: true,
+	}
+}
+
+func (launcher *recordingStartLauncher) Launch(_ context.Context, request harnesspkg.StartLaunchRequest) (harnesspkg.StartLaunchResult, error) {
+	launcher.requests = append(launcher.requests, request)
+	if _, err := harnesspkg.LoadFrameworkActivation(request.GitDir, request.Framework); err == nil {
+		launcher.sawActivation = true
+	}
+	if _, err := os.Stat(filepath.Join(request.RepoRoot, ".codex", "skills", harnesspkg.BootstrapAgentSkillName, "SKILL.md")); err == nil {
+		launcher.sawBootstrap = true
+	}
+
+	return harnesspkg.StartLaunchResult{
+		Framework:  request.Framework,
+		Status:     "launched",
+		Launchable: true,
+	}, nil
+}
+
+func addHyardStartAgentCapability(t *testing.T, repo *testutil.Repo) {
+	t.Helper()
+
+	repo.WriteFile(t, ".harness/orbits/docs.yaml", ""+
+		"id: docs\n"+
+		"description: Docs orbit\n"+
+		"meta:\n"+
+		"  file: .harness/orbits/docs.yaml\n"+
+		"  agents_template: |\n"+
+		"    You are the docs orbit.\n"+
+		"  include_in_projection: true\n"+
+		"  include_in_write: true\n"+
+		"  include_in_export: true\n"+
+		"  include_description_in_orchestration: true\n"+
+		"capabilities:\n"+
+		"  commands:\n"+
+		"    paths:\n"+
+		"      include:\n"+
+		"        - orbit/commands/review.md\n"+
+		"members:\n"+
+		"  - key: docs-content\n"+
+		"    role: subject\n"+
+		"    scopes:\n"+
+		"      export: true\n"+
+		"    paths:\n"+
+		"      include:\n"+
+		"        - docs/**\n")
+	repo.WriteFile(t, "orbit/commands/review.md", "Review docs work.\n")
+	repo.AddAndCommit(t, "seed start command capability")
+}
+
+func frameworkActivationOutputPaths(outputs []harnesspkg.FrameworkActivationOutput) []string {
+	paths := make([]string, 0, len(outputs))
+	for _, output := range outputs {
+		paths = append(paths, output.Path)
+	}
+
+	return paths
+}
+
+func TestHyardStartWithExplicitFrameworkExecutesProjectOnlyThroughInjectedLauncher(t *testing.T) {
+	repo := seedCommittedHyardRuntimeRepo(t)
+	addHyardStartAgentCapability(t, repo)
+
+	lockHyardProcessEnv(t)
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	beforeHead := strings.TrimSpace(repo.Run(t, "rev-parse", "HEAD"))
+	launcher := &recordingStartLauncher{}
+
+	stdout, stderr, err := executeHyardCLIWithStartLauncherUnlocked(t, repo.Root, launcher, "start", "--with", "codex")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+	require.Contains(t, stdout, "harness start handed off to codex")
+
+	selection, err := harnesspkg.LoadFrameworkSelection(repo.GitDir(t))
+	require.NoError(t, err)
+	require.Equal(t, "codex", selection.SelectedFramework)
+	require.Equal(t, harnesspkg.FrameworkSelectionSourceExplicitLocal, selection.SelectionSource)
+
+	activation, err := harnesspkg.LoadFrameworkActivation(repo.GitDir(t), "codex")
+	require.NoError(t, err)
+	require.Equal(t, "codex", activation.Framework)
+	require.Empty(t, activation.GlobalOutputs)
+	require.Contains(t, frameworkActivationOutputPaths(activation.ProjectOutputs), ".codex/skills/review")
+
+	require.FileExists(t, filepath.Join(repo.Root, ".codex", "skills", harnesspkg.BootstrapAgentSkillName, "SKILL.md"))
+	require.FileExists(t, filepath.Join(repo.Root, ".codex", "skills", "review"))
+	require.NoFileExists(t, filepath.Join(homeDir, ".codex", "prompts", harnesspkg.DefaultHarnessIDForPath(repo.Root)+"__docs__review.md"))
+	require.Len(t, launcher.requests, 1)
+	require.True(t, launcher.sawActivation)
+	require.True(t, launcher.sawBootstrap)
+	require.Equal(t, repo.Root, launcher.requests[0].RepoRoot)
+	require.Equal(t, repo.GitDir(t), launcher.requests[0].GitDir)
+	require.Equal(t, "codex", launcher.requests[0].Framework)
+	require.Contains(t, launcher.requests[0].StartPrompt, "Harness Start")
+	require.Equal(t, beforeHead, strings.TrimSpace(repo.Run(t, "rev-parse", "HEAD")))
+}
+
+func TestHyardStartSelectsOnlyReadyAgentThroughInjectedLauncher(t *testing.T) {
+	repo := seedCommittedHyardRuntimeRepo(t)
+
+	lockHyardProcessEnv(t)
+	t.Setenv("HOME", t.TempDir())
+	stubCodexExecutableOnPath(t)
+	beforeHead := strings.TrimSpace(repo.Run(t, "rev-parse", "HEAD"))
+	launcher := &recordingStartLauncher{}
+
+	stdout, stderr, err := executeHyardCLIWithStartLauncherUnlocked(t, repo.Root, launcher, "start")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+	require.Contains(t, stdout, "harness start handed off to codex")
+
+	require.NoFileExists(t, harnesspkg.FrameworkSelectionPath(repo.GitDir(t)))
+	activation, err := harnesspkg.LoadFrameworkActivation(repo.GitDir(t), "codex")
+	require.NoError(t, err)
+	require.Equal(t, harnesspkg.FrameworkSelectionSourceProjectDetection, activation.ResolutionSource)
+	require.Len(t, launcher.requests, 1)
+	require.Equal(t, "codex", launcher.requests[0].Framework)
+	require.True(t, launcher.sawActivation)
+	require.True(t, launcher.sawBootstrap)
+	require.Equal(t, beforeHead, strings.TrimSpace(repo.Run(t, "rev-parse", "HEAD")))
 }
 
 func TestHyardStartPrintPromptPrintsStartPromptInRuntime(t *testing.T) {

@@ -19,6 +19,7 @@ type FrameworkApplyInput struct {
 	GitDir              string
 	HarnessID           string
 	FrameworkOverride   string
+	ResolutionSource    FrameworkSelectionSource
 	RouteChoice         FrameworkApplyRouteChoice
 	AllowGlobalFallback bool
 	EnableHooks         bool
@@ -111,6 +112,9 @@ func ApplyFramework(ctx context.Context, input FrameworkApplyInput) (FrameworkAp
 	}
 	if state.Summary.ResolvedFramework == "" {
 		return FrameworkApplyResult{}, fmt.Errorf("framework resolution is unresolved")
+	}
+	if input.ResolutionSource != "" {
+		state.Summary.ResolutionSource = input.ResolutionSource
 	}
 	if err := blockingFrameworkCapabilityError("framework apply", state.CapabilityFindings); err != nil {
 		return FrameworkApplyResult{}, err

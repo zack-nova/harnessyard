@@ -23,6 +23,7 @@ import (
 type hyardContextKey string
 
 const hyardWorkingDirContextKey hyardContextKey = "hyard_working_dir"
+const hyardStartLauncherContextKey hyardContextKey = "hyard_start_launcher"
 
 type cloneSourceJSON struct {
 	Kind               string `json:"kind"`
@@ -58,6 +59,11 @@ type cloneResultJSON struct {
 // WithWorkingDir injects the working directory used by hyard command tests.
 func WithWorkingDir(ctx context.Context, workingDir string) context.Context {
 	return context.WithValue(ctx, hyardWorkingDirContextKey, workingDir)
+}
+
+// WithStartLauncher injects the Harness Start launcher used by command tests.
+func WithStartLauncher(ctx context.Context, launcher harnesspkg.StartLauncher) context.Context {
+	return context.WithValue(ctx, hyardStartLauncherContextKey, launcher)
 }
 
 func newCloneCommand() *cobra.Command {
