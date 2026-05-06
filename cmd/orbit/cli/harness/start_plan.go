@@ -220,6 +220,17 @@ func buildStartLauncherPlan(ctx context.Context, input StartPlanInput, framework
 	detection := detectStartLauncher(ctx, input, frameworkID)
 	switch frameworkID {
 	case "codex":
+		if detection.TerminalCLIDetected {
+			return StartLauncherPlan{
+				Framework:           frameworkID,
+				Status:              "launchable",
+				Launchable:          true,
+				DetectionStatus:     detection.Status,
+				TerminalCLIDetected: true,
+				Warnings:            detection.Warnings,
+			}
+		}
+
 		return StartLauncherPlan{
 			Framework:                  frameworkID,
 			Status:                     "unverified",
@@ -284,7 +295,7 @@ func startLauncherManualFallbackInstructions(frameworkID string, detection start
 	instructions := []string{}
 	if frameworkID == "codex" {
 		if detection.TerminalCLIDetected {
-			instructions = append(instructions, "A terminal Codex CLI was detected, but Harness Start has not verified a Codex interactive launcher contract yet.")
+			instructions = append(instructions, "A terminal Codex CLI was detected, but Harness Start could not complete the interactive launch.")
 		} else if detection.Status != "" && detection.Status != AgentDetectionStatusNotFound {
 			instructions = append(instructions, fmt.Sprintf("Codex was detected as %s, but not as a verified terminal CLI launcher.", detection.Status))
 		}

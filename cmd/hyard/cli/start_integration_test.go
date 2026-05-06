@@ -240,8 +240,6 @@ func TestHyardStartPrintPromptDoesNotMutateRuntimeOrAgentState(t *testing.T) {
 }
 
 func TestHyardStartDryRunJSONPlansHarnessStartWithoutMutatingRuntime(t *testing.T) {
-	t.Parallel()
-
 	repo := seedCommittedHyardRuntimeRepo(t)
 	_, err := harnesspkg.WriteFrameworksFile(repo.Root, harnesspkg.FrameworksFile{
 		SchemaVersion:        1,
@@ -251,7 +249,10 @@ func TestHyardStartDryRunJSONPlansHarnessStartWithoutMutatingRuntime(t *testing.
 	repo.AddAndCommit(t, "seed recommended framework", ".harness/agents/manifest.yaml")
 	beforeStatus := repo.Run(t, "status", "--short")
 
-	stdout, stderr, err := executeHyardCLI(t, repo.Root, "start", "--dry-run", "--json")
+	lockHyardProcessEnv(t)
+	configureHyardStartDetectionPath(t, map[string]string{})
+
+	stdout, stderr, err := executeHyardCLIUnlocked(t, repo.Root, "start", "--dry-run", "--json")
 	require.NoError(t, err)
 	require.Empty(t, stderr)
 
@@ -310,6 +311,11 @@ func TestHyardStartDryRunJSONSelectsOnlyReadyAgentWithoutMutatingDetectionCache(
 	require.Equal(t, "planned", payload.Activation.Status)
 	require.Equal(t, "codex", payload.BootstrapAgentSkill.Framework)
 	require.Equal(t, "codex", payload.Launcher.Framework)
+	require.Equal(t, "launchable", payload.Launcher.Status)
+	require.True(t, payload.Launcher.Launchable)
+	require.Equal(t, "installed_cli", payload.Launcher.DetectionStatus)
+	require.True(t, payload.Launcher.TerminalCLIDetected)
+	require.Empty(t, payload.Launcher.ManualFallbackInstructions)
 
 	require.Equal(t, beforeStatus, repo.Run(t, "status", "--short"))
 	require.NoFileExists(t, harnesspkg.FrameworkSelectionPath(repo.GitDir(t)))
@@ -561,6 +567,91 @@ func TestHyardStartFailsClosedWithPromptFallbackForUnsupportedLaunchers(t *testi
 			require.NoFileExists(t, filepath.Join(repo.Root, tc.bootstrapPath, harnesspkg.BootstrapAgentSkillName, "SKILL.md"))
 		})
 	}
+}
+
+func TestHyardStartFallsBackWithPromptWhenCodexInteractiveLaunchFails(t *testing.T) {
+	repo := seedCommittedHyardRuntimeRepo(t)
+
+	lockHyardProcessEnv(t)
+	configureHyardStartDetectionPath(t, map[string]string{
+		"codex": "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then\n  printf '%s\\n' 'codex-cli 0.128.0'\n  exit 0\nfi\nexit 42\n",
+	})
+
+	stdout, stderr, err := executeHyardCLIUnlocked(t, repo.Root, "start", "--with", "codex")
+	require.Error(t, err)
+	require.ErrorContains(t, err, "launch codex")
+	require.Empty(t, stdout)
+
+	require.Contains(t, stderr, "Harness Start cannot launch codex interactively.")
+	require.Contains(t, stderr, "framework_resolution: resolved")
+	require.Contains(t, stderr, "selection_source: explicit_local")
+	require.Contains(t, stderr, "framework: codex")
+	require.Contains(t, stderr, "launcher_status: failed")
+	require.Contains(t, stderr, "launcher_detection_status: installed_cli")
+	require.Contains(t, stderr, "terminal_cli_detected: true")
+	require.Contains(t, stderr, "manual_next_action: A terminal Codex CLI was detected, but Harness Start could not complete the interactive launch.")
+	require.Contains(t, stderr, "usage:")
+	require.Contains(t, stderr, "hyard start --print-prompt")
+	require.Contains(t, stderr, "hyard start --dry-run --json")
+	require.Contains(t, stderr, "Start Prompt")
+	require.Contains(t, stderr, "First handle any pending Harness Runtime bootstrap work.")
+	require.NotContains(t, stderr, "interactive_start: success")
+}
+
+func TestHyardStartFailsClosedBeforeMutationWhenCodexVersionCheckFails(t *testing.T) {
+	repo := seedCommittedHyardRuntimeRepo(t)
+	beforeStatus := repo.Run(t, "status", "--short")
+
+	lockHyardProcessEnv(t)
+	configureHyardStartDetectionPath(t, map[string]string{
+		"codex": "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then\n  exit 7\nfi\nexit 0\n",
+	})
+
+	stdout, stderr, err := executeHyardCLIUnlocked(t, repo.Root, "start", "--with", "codex")
+	require.Error(t, err)
+	require.ErrorContains(t, err, "cannot launch codex interactively")
+	require.Empty(t, stdout)
+
+	require.Contains(t, stderr, "Harness Start cannot launch codex interactively.")
+	require.Contains(t, stderr, "launcher_status: unverified")
+	require.Contains(t, stderr, "launcher_detection_status: installed_unverified")
+	require.Contains(t, stderr, "terminal_cli_detected: false")
+	require.Contains(t, stderr, "manual_next_action: Codex was detected as installed_unverified, but not as a verified terminal CLI launcher.")
+	require.Contains(t, stderr, "Start Prompt")
+
+	require.Equal(t, beforeStatus, repo.Run(t, "status", "--short"))
+	require.NoFileExists(t, harnesspkg.FrameworkSelectionPath(repo.GitDir(t)))
+	require.NoDirExists(t, filepath.Join(repo.GitDir(t), "orbit", "state", "agents", "activations"))
+	require.NoFileExists(t, filepath.Join(repo.Root, ".codex", "skills", harnesspkg.BootstrapAgentSkillName, "SKILL.md"))
+}
+
+func TestHyardStartFailsClosedBeforeMutationWhenCodexIsMissing(t *testing.T) {
+	repo := seedCommittedHyardRuntimeRepo(t)
+	beforeStatus := repo.Run(t, "status", "--short")
+
+	lockHyardProcessEnv(t)
+	configureHyardStartDetectionPath(t, map[string]string{})
+
+	stdout, stderr, err := executeHyardCLIUnlocked(t, repo.Root, "start", "--with", "codex")
+	require.Error(t, err)
+	require.ErrorContains(t, err, "cannot launch codex interactively")
+	require.Empty(t, stdout)
+
+	require.Contains(t, stderr, "Harness Start cannot launch codex interactively.")
+	require.Contains(t, stderr, "framework_resolution: resolved")
+	require.Contains(t, stderr, "selection_source: explicit_local")
+	require.Contains(t, stderr, "framework: codex")
+	require.Contains(t, stderr, "launcher_status: unverified")
+	require.Contains(t, stderr, "launcher_detection_status: not_found")
+	require.Contains(t, stderr, "terminal_cli_detected: false")
+	require.Contains(t, stderr, "manual_next_action: From the runtime root, start Codex manually.")
+	require.Contains(t, stderr, "manual_next_action: Run `hyard start --print-prompt` and paste the Start Prompt into Codex.")
+	require.Contains(t, stderr, "Start Prompt")
+
+	require.Equal(t, beforeStatus, repo.Run(t, "status", "--short"))
+	require.NoFileExists(t, harnesspkg.FrameworkSelectionPath(repo.GitDir(t)))
+	require.NoDirExists(t, filepath.Join(repo.GitDir(t), "orbit", "state", "agents", "activations"))
+	require.NoFileExists(t, filepath.Join(repo.Root, ".codex", "skills", harnesspkg.BootstrapAgentSkillName, "SKILL.md"))
 }
 
 func configureHyardStartDetectionPath(t *testing.T, executables map[string]string) string {
