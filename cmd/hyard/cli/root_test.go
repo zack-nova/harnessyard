@@ -35,6 +35,16 @@ func TestRootCommandHelpRendersHarnessYardHeadline(t *testing.T) {
 	require.Contains(t, stdout.String(), "Harness Yard CLI (hyard)")
 }
 
+func TestRootCommandRegistersAuditCommand(t *testing.T) {
+	t.Parallel()
+
+	rootCmd := NewRootCommand()
+
+	cmd, _, err := rootCmd.Find([]string{"audit"})
+	require.NoError(t, err)
+	require.Equal(t, "audit", cmd.Name())
+}
+
 func TestPublishHelpFramesRuntimePublicationAsDefaultPath(t *testing.T) {
 	t.Parallel()
 
@@ -98,4 +108,13 @@ func TestErrorExitCodeUnwrapsHookRunExitCode(t *testing.T) {
 	exitCode, ok := ErrorExitCode(err)
 	require.True(t, ok)
 	require.Equal(t, 2, exitCode)
+}
+
+func TestAuditStatusExitCodeContract(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, 0, auditStatusExitCode("pass"))
+	require.Equal(t, 0, auditStatusExitCode("warn"))
+	require.Equal(t, 1, auditStatusExitCode("fail"))
+	require.Equal(t, 1, auditStatusExitCode("not_hyard_revision"))
 }
