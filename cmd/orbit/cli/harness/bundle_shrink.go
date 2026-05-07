@@ -76,7 +76,7 @@ func BuildBundleMemberShrinkPlan(
 		}
 		deletePaths[definitionPath] = struct{}{}
 		for _, path := range snapshot.Snapshot.ExportedPaths {
-			if path == rootAgentsPath {
+			if isRootGuidancePath(path) {
 				continue
 			}
 			if !allBundlePathContributorsRemoved(validation.pathContributors[path], removedSet) {

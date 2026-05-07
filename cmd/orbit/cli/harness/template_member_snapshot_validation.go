@@ -99,7 +99,7 @@ func validateTemplateMemberSnapshots(source LocalTemplateInstallSource) (templat
 
 	unownedPaths := make([]string, 0)
 	for path := range payloadDigests {
-		if path == rootAgentsPath {
+		if isRootGuidancePath(path) {
 			continue
 		}
 		if _, ok := result.pathContributors[path]; ok {
