@@ -17,3 +17,5 @@ These templates use GitHub labels to represent the core canonical state role and
 state:<role>
 type:<type>
 ```
+
+Blocked issues use `state:blocked`. Do not add `blocked:*` labels. If an automation publishes a blocked issue from a template that defaults to `state:needs-triage`, it must replace that default state label rather than add a second `state:*` label.

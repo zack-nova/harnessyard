@@ -23,9 +23,6 @@ issue:
     size:
       representation: label
       prefix: "size:"
-    blocked:
-      representation: label
-      prefix: "blocked:"
     resolution:
       representation: label
       prefix: "resolution:"
@@ -52,6 +49,7 @@ templates:
 ## Rules
 
 - GitHub labels carry canonical state, type, and optional metadata facts.
+- `state:blocked` is the blocking representation. Do not create or use `blocked:*` labels.
 - GitHub issue comments carry canonical issue sections.
 - GitHub pull requests are the review artifact path for review and land.
 - GitHub branch protection, required checks, and merge settings remain GitHub-side policy.

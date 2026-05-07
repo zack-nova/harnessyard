@@ -23,9 +23,6 @@ issue:
     size:
       representation: label
       prefix: "size:"
-    blocked:
-      representation: label
-      prefix: "blocked:"
     resolution:
       representation: label
       prefix: "resolution:"
@@ -48,6 +45,7 @@ review_artifact:
 ## Rules
 
 - GitLab labels carry canonical state, type, and optional metadata facts.
+- `state:blocked` is the blocking representation. Do not create or use `blocked:*` labels.
 - GitLab issue notes carry canonical issue sections.
 - GitLab merge requests are the review artifact path for review and land.
 - GitLab branch protection, required pipelines, approvals, and merge settings remain GitLab-side policy.

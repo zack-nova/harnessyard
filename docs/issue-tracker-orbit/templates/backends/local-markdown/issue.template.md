@@ -3,7 +3,6 @@ state: needs-triage
 type: task
 priority:
 size:
-blocked:
 resolution:
 ---
 

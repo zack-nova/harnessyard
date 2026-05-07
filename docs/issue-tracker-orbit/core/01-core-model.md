@@ -24,6 +24,7 @@ needs-triage
 needs-info
 ready-for-dev
 in-progress
+blocked
 in-review
 human-review
 to-rework
@@ -45,9 +46,9 @@ The issue tracker's configured issue type representation is the source of truth 
 
 ## Optional Metadata
 
-Priority, size, blocked reason, and resolution are optional metadata unless the repository tracker contract makes them stricter.
+Priority, size, and resolution are optional metadata unless the repository tracker contract makes them stricter.
 
-Blocked reason prevents unsafe advancement. It is not a lifecycle state.
+Blocked is a canonical state role, not metadata. A blocked issue must record the blocker and intended resume state in issue text so removing the block does not require hidden runtime state.
 
 ## Issue Sections
 
