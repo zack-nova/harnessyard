@@ -264,7 +264,7 @@ func runHyardRemoveOrbitWithResolvedRoot(cmd *cobra.Command, resolved harnesspkg
 	}
 	memberSource := runtimeMemberSource(resolved.Runtime, orbitPackage)
 
-	result, err := harnesspkg.RemoveRuntimeMemberWithOptions(cmd.Context(), resolved.Repo, orbitPackage, time.Now().UTC(), harnesspkg.RemoveRuntimeMemberOptions{
+	result, err := harnesspkg.UninstallRuntimeOrbitPackageWithOptions(cmd.Context(), resolved.Repo, orbitPackage, time.Now().UTC(), harnesspkg.RemoveRuntimeMemberOptions{
 		AllowGlobalAgentCleanup: yes,
 	})
 	if err != nil {
