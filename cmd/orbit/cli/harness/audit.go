@@ -27,6 +27,7 @@ type AuditResult struct {
 	RevisionKind string                `json:"revision_kind"`
 	Packages     []AuditPackageSummary `json:"packages"`
 	Findings     []AuditFinding        `json:"findings"`
+	Runtime      *AuditRuntimeSummary  `json:"runtime,omitempty"`
 }
 
 // AuditPackageSummary is a compact package identity row emitted by audit.
@@ -47,6 +48,29 @@ type AuditFinding struct {
 	Package  string `json:"package,omitempty"`
 	Path     string `json:"path,omitempty"`
 	Message  string `json:"message"`
+}
+
+// AuditRuntimeSummary is the audit-level summary of existing runtime diagnostics.
+type AuditRuntimeSummary struct {
+	Check     AuditRuntimeCheckSummary     `json:"check"`
+	Readiness AuditRuntimeReadinessSummary `json:"readiness"`
+}
+
+// AuditRuntimeCheckSummary summarizes harness runtime check output without replacing hyard check.
+type AuditRuntimeCheckSummary struct {
+	HarnessID       string                `json:"harness_id,omitempty"`
+	OK              bool                  `json:"ok"`
+	FindingCount    int                   `json:"finding_count"`
+	BindingsSummary *CheckBindingsSummary `json:"bindings_summary,omitempty"`
+}
+
+// AuditRuntimeReadinessSummary summarizes derived runtime readiness without replacing hyard ready.
+type AuditRuntimeReadinessSummary struct {
+	Status                ReadinessStatus  `json:"status"`
+	RuntimeStatus         ReadinessStatus  `json:"runtime_status"`
+	AgentStatus           ReadinessStatus  `json:"agent_status"`
+	AgentActivationStatus string           `json:"agent_activation_status,omitempty"`
+	Summary               ReadinessSummary `json:"summary"`
 }
 
 // AuditRevision inspects the current Git worktree through the Harness Yard revision identity contract.
@@ -84,13 +108,24 @@ func AuditRevision(ctx context.Context, workingDir string) (AuditResult, error) 
 		}, nil
 	}
 
-	return AuditResult{
+	result := AuditResult{
 		RepoRoot:     repo.Root,
 		Status:       DeriveAuditStatus([]AuditFinding{}),
 		RevisionKind: manifest.Kind,
 		Packages:     auditPackageSummaries(manifest),
 		Findings:     []AuditFinding{},
-	}, nil
+	}
+	if manifest.Kind == ManifestKindRuntime {
+		runtimeSummary, runtimeFindings, err := auditRuntimeRevision(ctx, repo.Root)
+		if err != nil {
+			return AuditResult{}, err
+		}
+		result.Runtime = &runtimeSummary
+		result.Findings = runtimeFindings
+		result.Status = DeriveAuditStatus(result.Findings)
+	}
+
+	return result, nil
 }
 
 // DeriveAuditStatus reduces flat audit findings to the command status contract.
@@ -163,6 +198,95 @@ func auditPackageSummaries(manifest ManifestFile) []AuditPackageSummary {
 	default:
 		return []AuditPackageSummary{}
 	}
+}
+
+func auditRuntimeRevision(ctx context.Context, repoRoot string) (AuditRuntimeSummary, []AuditFinding, error) {
+	checkResult, err := CheckRuntime(ctx, repoRoot)
+	if err != nil {
+		return AuditRuntimeSummary{}, nil, fmt.Errorf("check runtime for audit: %w", err)
+	}
+	readiness, err := EvaluateRuntimeReadiness(ctx, repoRoot)
+	if err != nil {
+		return AuditRuntimeSummary{}, nil, fmt.Errorf("evaluate runtime readiness for audit: %w", err)
+	}
+
+	findings := auditFindingsFromRuntimeCheck(checkResult.Findings)
+	findings = append(findings, auditFindingsFromRuntimeReadiness(readiness.RuntimeReasons)...)
+
+	return AuditRuntimeSummary{
+		Check: AuditRuntimeCheckSummary{
+			HarnessID:       checkResult.HarnessID,
+			OK:              checkResult.OK,
+			FindingCount:    checkResult.FindingCount,
+			BindingsSummary: checkResult.BindingsSummary,
+		},
+		Readiness: AuditRuntimeReadinessSummary{
+			Status:                readiness.Status,
+			RuntimeStatus:         readiness.Runtime.Status,
+			AgentStatus:           readiness.Agent.Status,
+			AgentActivationStatus: readiness.Agent.ActivationStatus,
+			Summary:               readiness.Summary,
+		},
+	}, findings, nil
+}
+
+func auditFindingsFromRuntimeCheck(findings []CheckFinding) []AuditFinding {
+	auditFindings := make([]AuditFinding, 0, len(findings))
+	for _, finding := range findings {
+		severity := AuditStatusFail
+		if checkFindingIsWarningOnly(finding.Kind) {
+			severity = AuditStatusWarn
+		}
+		auditFindings = append(auditFindings, AuditFinding{
+			Severity: severity,
+			Kind:     "runtime_check_" + string(finding.Kind),
+			Package:  finding.OrbitID,
+			Path:     finding.Path,
+			Message:  finding.Message,
+		})
+	}
+
+	return auditFindings
+}
+
+func auditFindingsFromRuntimeReadiness(reasons []ReadinessReason) []AuditFinding {
+	auditFindings := make([]AuditFinding, 0, len(reasons))
+	for _, reason := range reasons {
+		severity := AuditStatusFail
+		switch reason.Severity {
+		case ReadinessReasonSeverityAdvisory:
+			severity = AuditStatusWarn
+		case ReadinessReasonSeverityBlocking:
+			severity = AuditStatusFail
+		}
+
+		code := strings.TrimSpace(string(reason.Code))
+		if code == "" {
+			code = "unknown"
+		}
+		auditFindings = append(auditFindings, AuditFinding{
+			Severity: severity,
+			Kind:     "runtime_readiness_" + code,
+			Package:  auditReadinessReasonPackage(reason),
+			Message:  reason.Message,
+		})
+	}
+
+	return auditFindings
+}
+
+func auditReadinessReasonPackage(reason ReadinessReason) string {
+	if strings.TrimSpace(reason.OrbitID) != "" {
+		return reason.OrbitID
+	}
+	if len(reason.OrbitIDs) == 1 {
+		return reason.OrbitIDs[0]
+	}
+	if len(reason.OrbitIDs) > 1 {
+		return strings.Join(reason.OrbitIDs, ",")
+	}
+
+	return ""
 }
 
 func stableAuditManifestError(err error, repoRoot string) string {

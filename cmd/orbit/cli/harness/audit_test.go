@@ -44,3 +44,73 @@ func TestDeriveAuditStatus(t *testing.T) {
 		})
 	}
 }
+
+func TestAuditFindingsFromRuntimeCheckMapsFindingSeverity(t *testing.T) {
+	t.Parallel()
+
+	findings := auditFindingsFromRuntimeCheck([]CheckFinding{
+		{
+			Kind:    CheckFindingMissingDefinition,
+			OrbitID: "docs",
+			Path:    ".harness/orbits/docs.yaml",
+			Message: "definition is missing",
+		},
+		{
+			Kind:    CheckFindingUnresolvedBindings,
+			OrbitID: "api",
+			Path:    ".harness/installs/api.yaml",
+			Message: "bindings are unresolved",
+		},
+	})
+
+	require.Equal(t, []AuditFinding{
+		{
+			Severity: AuditStatusFail,
+			Kind:     "runtime_check_missing_definition",
+			Package:  "docs",
+			Path:     ".harness/orbits/docs.yaml",
+			Message:  "definition is missing",
+		},
+		{
+			Severity: AuditStatusWarn,
+			Kind:     "runtime_check_unresolved_bindings",
+			Package:  "api",
+			Path:     ".harness/installs/api.yaml",
+			Message:  "bindings are unresolved",
+		},
+	}, findings)
+}
+
+func TestAuditFindingsFromRuntimeReadinessMapsReasonSeverity(t *testing.T) {
+	t.Parallel()
+
+	findings := auditFindingsFromRuntimeReadiness([]ReadinessReason{
+		{
+			Code:     ReadinessReasonInvalidOrbitSpec,
+			Severity: ReadinessReasonSeverityBlocking,
+			Message:  "runtime contains a missing or invalid orbit definition",
+			OrbitIDs: []string{"docs"},
+		},
+		{
+			Code:     ReadinessReasonAgentsNotComposed,
+			Severity: ReadinessReasonSeverityAdvisory,
+			Message:  "root AGENTS.md has not been composed for this orbit",
+			OrbitIDs: []string{"api"},
+		},
+	})
+
+	require.Equal(t, []AuditFinding{
+		{
+			Severity: AuditStatusFail,
+			Kind:     "runtime_readiness_invalid_orbit_spec",
+			Package:  "docs",
+			Message:  "runtime contains a missing or invalid orbit definition",
+		},
+		{
+			Severity: AuditStatusWarn,
+			Kind:     "runtime_readiness_agents_not_composed",
+			Package:  "api",
+			Message:  "root AGENTS.md has not been composed for this orbit",
+		},
+	}, findings)
+}
