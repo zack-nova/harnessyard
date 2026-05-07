@@ -2,10 +2,7 @@ package orbit
 
 import (
 	"fmt"
-	"os"
 	"path"
-	"path/filepath"
-	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -20,20 +17,11 @@ const (
 	memberHintMarkerFileName      = ".orbit-member.yaml"
 )
 
-var flatMemberHintKeys = map[string]struct{}{
-	"name":        {},
-	"description": {},
-	"role":        {},
-	"lane":        {},
-	"scopes":      {},
-}
-
 type memberHintBody struct {
-	Name        string                 `yaml:"name,omitempty"`
-	Description string                 `yaml:"description,omitempty"`
-	Role        OrbitMemberRole        `yaml:"role,omitempty"`
-	Lane        string                 `yaml:"lane,omitempty"`
-	Scopes      *OrbitMemberScopePatch `yaml:"scopes,omitempty"`
+	Name        string          `yaml:"name,omitempty"`
+	Description string          `yaml:"description,omitempty"`
+	Role        OrbitMemberRole `yaml:"role,omitempty"`
+	Lane        string          `yaml:"lane,omitempty"`
 }
 
 type resolvedMemberHint struct {
@@ -50,39 +38,6 @@ type resolvedMemberHint struct {
 type memberHintCandidate struct {
 	Hint   resolvedMemberHint
 	Member OrbitMember
-}
-
-// InspectAmbiguousFlatMemberHints reports Markdown frontmatter that looks like
-// a flat member hint mixed with ordinary document metadata.
-func InspectAmbiguousFlatMemberHints(repoRoot string, candidateFiles []string) ([]DetectedMemberHint, error) {
-	hints := make([]DetectedMemberHint, 0)
-	for _, candidateFile := range candidateFiles {
-		normalizedPath, err := ids.NormalizeRepoRelativePath(candidateFile)
-		if err != nil {
-			return nil, fmt.Errorf("normalize member hint candidate file %q: %w", candidateFile, err)
-		}
-		if path.Ext(normalizedPath) != ".md" {
-			continue
-		}
-
-		//nolint:gosec // The path is repo-local and built from normalized candidate files.
-		data, err := os.ReadFile(filepath.Join(repoRoot, filepath.FromSlash(normalizedPath)))
-		if err != nil {
-			return nil, fmt.Errorf("read member hint %q: %w", normalizedPath, err)
-		}
-
-		hint, found := detectAmbiguousFlatMarkdownMemberHint(normalizedPath, data)
-		if !found {
-			continue
-		}
-		hints = append(hints, hint)
-	}
-
-	sort.Slice(hints, func(left, right int) bool {
-		return hints[left].HintPath < hints[right].HintPath
-	})
-
-	return hints, nil
 }
 
 func parseMarkdownMemberHint(hintPath string, data []byte) (resolvedMemberHint, bool, error) {
@@ -102,7 +57,7 @@ func parseMarkdownMemberHint(hintPath string, data []byte) (resolvedMemberHint, 
 		return resolvedMemberHint{}, false, nil
 	}
 
-	root, foundRoot, err := yamlMappingRoot(frontmatterContent, normalizedHintPath, "frontmatter")
+	root, foundRoot, err := markdownFrontmatterMappingRoot(frontmatterContent, normalizedHintPath)
 	if err != nil {
 		return resolvedMemberHint{}, false, err
 	}
@@ -114,33 +69,16 @@ func parseMarkdownMemberHint(hintPath string, data []byte) (resolvedMemberHint, 
 	if err != nil {
 		return resolvedMemberHint{}, false, err
 	}
-	flatHint := false
 	if !found {
-		orbitMemberData, found, err = extractFlatMemberHintMapping(root, normalizedHintPath)
-		if err != nil {
-			return resolvedMemberHint{}, false, err
-		}
-		if !found {
-			return resolvedMemberHint{}, false, nil
-		}
-		flatHint = true
+		return resolvedMemberHint{}, false, nil
 	}
 
 	var body memberHintBody
 	if err := contractutil.DecodeKnownFields(orbitMemberData, &body); err != nil {
-		hintLabel := "orbit_member"
-		if flatHint {
-			hintLabel = "flat member hint"
-		}
-		return resolvedMemberHint{}, false, fmt.Errorf("%s %s is invalid YAML: %w", normalizedHintPath, hintLabel, err)
+		return resolvedMemberHint{}, false, fmt.Errorf("%s orbit_member is invalid YAML: %w", normalizedHintPath, err)
 	}
 
-	var hint resolvedMemberHint
-	if flatHint {
-		hint, err = resolveFlatMemberHint(memberHintKindFileFrontmatter, normalizedHintPath, normalizedHintPath, body)
-	} else {
-		hint, err = resolveMemberHint(memberHintKindFileFrontmatter, normalizedHintPath, normalizedHintPath, body)
-	}
+	hint, err := resolveMemberHint(memberHintKindFileFrontmatter, normalizedHintPath, normalizedHintPath, body)
 	if err != nil {
 		return resolvedMemberHint{}, false, err
 	}
@@ -148,28 +86,52 @@ func parseMarkdownMemberHint(hintPath string, data []byte) (resolvedMemberHint, 
 	return hint, true, nil
 }
 
-func detectAmbiguousFlatMarkdownMemberHint(hintPath string, data []byte) (DetectedMemberHint, bool) {
-	frontmatterContent, hasFrontmatter, err := extractYAMLFrontmatter(hintPath, data)
-	if err != nil || !hasFrontmatter {
-		return DetectedMemberHint{}, false
+func markdownFrontmatterMappingRoot(data []byte, hintPath string) (*yaml.Node, bool, error) {
+	var document yaml.Node
+	if err := yaml.Unmarshal(data, &document); err != nil {
+		if markdownFrontmatterDeclaresOrbitMember(data) {
+			return nil, false, fmt.Errorf("%s frontmatter is invalid YAML: %w", hintPath, err)
+		}
+		return nil, false, nil
+	}
+	if len(document.Content) == 0 {
+		return nil, false, nil
 	}
 
-	root, foundRoot, err := yamlMappingRoot(frontmatterContent, hintPath, "frontmatter")
-	if err != nil || !foundRoot {
-		return DetectedMemberHint{}, false
-	}
-	if !isAmbiguousFlatMemberHintRoot(root) {
-		return DetectedMemberHint{}, false
+	root := document.Content[0]
+	if root.Kind != yaml.MappingNode {
+		return nil, false, nil
 	}
 
-	diagnostic := fmt.Sprintf("%s mixes flat member hint fields with ordinary frontmatter metadata; use nested orbit_member for Run View cleanup", hintPath)
-	return DetectedMemberHint{
-		Kind:        memberHintKindFileFrontmatter,
-		HintPath:    hintPath,
-		RootPath:    hintPath,
-		Action:      MemberHintActionInvalidHint,
-		Diagnostics: []string{diagnostic},
-	}, true
+	return root, true, nil
+}
+
+func markdownFrontmatterDeclaresOrbitMember(data []byte) bool {
+	for _, line := range strings.Split(string(data), "\n") {
+		if line == "" {
+			continue
+		}
+		if line[0] == ' ' || line[0] == '\t' {
+			continue
+		}
+
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+
+		key, _, found := strings.Cut(trimmed, ":")
+		if !found {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		key = strings.Trim(key, `"'`)
+		if key == "orbit_member" {
+			return true
+		}
+	}
+
+	return false
 }
 
 func parseDirectoryMemberHint(markerPath string, data []byte) (resolvedMemberHint, error) {
@@ -199,6 +161,9 @@ func parseDirectoryMemberHint(markerPath string, data []byte) (resolvedMemberHin
 		return resolvedMemberHint{}, err
 	}
 	if found {
+		if err := rejectDirectoryMarkerTopLevelFields(root, normalizedMarkerPath); err != nil {
+			return resolvedMemberHint{}, err
+		}
 		var body memberHintBody
 		if err := contractutil.DecodeKnownFields(orbitMemberData, &body); err != nil {
 			return resolvedMemberHint{}, fmt.Errorf("%s orbit_member is invalid YAML: %w", normalizedMarkerPath, err)
@@ -206,18 +171,18 @@ func parseDirectoryMemberHint(markerPath string, data []byte) (resolvedMemberHin
 		return resolveMemberHint(memberHintKindDirectoryMarker, normalizedMarkerPath, rootPath, body)
 	}
 
-	flatData, found, err := extractFlatMemberHintMapping(root, normalizedMarkerPath)
-	if err != nil {
-		return resolvedMemberHint{}, err
+	return resolvedMemberHint{}, fmt.Errorf("%s must define nested orbit_member", normalizedMarkerPath)
+}
+
+func rejectDirectoryMarkerTopLevelFields(root *yaml.Node, markerPath string) error {
+	for index := 0; index+1 < len(root.Content); index += 2 {
+		keyNode := root.Content[index]
+		if keyNode.Value != "orbit_member" {
+			return fmt.Errorf("%s top-level field %q is not supported; use nested orbit_member", markerPath, keyNode.Value)
+		}
 	}
-	if !found {
-		return resolvedMemberHint{}, fmt.Errorf("%s must define orbit_member or flat member hint fields", normalizedMarkerPath)
-	}
-	var body memberHintBody
-	if err := contractutil.DecodeKnownFields(flatData, &body); err != nil {
-		return resolvedMemberHint{}, fmt.Errorf("%s flat member hint is invalid YAML: %w", normalizedMarkerPath, err)
-	}
-	return resolveFlatMemberHint(memberHintKindDirectoryMarker, normalizedMarkerPath, rootPath, body)
+
+	return nil
 }
 
 func buildMemberHintCandidate(hint resolvedMemberHint) memberHintCandidate {
@@ -246,27 +211,9 @@ func isHintManageableMember(member OrbitMember) bool {
 }
 
 func resolveMemberHint(kind string, hintPath string, rootPath string, body memberHintBody) (resolvedMemberHint, error) {
-	return resolveMemberHintWithOptions(kind, hintPath, rootPath, body, false, defaultMemberHintRole(kind), "orbit_member")
-}
-
-func resolveFlatMemberHint(kind string, hintPath string, rootPath string, body memberHintBody) (resolvedMemberHint, error) {
-	return resolveMemberHintWithOptions(kind, hintPath, rootPath, body, true, OrbitMemberRule, "member_hint")
-}
-
-func resolveMemberHintWithOptions(
-	kind string,
-	hintPath string,
-	rootPath string,
-	body memberHintBody,
-	requireName bool,
-	defaultRole OrbitMemberRole,
-	fieldPrefix string,
-) (resolvedMemberHint, error) {
+	fieldPrefix := "orbit_member"
 	name := strings.TrimSpace(body.Name)
 	if name == "" {
-		if requireName {
-			return resolvedMemberHint{}, fmt.Errorf("%s.name is required", fieldPrefix)
-		}
 		name = defaultMemberHintName(kind, rootPath)
 	}
 	if err := validateMemberHintNameWithPrefix(name, fieldPrefix+".name"); err != nil {
@@ -275,10 +222,13 @@ func resolveMemberHintWithOptions(
 
 	role := body.Role
 	if role == "" {
-		role = defaultRole
+		role = defaultMemberHintRole(kind)
 	}
 	if !role.IsValid() {
 		return resolvedMemberHint{}, fmt.Errorf("%s.role: invalid orbit member role %q", fieldPrefix, role)
+	}
+	if !isValidMemberHintRole(role) {
+		return resolvedMemberHint{}, fmt.Errorf("%s.role: invalid member hint role %q", fieldPrefix, role)
 	}
 
 	lane := strings.TrimSpace(body.Lane)
@@ -294,8 +244,16 @@ func resolveMemberHintWithOptions(
 		Description: strings.TrimSpace(body.Description),
 		Role:        role,
 		Lane:        lane,
-		Scopes:      cloneOrbitMemberScopePatch(body.Scopes),
 	}, nil
+}
+
+func isValidMemberHintRole(role OrbitMemberRole) bool {
+	switch role {
+	case OrbitMemberSubject, OrbitMemberRule, OrbitMemberProcess:
+		return true
+	default:
+		return false
+	}
 }
 
 func defaultMemberHintName(kind string, rootPath string) string {
@@ -384,57 +342,6 @@ func extractOrbitMemberMapping(root *yaml.Node, hintPath string) ([]byte, bool, 
 	}
 
 	return nil, false, nil
-}
-
-func extractFlatMemberHintMapping(root *yaml.Node, hintPath string) ([]byte, bool, error) {
-	if !isFlatMemberHintRoot(root) {
-		return nil, false, nil
-	}
-
-	data, err := yaml.Marshal(root)
-	if err != nil {
-		return nil, false, fmt.Errorf("%s flat member hint marshal failed: %w", hintPath, err)
-	}
-
-	return data, true, nil
-}
-
-func isFlatMemberHintRoot(root *yaml.Node) bool {
-	hasName := false
-	for index := 0; index+1 < len(root.Content); index += 2 {
-		keyNode := root.Content[index]
-		if _, ok := flatMemberHintKeys[keyNode.Value]; !ok {
-			return false
-		}
-		if keyNode.Value == "name" {
-			hasName = true
-		}
-	}
-
-	return hasName
-}
-
-func isAmbiguousFlatMemberHintRoot(root *yaml.Node) bool {
-	hasName := false
-	hasFlatMemberHintKey := false
-	hasOrdinaryMetadataKey := false
-
-	for index := 0; index+1 < len(root.Content); index += 2 {
-		keyNode := root.Content[index]
-		if keyNode.Value == "orbit_member" {
-			return false
-		}
-		if _, ok := flatMemberHintKeys[keyNode.Value]; ok {
-			hasFlatMemberHintKey = true
-			if keyNode.Value == "name" {
-				hasName = true
-			}
-			continue
-		}
-		hasOrdinaryMetadataKey = true
-	}
-
-	return hasName && hasFlatMemberHintKey && hasOrdinaryMetadataKey
 }
 
 func cloneOrbitMemberScopePatch(scopes *OrbitMemberScopePatch) *OrbitMemberScopePatch {

@@ -149,14 +149,15 @@ func backfilledOrbitSpec(spec OrbitSpec, hints []resolvedMemberHint) (OrbitSpec,
 
 func backfilledExistingMember(existing OrbitMember, hint resolvedMemberHint, candidate OrbitMember) (OrbitMember, error) {
 	if isHintManageableMember(existing) {
-		return candidate, nil
+		next := candidate
+		next.Scopes = cloneOrbitMemberScopePatch(existing.Scopes)
+		return next, nil
 	}
 
 	next := existing
 	next.Description = candidate.Description
 	next.Role = candidate.Role
 	next.Lane = candidate.Lane
-	next.Scopes = cloneOrbitMemberScopePatch(candidate.Scopes)
 
 	included, err := memberHintMatchesPatterns(existing.Paths.Include, hint, candidate.Paths.Include[0])
 	if err != nil {
@@ -477,10 +478,7 @@ func removeOrbitMemberFrontmatter(data []byte, hintPath string) ([]byte, error) 
 		filtered = append(filtered, keyNode, valueNode)
 	}
 	if !removed {
-		if isFlatMemberHintRoot(root) {
-			return []byte(body), nil
-		}
-		return nil, fmt.Errorf("%s frontmatter does not define orbit_member or flat member hint fields", hintPath)
+		return nil, fmt.Errorf("%s frontmatter does not define orbit_member", hintPath)
 	}
 
 	if len(filtered) == 0 {

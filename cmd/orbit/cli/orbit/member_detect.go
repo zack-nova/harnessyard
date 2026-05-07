@@ -5,7 +5,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"reflect"
 	"sort"
 	"strings"
 
@@ -413,5 +412,5 @@ func memberNonPathFieldsMatchHintCandidate(existing OrbitMember, candidate Orbit
 		return false
 	}
 
-	return reflect.DeepEqual(cloneOrbitMemberScopePatch(existing.Scopes), cloneOrbitMemberScopePatch(candidate.Scopes))
+	return true
 }

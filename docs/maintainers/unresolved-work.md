@@ -95,12 +95,9 @@ new follow-up work should update this file or create a fresh focused issue.
 - Branch status, template save/publish, harness template save/publish, and member
   hints mostly share current-worktree semantics, but invalid-manifest handling
   remains split across layers.
-- Member-hint consume-on-success can still rewrite legacy frontmatter formatting
-  noisily. The new flat-hint path is cleaner, but mixed legacy frontmatter may
-  lose comments or exact style.
-- Flat member hint discovery is intentionally conservative and can hide ambiguous
-  author intent. Better diagnostics may be needed for users who expected a hint
-  to be discovered.
+- Member-hint consume-on-success still re-encodes preserved ordinary Markdown
+  frontmatter after removing `orbit_member`, which may lose comments or exact
+  style.
 
 ## Guidance And Readiness UX
 

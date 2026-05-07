@@ -276,7 +276,12 @@ func TestRenameHostedOrbitPackageUpdatesLegacyPathListsAndMovesFiles(t *testing.
 		"  name: docs-workflow-guide\n"+
 		"---\n"+
 		"Spec\n")
-	repo.WriteFile(t, "guides/docs-workflow/guide.md", "Guide\n")
+	repo.WriteFile(t, "guides/docs-workflow/guide.md", ""+
+		"---\n"+
+		"name: docs-workflow-guide\n"+
+		"description: Ordinary guide metadata\n"+
+		"---\n"+
+		"Guide\n")
 
 	result, err := packageops.RenameHostedOrbitPackage(context.Background(), repo.Root, "docs-workflow", "api-workflow")
 	require.NoError(t, err)
@@ -303,6 +308,10 @@ func TestRenameHostedOrbitPackageUpdatesLegacyPathListsAndMovesFiles(t *testing.
 	require.NotContains(t, string(legacyHint), "docs-workflow")
 	_, err = os.Stat(filepath.Join(repo.Root, "guides", "api-workflow", "guide.md"))
 	require.NoError(t, err)
+	flatMetadata, err := os.ReadFile(filepath.Join(repo.Root, "guides", "api-workflow", "guide.md"))
+	require.NoError(t, err)
+	require.Contains(t, string(flatMetadata), "name: docs-workflow-guide\n")
+	require.NotContains(t, string(flatMetadata), "name: api-workflow-guide\n")
 }
 
 func TestRenameHostedOrbitPackageRejectsDestinationCollision(t *testing.T) {

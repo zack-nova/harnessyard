@@ -494,7 +494,7 @@ _Avoid_: rule
 - "rule" could mean the `rule` member role or the orbit-level behavior that decides scopes; resolved: use **Behavior Scope Defaults** for role-to-scope decisions.
 - Scope overrides in **Member Hint Frontmatter** could make temporary hints carry durable behavior policy; resolved: the canonical Member Hint contract does not include `scopes`.
 - Directory-level hints could be removed while tightening Markdown frontmatter, but that would lose the whole-directory member authoring path; resolved: keep **Directory Member Marker** and apply the same nested `orbit_member` shape.
-- **Flat Member Hint** compatibility would preserve old authoring examples but keep document metadata ambiguous; resolved: do not support the old flat hint shape, and fail closed with guidance to use nested `orbit_member`.
+- **Flat Member Hint** compatibility would preserve old authoring examples but keep document metadata ambiguous; resolved: do not support the old flat hint shape, and treat flat-looking frontmatter as ordinary Markdown metadata unless nested `orbit_member` is present.
 - Ordinary Markdown frontmatter could be mistaken for Harness Yard truth; resolved: ignore frontmatter outside nested `orbit_member`, and never delete unrelated metadata during content hint application.
 - Invalid **Member Hint Frontmatter** could be ignored as ordinary metadata, but that would hide a failed member declaration; resolved: nested `orbit_member` intent makes malformed frontmatter an invalid hint.
 - Strict YAML frontmatter delimiters could reject CRLF-authored files unexpectedly; resolved: normalize CRLF before applying the delimiter contract.

@@ -104,7 +104,7 @@ func TestMemberBackfillWritesSpecAndConsumesHintsJSON(t *testing.T) {
 	require.ErrorIs(t, err, os.ErrNotExist)
 }
 
-func TestMemberBackfillWritesSpecAndConsumesFlatHint(t *testing.T) {
+func TestMemberBackfillIgnoresFlatMarkdownMetadata(t *testing.T) {
 	t.Parallel()
 
 	repo := seedMemberHintRevisionRepo(t, "source", nil, map[string]string{
@@ -122,23 +122,25 @@ func TestMemberBackfillWritesSpecAndConsumesFlatHint(t *testing.T) {
 	require.Empty(t, stderr)
 
 	var payload struct {
-		UpdatedMembers []string `json:"updated_members"`
-		ConsumedHints  []string `json:"consumed_hints"`
+		UpdatedMemberCount int      `json:"updated_member_count"`
+		UpdatedMembers     []string `json:"updated_members"`
+		ConsumedHintCount  int      `json:"consumed_hint_count"`
+		ConsumedHints      []string `json:"consumed_hints"`
 	}
 	decodeJSONInto(t, stdout, &payload)
-	require.Equal(t, []string{"docs-style"}, payload.UpdatedMembers)
-	require.Equal(t, []string{"docs/rules/style.md"}, payload.ConsumedHints)
+	require.Zero(t, payload.UpdatedMemberCount)
+	require.Empty(t, payload.UpdatedMembers)
+	require.Zero(t, payload.ConsumedHintCount)
+	require.Empty(t, payload.ConsumedHints)
 
 	spec, err := orbitpkg.LoadHostedOrbitSpec(context.Background(), repo.Root, "docs")
 	require.NoError(t, err)
-	member := memberByName(t, spec.Members, "docs-style")
-	require.Equal(t, "Style guide", member.Description)
-	require.Equal(t, orbitpkg.OrbitMemberRule, member.Role)
-	require.Equal(t, []string{"docs/rules/style.md"}, member.Paths.Include)
+	require.Empty(t, spec.Members)
 
 	data, err := os.ReadFile(filepath.Join(repo.Root, "docs", "rules", "style.md"))
 	require.NoError(t, err)
-	require.Equal(t, "\n# Style\n", string(data))
+	require.Contains(t, string(data), "name: docs-style")
+	require.Contains(t, string(data), "description: Style guide")
 }
 
 func decodeJSONInto(t *testing.T, stdout string, target any) {
