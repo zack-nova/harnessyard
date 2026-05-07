@@ -1,0 +1,36 @@
+name: Bug report
+labels:
+  - state:needs-triage
+  - type:bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please provide reproducible information where possible. Later clarification will be recorded through `## Triage Notes` when needed.
+  - type: textarea
+    id: current
+    attributes:
+      label: Current behavior
+      description: What is actually happening now?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: How can this be reproduced? If it cannot be reproduced yet, describe the observed conditions.
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+    validations:
+      required: false

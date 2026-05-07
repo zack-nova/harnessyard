@@ -1,0 +1,67 @@
+package:
+    type: orbit
+    name: issue-discovery-orbit
+description: issue-discovery-orbit orbit
+meta:
+    file: .harness/orbits/issue-discovery-orbit.yaml
+    agents_template: |
+        # AGENTS.md - Issue Discovery Orbit
+
+        You are working in the Issue Discovery Orbit. This orbit turns PRD synthesis and issue slicing into traceable work in the issue tracker.
+
+        ## Required Rules
+
+        1. Before running any skill from this orbit, read `docs/issue-discovery-orbit/discovery-rules.md`.
+        2. When publishing a PRD or issues, follow the target repository's Repository Publishing Rules; if rules are missing or conflicting, output candidates only.
+    humans_template: |
+        # HUMANS.md - Issue Discovery Orbit
+
+        This orbit is for people who want to turn ideas, PRDs, or plans into issue tracker work items.
+
+        Available skills:
+
+        - `to-prd`
+        - `to-issues`
+
+        Before publishing, confirm the target repository's Repository Publishing Rules: issue tracker, templates, labels, state entry points, and permissions.
+        Publish when rules are clear; when rules are missing or conflicting, generate candidates only for confirmation.
+    include_in_projection: true
+    include_in_write: true
+    include_in_export: true
+    include_description_in_orchestration: true
+capabilities:
+    commands:
+        paths:
+            include:
+                - commands/issue-discovery-orbit/**/*.md
+    skills:
+        local:
+            paths:
+                include:
+                    - skills/issue-discovery-orbit/*
+content:
+    - name: issue-discovery-rules
+      role: rule
+      paths:
+        include:
+            - docs/issue-discovery-orbit/**
+behavior:
+    scope:
+        projection_roles:
+            - meta
+            - subject
+            - rule
+            - process
+        write_roles:
+            - meta
+            - rule
+        export_roles:
+            - meta
+            - rule
+        orchestration_roles:
+            - meta
+            - rule
+            - process
+    orchestration:
+        include_orbit_description: true
+        materialize_agents_from_meta: true

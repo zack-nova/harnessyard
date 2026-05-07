@@ -1,0 +1,13 @@
+schema_version: 1
+orbit_id: development-discipline-orbit
+template:
+    source_kind: external_git
+    source_repo: https://github.com/zack-nova/development-discipline-orbit.git
+    source_ref: orbit-template/development-discipline-orbit
+    template_commit: 3163b341d064be062ab85a64c8c1868981868c65
+applied_at: 2026-05-07T08:14:25Z
+variables:
+    declarations: {}
+    resolved_at_apply: {}
+    unresolved_at_apply: []
+    observed_runtime_unresolved: []

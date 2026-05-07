@@ -1,0 +1,69 @@
+package:
+    type: orbit
+    name: development-discipline-orbit
+description: development-discipline-orbit orbit
+meta:
+    file: .harness/orbits/development-discipline-orbit.yaml
+    agents_template: |
+        # AGENTS.md - Development Discipline Orbit
+
+        You are working in the Development Discipline Orbit. This orbit selects and runs TDD, diagnosis, or review-commit feedback discipline for the target codebase.
+
+        ## Required Rules
+
+        1. Before running any skill from this orbit, apply the currently available orbit or repository discipline rules.
+        2. When reporting completion, include the feedback loop used, observed failure signals, passing signals, commit or technical-debt recording result, and any still-missing evidence.
+    humans_template: |
+        # HUMANS.md - Development Discipline Orbit
+
+        This orbit is for people who want to keep small-step, verifiable development discipline in a code repository.
+
+        Available skills:
+
+        - `diagnose`
+        - `review-commit`
+        - `tdd`
+
+        Use `diagnose` for bugs, failures, performance regressions, or problems with unclear root cause.
+        Use `tdd` when developing new behavior, changing existing behavior, or following red-green-refactor.
+        Use `review-commit` after local changes are complete and you want to review changes, record non-blocking technical debt, and create a commit.
+    include_in_projection: true
+    include_in_write: true
+    include_in_export: true
+    include_description_in_orchestration: true
+capabilities:
+    commands:
+        paths:
+            include:
+                - commands/development-discipline-orbit/**/*.md
+    skills:
+        local:
+            paths:
+                include:
+                    - skills/development-discipline-orbit/*
+content:
+    - name: development-discipline-rules
+      role: rule
+      paths:
+        include:
+            - docs/development-discipline-orbit/**
+behavior:
+    scope:
+        projection_roles:
+            - meta
+            - subject
+            - rule
+            - process
+        write_roles:
+            - meta
+            - rule
+        export_roles:
+            - meta
+            - rule
+        orchestration_roles:
+            - meta
+            - rule
+            - process
+    orchestration:
+        include_orbit_description: true
+        materialize_agents_from_meta: true

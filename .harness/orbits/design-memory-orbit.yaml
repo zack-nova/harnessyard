@@ -1,0 +1,141 @@
+package:
+    type: orbit
+    name: design-memory-orbit
+description: design-memory-orbit orbit
+meta:
+    file: .harness/orbits/design-memory-orbit.yaml
+    agents_template: |
+        # Design Memory Constitution
+
+        This repository uses the Design Memory Orbit to preserve long-lived project language and architecture decisions from human-agent design discussions.
+
+        ## Non-Negotiable Rules
+
+        - Read `docs/design-memory-orbit/INDEX.md` first.
+        - Project memory consists of `CONTEXT.md`, `CONTEXT-MAP.md`, `docs/adr/`, and same-named files inside context directories.
+        - Do not invent domain terms, context boundaries, or architecture decisions; uncertain content must remain an open question.
+        - Missing project memory is not an error; create memory lazily only after a term or decision is confirmed.
+        - If any output conflicts with an existing ADR, state the conflict clearly and wait for a human decision.
+
+        See `docs/design-memory-orbit/INDEX.md` for more rules and templates.
+    humans_template: |
+        # HUMANS.md - Design Memory Orbit
+
+        This orbit is for code repositories. It helps agents remember project language, context boundaries, and architecture decisions confirmed during human-AI design discussions.
+
+        Common skills:
+
+        - `grill-with-docs`: use when you want to drive a design discussion toward clear terminology, boundaries, or ADR-worthy decisions.
+        - `grill-me`: use when you only want to be questioned about a plan and do not want project memory written.
+        - `zoom-out`: use when you want the agent to explain an unfamiliar code area one level higher.
+        - `improve-codebase-architecture`: use when you want to find opportunities for deeper modules, testability, or AI navigability.
+        - `caveman`: use when you want short, high-density communication.
+
+        Decisions where you need to participate:
+
+        - Whether a term is the project's official language.
+        - Whether a context owns a concept or data.
+        - Whether an architecture choice is worth recording as an ADR.
+        - Whether a new decision should overturn, deprecate, or replace an older ADR.
+
+        `CONTEXT.md`, `CONTEXT-MAP.md`, and `docs/adr/` are created only when there is confirmed content; empty files have no value.
+    bootstrap_template: |
+        # BOOTSTRAP.md - Design Memory Orbit
+
+        This orbit is installed into a code repository so agents can read and maintain long-lived project memory from design discussions: domain language, context boundaries, and ADRs.
+
+        ## Initialization Steps
+
+        ### 1. Confirm Repository Context
+
+        Confirm the current directory is the target code repository root.
+
+        ### 2. Confirm Orbit Documentation Is Readable
+
+        Confirm the following paths exist and are readable:
+
+        ```text
+        docs/design-memory-orbit/INDEX.md
+        skills/design-memory-orbit/
+        ```
+
+        ### 3. Read The Rule Index
+
+        Read:
+
+        ```text
+        docs/design-memory-orbit/INDEX.md
+        ```
+
+        Then recursively read relevant subdocuments according to the index.
+
+        ### 4. Scan Existing Project Memory
+
+        Check and report whether the current repository already has:
+
+        ```text
+        CONTEXT.md
+        CONTEXT-MAP.md
+        docs/adr/
+        ```
+
+        If `CONTEXT-MAP.md` exists, read the context locations listed in it according to multi-context rules, and check each context's `CONTEXT.md` and `docs/adr/`.
+        If the map points to a missing context file, report the missing file and continue with readable parts.
+
+        ### 5. Report Initialization Result
+
+        Output:
+
+        - Whether the repository is currently single-context or multi-context.
+        - Discovered context documents.
+        - Discovered ADR directories and ADR counts.
+        - Whether there are obvious conflicts, such as `CONTEXT-MAP.md` pointing to a missing context.
+
+        Missing `CONTEXT.md`, `CONTEXT-MAP.md`, or `docs/adr/` is not an initialization failure.
+
+        ## Prohibited Actions
+
+        - Do not create empty `CONTEXT.md`.
+        - Do not create empty `CONTEXT-MAP.md`.
+        - Do not create empty `docs/adr/`.
+        - Do not write unconfirmed terms, boundaries, or decisions into project memory.
+    include_in_projection: true
+    include_in_write: true
+    include_in_export: true
+    include_description_in_orchestration: true
+capabilities:
+    commands:
+        paths:
+            include:
+                - commands/design-memory-orbit/**/*.md
+    skills:
+        local:
+            paths:
+                include:
+                    - skills/design-memory-orbit/*
+content:
+    - name: design-memory-docs
+      role: rule
+      paths:
+        include:
+            - docs/design-memory-orbit/**
+behavior:
+    scope:
+        projection_roles:
+            - meta
+            - subject
+            - rule
+            - process
+        write_roles:
+            - meta
+            - rule
+        export_roles:
+            - meta
+            - rule
+        orchestration_roles:
+            - meta
+            - rule
+            - process
+    orchestration:
+        include_orbit_description: true
+        materialize_agents_from_meta: true

@@ -1,0 +1,13 @@
+schema_version: 1
+orbit_id: issue-tracker-orbit
+template:
+    source_kind: external_git
+    source_repo: https://github.com/zack-nova/issue-tracker-orbit.git
+    source_ref: orbit-template/issue-tracker-orbit
+    template_commit: c8ace03143d21f340649092449d3aceaa682210b
+applied_at: 2026-05-07T08:12:38Z
+variables:
+    declarations: {}
+    resolved_at_apply: {}
+    unresolved_at_apply: []
+    observed_runtime_unresolved: []

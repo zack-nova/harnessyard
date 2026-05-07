@@ -1,0 +1,13 @@
+schema_version: 1
+orbit_id: design-memory-orbit
+template:
+    source_kind: external_git
+    source_repo: https://github.com/zack-nova/design-memory-orbit.git
+    source_ref: orbit-template/design-memory-orbit
+    template_commit: 4b4420c433380d48eceb0d702e3c041296eccdf2
+applied_at: 2026-05-07T08:13:39Z
+variables:
+    declarations: {}
+    resolved_at_apply: {}
+    unresolved_at_apply: []
+    observed_runtime_unresolved: []

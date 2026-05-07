@@ -1,0 +1,26 @@
+name: Task
+labels:
+  - state:needs-triage
+  - type:task
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What should this task deliver?
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: How should completion be judged?
+    validations:
+      required: false
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation plan
+      description: How should this be validated?
+    validations:
+      required: false

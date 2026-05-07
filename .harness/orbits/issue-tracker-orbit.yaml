@@ -1,0 +1,298 @@
+package:
+    type: orbit
+    name: issue-tracker-orbit
+description: issue-tracker-orbit orbit
+meta:
+    file: .harness/orbits/issue-tracker-orbit.yaml
+    agents_template: |
+        # AGENTS.md - Issue Tracker Contract Orbit
+
+        This repository uses the Issue Tracker Contract Orbit to manage issue-driven delivery.
+
+        ## Non-Negotiable Rules
+
+        - Read `docs/issue-tracker-orbit/tracker-contract.md` first. If it is still `pending-bootstrap`, run `BOOTSTRAP.md` first.
+        - Do not assume issues live in GitHub. Use the backend mapping selected in the tracker contract.
+        - Every open issue must have exactly one canonical state role.
+        - Before an issue enters `ready-for-dev`, it must have exactly one issue type and a complete `Dev Brief`.
+        - Before an issue enters `in-progress`, it must already be in canonical state role `ready-for-dev`.
+        - `Dev Workpad` is an issue-scoped execution record, not an external runtime session.
+        - `Review Sweep` records only **Review Sweep Producer** observations; it does not decide `rework` or `merge`.
+        - `to-rework` and `to-merge` must be decided by `Human Review Decision`.
+        - After `to-rework` work is completed, the issue returns to `in-review`; `to-merge` can enter `merged` only after Land succeeds.
+        - Do not develop directly on the default branch, and do not locally merge the default branch.
+        - If rules, templates, state, or fact sources conflict, stop and ask the human maintainer for a decision.
+
+        ## Documentation Entry Points
+
+        - Runtime contract: `docs/issue-tracker-orbit/tracker-contract.md`
+        - Documentation index: `docs/issue-tracker-orbit/INDEX.md`
+
+        When handling state, metadata, issue sections, review artifacts, templates, or safety rules, read the tracker contract first, then read core or adapter docs as needed.
+    humans_template: |
+        # HUMANS.md - Issue Tracker Contract Orbit
+
+        This guide is for day-to-day use by project maintainers. It is not an installation checklist or an internal orbit maintenance manual.
+
+        ## What You Need To Know
+
+        - The issue workflow rules for this repository live in `docs/issue-tracker-orbit/tracker-contract.md`.
+        - Issues may live in GitHub, GitLab, local markdown, or another tracker; the backend contract decides the concrete location.
+        - **Contract Consumer** is the runtime participant identity that must read and follow the tracker contract first. Any runtime participant that joins the issue workflow must first act as a **Contract Consumer**.
+        - **Contract Consumer** identity does not itself grant permission to triage, develop, create review artifacts, rework, land, or merge; concrete authority comes from external orbits, runtime participants, tools, or human process.
+        - Human maintainers clarify requirements, approve waivers, resolve conflicts, and write final review decisions.
+
+        ## When You Need To Participate
+
+        ### Triage
+
+        When an issue lacks enough information, a **Contract Consumer** with triage responsibility keeps it in `needs-info` and records Triage Notes. You need to provide missing facts or decide whether to cancel, split, or downgrade it.
+
+        ### Ready for Dev
+
+        Before an issue enters `ready-for-dev`, it must have a complete Dev Brief. You need to confirm:
+
+        - the requirement is clear,
+        - acceptance criteria are verifiable,
+        - the validation plan is realistically executable,
+        - out-of-scope boundaries are explicit,
+        - there is no active blocked metadata.
+
+        ### Blocked
+
+        Blocked is not a state. It means the current issue is blocked by a dependency, external factor, or human decision. After the block is removed, remove blocked metadata; do not reopen the issue as a new state.
+
+        ### Debt Notes
+
+        When development or review finds technical debt that does not block the current delivery, create `## Debt Notes` as needed. It is not a hidden backlog and not a merge blocker. If the debt is later promoted to an independent issue, update the original entry's `Follow-up issue`; if the debt affects the current delivery, it must enter review evidence and be decided by Human Review Decision.
+
+        ### Review
+
+        After an issue enters `in-review`, a review artifact exists. It is usually a PR/MR; the local markdown backend uses a local review artifact file to model the review gate. After Review Sweep is written, the issue enters `human-review` and waits for a human maintainer to write Human Review Decision.
+
+        Review Sweep is observation only, not a decision.
+
+        ### Human Review Decision
+
+        After review information is sufficient, a human maintainer needs to write Human Review Decision:
+
+        ```text
+        Decision: hold
+        Decision: rework
+        Decision: merge
+        ```
+
+        - `hold`: keep the issue in `human-review`.
+        - `rework`: allow the issue to enter `to-rework`, where a **Contract Consumer** with rework responsibility takes over.
+        - `merge`: allow the issue to enter `to-merge`, where a **Contract Consumer** with land responsibility performs Land; after Land succeeds, the issue enters `merged`.
+
+        Do not let review output replace Human Review Decision.
+
+        `Human Review Decision` is authorization evidence, not the operation trigger. Operations are triggered by the issue's canonical state role. Contract Consumers need their own claim/running/retry mechanism to avoid duplicate pickup; the tracker contract does not record these runtime occupancy facts.
+
+        After `to-rework` is completed, the issue must return to `in-review` and produce Review Sweep again. If `to-merge` execution fails, return to `human-review`; enter `to-rework` only when a human confirms code changes are required.
+
+        ## Do Not Bypass Manually
+
+        - Do not develop directly on the default branch.
+        - Do not locally merge the default branch.
+        - Do not bypass the tracker contract when changing state.
+        - Do not treat external runtime sessions or worktree notes as fact sources.
+        - Do not ask any runtime environment to merge without Human Review Decision.
+    bootstrap_template: |
+        # BOOTSTRAP.md - Issue Tracker Contract Orbit
+
+        This orbit has been installed in the current code repository. Bootstrap's goal is to choose the issue tracker backend and generate an operational `tracker-contract.md`.
+
+        Bootstrap does not create a development worktree, implement code, create business review artifacts, or merge.
+
+        ## 1. Confirm Repository Context
+
+        - Confirm the current directory is the target code repository root.
+        - Run `git remote -v` and determine whether it clearly corresponds to GitHub or GitLab.
+        - Run `git branch --show-current` and `git status --short` to confirm the current branch and worktree state.
+        - Read `docs/issue-tracker-orbit/INDEX.md`.
+        - Read `docs/issue-tracker-orbit/tracker-contract.md`.
+
+        ## 2. Choose Tracker Backend
+
+        Choose one backend:
+
+        ```text
+        github
+        gitlab
+        local-markdown
+        other
+        ```
+
+        Default recommendations:
+
+        - Choose `github` when the remote points to GitHub.
+        - Choose `gitlab` when the remote points to GitLab.
+        - Choose `local-markdown` when there is no remote or the project explicitly requires local management.
+        - Choose `other` for Jira, Linear, or custom systems, and require humans to provide fact representation, review artifact, and safety rules.
+
+        Read the corresponding adapter:
+
+        ```text
+        docs/issue-tracker-orbit/adapters/github.md
+        docs/issue-tracker-orbit/adapters/gitlab.md
+        docs/issue-tracker-orbit/adapters/local-markdown.md
+        docs/issue-tracker-orbit/adapters/other.md
+        ```
+
+        ## 3. Generate Tracker Contract
+
+        Edit:
+
+        ```text
+        docs/issue-tracker-orbit/tracker-contract.md
+        ```
+
+        Required completion:
+
+        - Change `status` to `active`.
+        - Fill in `backend`.
+        - Fill in repository id and default branch.
+        - Fill in backend representations for state, type, and metadata.
+        - Fill in storage and heading for canonical issue sections.
+        - Keep `review_artifact.required: true`.
+        - In `backend_mapping`, write the selected backend's rule mappings for issue id/path/URL, review artifact, section storage, template target, and related fields.
+        - Configure validation commands.
+        - Configure land/merge policy unless the selected backend has no corresponding policy.
+
+        If the project temporarily has no automatic validation command, write an explicit waiver and set `required_before_review` / `required_before_land` to realistic values.
+
+        ## 4. Install Or Merge Backend Templates
+
+        Template source:
+
+        ```text
+        docs/issue-tracker-orbit/templates/backends/<backend>/
+        ```
+
+        Common GitHub backend targets:
+
+        ```text
+        .github/ISSUE_TEMPLATE/
+        .github/pull_request_template.md
+        ```
+
+        Common local markdown backend targets:
+
+        ```text
+        .scratch/issues/
+        .scratch/reviews/
+        ```
+
+        Execution rules:
+
+        - If the target file does not exist, it may be created.
+        - If the target file already exists, show the diff and merge plan first.
+        - Do not silently overwrite existing tracker templates, CODEOWNERS, or other project configuration.
+        - New issues should default to canonical state role `needs-triage` and include an appropriate issue type.
+
+        ## 5. Sync Backend Metadata
+
+        For backends that support labels, generate a dry-run first:
+
+        ```text
+        create: ...
+        update: ...
+        unchanged: ...
+        conflict: ...
+        ```
+
+        Sync only after human maintainer confirmation.
+
+        Default GitHub / GitLab labels:
+
+        ```text
+        state:needs-triage
+        state:needs-info
+        state:ready-for-dev
+        state:in-progress
+        state:in-review
+        state:human-review
+        state:to-rework
+        state:to-merge
+        state:merged
+
+        type:bug
+        type:feature
+        type:task
+        type:docs
+        type:chore
+        ```
+
+        The local markdown backend does not need labels, but frontmatter fields must be confirmed to match the tracker contract.
+
+        ## 6. Check Runtime Environment
+
+        Confirm:
+
+        - `git` is available.
+        - The backend is accessible, or the local markdown path is writable.
+        - The current repository can read the default branch.
+        - Validation commands can run, or there is an explicit waiver.
+        - External **Contract Consumers** can later read this repository's `docs/issue-tracker-orbit/tracker-contract.md`.
+
+        ## 7. Verify Initialization Result
+
+        After completion, report:
+
+        - Whether the tracker contract is active.
+        - Whether backend mapping is complete.
+        - Whether backend templates were installed or merged.
+        - Whether backend metadata was synced.
+        - Whether validation configuration can run.
+        - Whether any conflict or open item requires human handling.
+
+        ## Prohibited Actions
+
+        - Do not create a worktree.
+        - Do not start an external development runtime.
+        - Do not create business review artifacts.
+        - Do not modify business code.
+        - Do not merge.
+        - Do not treat review output as a human review decision.
+    include_in_projection: true
+    include_in_write: true
+    include_in_export: true
+    include_description_in_orchestration: true
+capabilities:
+    commands:
+        paths:
+            include:
+                - commands/issue-tracker-orbit/**/*.md
+    skills:
+        local:
+            paths:
+                include:
+                    - skills/issue-tracker-orbit/*
+content:
+    - name: issue-tracker-contract
+      role: rule
+      paths:
+        include:
+            - docs/issue-tracker-orbit/**
+behavior:
+    scope:
+        projection_roles:
+            - meta
+            - subject
+            - rule
+            - process
+        write_roles:
+            - meta
+            - rule
+        export_roles:
+            - meta
+            - rule
+        orchestration_roles:
+            - meta
+            - rule
+            - process
+    orchestration:
+        include_orbit_description: true
+        materialize_agents_from_meta: true

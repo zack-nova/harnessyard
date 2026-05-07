@@ -1,0 +1,26 @@
+name: Feature request
+labels:
+  - state:needs-triage
+  - type:feature
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What problem does this feature solve, and why is it needed now?
+    validations:
+      required: true
+  - type: textarea
+    id: desired
+    attributes:
+      label: Desired behavior
+      description: What should the behavior be when this is complete?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope / non-goals
+      description: What is out of scope for this issue?
+    validations:
+      required: false
