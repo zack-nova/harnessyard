@@ -61,14 +61,15 @@ func TestHyardUninstallOrbitJSONRemovesInstallBackedRuntimeOrbit(t *testing.T) {
 	require.Empty(t, stderr)
 
 	var payload struct {
-		Action                string `json:"action"`
-		TargetType            string `json:"target_type"`
-		OrbitPackage          string `json:"orbit_package"`
-		OrbitID               string `json:"orbit_id"`
-		MemberSource          string `json:"member_source"`
-		RemoveMode            string `json:"remove_mode"`
-		MemberCount           int    `json:"member_count"`
-		DetachedInstallRecord bool   `json:"detached_install_record"`
+		Action                string   `json:"action"`
+		TargetType            string   `json:"target_type"`
+		OrbitPackage          string   `json:"orbit_package"`
+		OrbitID               string   `json:"orbit_id"`
+		MemberSource          string   `json:"member_source"`
+		RemoveMode            string   `json:"remove_mode"`
+		MemberCount           int      `json:"member_count"`
+		RemovedPaths          []string `json:"removed_paths"`
+		DetachedInstallRecord bool     `json:"detached_install_record"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
 	require.Equal(t, "uninstall", payload.Action)
@@ -78,6 +79,8 @@ func TestHyardUninstallOrbitJSONRemovesInstallBackedRuntimeOrbit(t *testing.T) {
 	require.Equal(t, "install_orbit", payload.MemberSource)
 	require.Equal(t, "runtime_cleanup", payload.RemoveMode)
 	require.Equal(t, 0, payload.MemberCount)
+	require.Contains(t, payload.RemovedPaths, "docs")
+	require.Contains(t, payload.RemovedPaths, "docs/guide.md")
 	require.False(t, payload.DetachedInstallRecord)
 
 	runtimeFile, err := harnesspkg.LoadRuntimeFile(repo.Root)
@@ -88,6 +91,9 @@ func TestHyardUninstallOrbitJSONRemovesInstallBackedRuntimeOrbit(t *testing.T) {
 	require.ErrorIs(t, err, os.ErrNotExist)
 	require.NoFileExists(t, filepath.Join(repo.Root, ".harness", "orbits", "docs.yaml"))
 	require.NoFileExists(t, filepath.Join(repo.Root, "docs", "guide.md"))
+	require.NoDirExists(t, filepath.Join(repo.Root, "docs"))
+	require.DirExists(t, filepath.Join(repo.Root, ".harness", "orbits"))
+	require.DirExists(t, filepath.Join(repo.Root, ".harness", "installs"))
 	require.Equal(t, "Use docs runtime guidance.\n", readRepoFile(t, repo.Root, "AGENTS.md"))
 }
 
@@ -170,12 +176,16 @@ func TestHyardUninstallOrbitAllowsUntrackedInstallOwnedFilesBeforeCheckpoint(t *
 	require.False(t, payload.DetachedInstallRecord)
 	require.Contains(t, payload.RemovedPaths, ".harness/installs/docs.yaml")
 	require.Contains(t, payload.RemovedPaths, ".harness/orbits/docs.yaml")
+	require.Contains(t, payload.RemovedPaths, "docs")
 	require.Contains(t, payload.RemovedPaths, "docs/guide.md")
 
 	_, err = harnesspkg.LoadInstallRecord(repo.Root, "docs")
 	require.ErrorIs(t, err, os.ErrNotExist)
 	require.NoFileExists(t, filepath.Join(repo.Root, ".harness", "orbits", "docs.yaml"))
 	require.NoFileExists(t, filepath.Join(repo.Root, "docs", "guide.md"))
+	require.NoDirExists(t, filepath.Join(repo.Root, "docs"))
+	require.DirExists(t, filepath.Join(repo.Root, ".harness", "orbits"))
+	require.DirExists(t, filepath.Join(repo.Root, ".harness", "installs"))
 }
 
 func TestHyardUninstallOrbitPreservesUntrackedRootGuidanceBoundaries(t *testing.T) {
