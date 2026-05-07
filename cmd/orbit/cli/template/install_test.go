@@ -88,6 +88,44 @@ func TestWriteAndLoadInstallRecordRoundTripWithDetachedStatus(t *testing.T) {
 	require.Equal(t, input, loaded)
 }
 
+func TestWriteAndLoadInstallRecordRoundTripWithEmptyVariableSnapshot(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := t.TempDir()
+	appliedAt := time.Date(2026, time.March, 21, 10, 45, 0, 0, time.UTC)
+	input := InstallRecord{
+		SchemaVersion: 1,
+		OrbitID:       "docs",
+		Template: Source{
+			SourceKind:     InstallSourceKindLocalBranch,
+			SourceRepo:     "",
+			SourceRef:      "orbit-template/docs",
+			TemplateCommit: "abc123",
+		},
+		AppliedAt: appliedAt,
+		Variables: &InstallVariablesSnapshot{
+			Declarations:    map[string]bindings.VariableDeclaration{},
+			ResolvedAtApply: map[string]bindings.VariableBinding{},
+		},
+	}
+
+	filename, err := WriteInstallRecord(repoRoot, input)
+	require.NoError(t, err)
+
+	data, err := os.ReadFile(filename)
+	require.NoError(t, err)
+	require.Contains(t, string(data), ""+
+		"variables:\n"+
+		"    declarations: {}\n"+
+		"    resolved_at_apply: {}\n"+
+		"    unresolved_at_apply: []\n"+
+		"    observed_runtime_unresolved: []\n")
+
+	loaded, err := LoadInstallRecord(repoRoot, "docs")
+	require.NoError(t, err)
+	require.Equal(t, input, loaded)
+}
+
 func TestLoadInstallRecordRejectsMismatchedOrbitID(t *testing.T) {
 	t.Parallel()
 

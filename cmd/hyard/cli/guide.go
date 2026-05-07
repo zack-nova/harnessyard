@@ -93,11 +93,12 @@ func newGuideSyncCommand() *cobra.Command {
 	cmd.Use = "sync"
 	cmd.Short = "Sync runtime-wide root guidance artifacts"
 	cmd.Long = "Sync runtime-wide root guidance artifacts for agent, human, and bootstrap targets.\n" +
-		"When --orbit is omitted, sync all current runtime orbit packages; use --orbit <id> to filter."
+		"When --orbit is omitted, sync all current runtime orbit packages; use --orbit <id> to filter.\n" +
+		"In Run View, standalone sync is presentation output and requires interactive confirmation or --output."
 	cmd.Example = "" +
-		"  hyard guide sync\n" +
-		"  hyard guide sync --orbit docs --target all\n" +
-		"  hyard guide sync --target humans --json\n" +
-		"  hyard guide sync --target bootstrap --force\n"
+		"  hyard guide sync --output\n" +
+		"  hyard guide sync --orbit docs --target all --output\n" +
+		"  hyard guide sync --target humans --output --json\n" +
+		"  hyard guide sync --target bootstrap --output --force\n"
 	return cmd
 }

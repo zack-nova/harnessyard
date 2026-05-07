@@ -24,3 +24,4 @@ coverage/
 
 # Local editor/runtime files
 *.swp
+.codex/

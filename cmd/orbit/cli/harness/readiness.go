@@ -836,7 +836,7 @@ func buildReadinessNextSteps(report ReadinessReport) []ReadinessNextStep {
 		case ReadinessReasonRuntimePlaceholdersObserved:
 			addStep("hyard plumbing harness bindings scan-runtime --all --json", "inspect runtime placeholders")
 		case ReadinessReasonAgentsNotComposed, ReadinessReasonAgentsBlockDrift:
-			addStep("hyard guide sync --target agents", "refresh root AGENTS orchestration")
+			addStep("hyard guide sync --target agents --output", "refresh root AGENTS orchestration")
 		case ReadinessReasonOrbitEntryIncomplete:
 			if len(reason.OrbitIDs) > 0 {
 				addStep("hyard orbit show "+reason.OrbitIDs[0], "inspect orbit entry contract")

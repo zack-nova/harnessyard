@@ -17,7 +17,7 @@ func TestHarnessRootHelpIncludesV03Examples(t *testing.T) {
 	require.Contains(t, stdout, "harness bindings plan orbit-template/docs orbit-template/cmd")
 	require.Contains(t, stdout, "harness init")
 	require.Contains(t, stdout, "harness install batch orbit-template/docs orbit-template/cmd --bindings .harness/vars.yaml")
-	require.Contains(t, stdout, "harness guidance compose --target all")
+	require.Contains(t, stdout, "harness guidance compose --target all --output")
 	require.Contains(t, stdout, "harness bootstrap complete --orbit docs")
 	require.Contains(t, stdout, "harness bootstrap reopen --orbit docs")
 	require.Contains(t, stdout, "harness ready")
@@ -108,8 +108,8 @@ func TestHarnessAgentsComposeHelpIncludesExamples(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, stderr)
 	require.Contains(t, stdout, "Examples:")
-	require.Contains(t, stdout, "harness agents compose")
-	require.Contains(t, stdout, "harness agents compose --force")
+	require.Contains(t, stdout, "harness agents compose --output")
+	require.Contains(t, stdout, "harness agents compose --output --force")
 	require.Contains(t, stdout, "root AGENTS.md")
 }
 
@@ -146,9 +146,9 @@ func TestHarnessGuidanceComposeHelpIncludesExamples(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, stderr)
 	require.Contains(t, stdout, "Examples:")
-	require.Contains(t, stdout, "harness guidance compose --target all")
-	require.Contains(t, stdout, "harness guidance compose --target humans --json")
-	require.Contains(t, stdout, "harness guidance compose --target bootstrap --force")
+	require.Contains(t, stdout, "harness guidance compose --target all --output")
+	require.Contains(t, stdout, "harness guidance compose --target humans --output --json")
+	require.Contains(t, stdout, "harness guidance compose --target bootstrap --output --force")
 	require.Contains(t, stdout, "--target")
 	require.Contains(t, stdout, "AGENTS.md")
 	require.Contains(t, stdout, "HUMANS.md")
@@ -162,8 +162,8 @@ func TestHarnessHumansComposeHelpIncludesExamples(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, stderr)
 	require.Contains(t, stdout, "Examples:")
-	require.Contains(t, stdout, "harness humans compose")
-	require.Contains(t, stdout, "harness humans compose --force")
+	require.Contains(t, stdout, "harness humans compose --output")
+	require.Contains(t, stdout, "harness humans compose --output --force")
 	require.Contains(t, stdout, "root HUMANS.md")
 }
 

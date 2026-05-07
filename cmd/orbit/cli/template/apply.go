@@ -889,10 +889,6 @@ func BuildInstallVariablesSnapshot(
 	declared map[string]bindings.VariableDeclaration,
 	mergeResult bindings.MergeResult,
 ) *InstallVariablesSnapshot {
-	if len(declared) == 0 && len(mergeResult.Resolved) == 0 && len(mergeResult.Unresolved) == 0 {
-		return nil
-	}
-
 	snapshot := &InstallVariablesSnapshot{
 		Declarations:    make(map[string]bindings.VariableDeclaration, len(declared)),
 		ResolvedAtApply: make(map[string]bindings.VariableBinding, len(mergeResult.Resolved)),

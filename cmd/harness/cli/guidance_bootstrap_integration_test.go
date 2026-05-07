@@ -17,7 +17,7 @@ func TestHarnessGuidanceComposeSupportsBootstrapTargetInJSON(t *testing.T) {
 
 	repo := seedHarnessBootstrapGuidanceRepo(t)
 
-	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "guidance", "compose", "--target", "bootstrap", "--json")
+	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "guidance", "compose", "--target", "bootstrap", "--output", "--json")
 	require.NoError(t, err)
 	require.Empty(t, stderr)
 
@@ -50,7 +50,7 @@ func TestHarnessGuidanceComposeAllIncludesBootstrapArtifact(t *testing.T) {
 
 	repo := seedHarnessBootstrapGuidanceRepo(t)
 
-	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "guidance", "compose", "--target", "all", "--json")
+	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "guidance", "compose", "--target", "all", "--output", "--json")
 	require.NoError(t, err)
 	require.Empty(t, stderr)
 
@@ -86,7 +86,7 @@ func TestHarnessGuidanceComposeBootstrapSkipsCompletedOrbit(t *testing.T) {
 		},
 	}))
 
-	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "guidance", "compose", "--target", "bootstrap", "--json")
+	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "guidance", "compose", "--target", "bootstrap", "--output", "--json")
 	require.NoError(t, err)
 	require.Empty(t, stderr)
 

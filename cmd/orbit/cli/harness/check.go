@@ -26,6 +26,7 @@ const (
 	CheckFindingUnresolvedBindings    CheckFindingKind = "unresolved_bindings"
 	CheckFindingBundleMemberMismatch  CheckFindingKind = "bundle_member_mismatch"
 	CheckFindingBundlePathMismatch    CheckFindingKind = "bundle_path_mismatch"
+	CheckFindingRootGuidanceInvalid   CheckFindingKind = "root_guidance_invalid"
 )
 
 // CheckFinding captures one stable harness-check diagnostic.
@@ -81,10 +82,12 @@ func CheckRuntimeWithProgress(ctx context.Context, repoRoot string, progress fun
 	if err := checkRuntimeStage(progress, "scanning harness records"); err != nil {
 		return CheckResult{}, err
 	}
-	findings, bindingsSummary, err := collectMembershipFindings(ctx, repoRoot, runtimeFile, progress)
+	rootGuidanceFindings := scanRootGuidanceMarkerFindings(repoRoot)
+	membershipFindings, bindingsSummary, err := collectMembershipFindings(ctx, repoRoot, runtimeFile, progress)
 	if err != nil {
 		return CheckResult{}, err
 	}
+	findings := append(rootGuidanceFindings, membershipFindings...)
 	sortCheckFindings(findings)
 
 	result := CheckResult{
@@ -99,6 +102,36 @@ func CheckRuntimeWithProgress(ctx context.Context, repoRoot string, progress fun
 	}
 
 	return result, nil
+}
+
+func scanRootGuidanceMarkerFindings(repoRoot string) []CheckFinding {
+	targets := []string{rootAgentsPath, rootHumansPath, rootBootstrapPath}
+	findings := make([]CheckFinding, 0)
+	for _, target := range targets {
+		filename := filepath.Join(repoRoot, filepath.FromSlash(target))
+		//nolint:gosec // target is one of the fixed root guidance artifact paths.
+		data, err := os.ReadFile(filename)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			findings = append(findings, CheckFinding{
+				Kind:    CheckFindingRootGuidanceInvalid,
+				Path:    target,
+				Message: fmt.Sprintf("read root guidance artifact: %v", err),
+			})
+			continue
+		}
+		if _, err := orbittemplate.ParseRuntimeAgentsDocument(data); err != nil {
+			findings = append(findings, CheckFinding{
+				Kind:    CheckFindingRootGuidanceInvalid,
+				Path:    target,
+				Message: err.Error(),
+			})
+		}
+	}
+
+	return findings
 }
 
 func hasBlockingFindings(findings []CheckFinding) bool {

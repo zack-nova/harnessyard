@@ -17,7 +17,19 @@ This directory contains the product, contributor, reference, and maintainer docu
 
 ## Maintainer Docs
 
+- [Current Architecture](./maintainers/current-architecture.md)
+- [Unresolved Work](./maintainers/unresolved-work.md)
 - [Release Guide](./maintainers/release.md)
+- [Root Guidance Workflow Marker Plan](./maintainers/root-guidance-workflow-marker-plan.md)
 - [Testing Strategy](./maintainers/testing-strategy.md)
+
+## Structure Rules
+
+Root `AGENTS.md` is a thin agent entry point. Keep detailed product,
+architecture, testing, and release rules in this directory.
+
+Testing rules belong in [Testing for Contributors](./contributing/testing.md).
+Maintainer testing strategy belongs in
+[Testing Strategy](./maintainers/testing-strategy.md).
 
 Design and implementation specs live alongside these pages while they are active references. Older or lower-frequency background documents can move into a dedicated background directory when needed.

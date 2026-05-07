@@ -324,7 +324,7 @@ func analyzeInstalledTemplateBindingsChangedPaths(repoRoot string, preview Templ
 		}
 	}
 
-	agentsChanged, err := runtimeAgentsHasDrift(repoRoot, preview.Source.Manifest.Template.OrbitID, preview.RenderedSharedAgentsFile)
+	agentsChanged, err := runtimeAgentsHasDrift(repoRoot, preview.Source.Manifest.Template.OrbitID, preview.RenderedSharedAgentsFile, runtimeAgentsDriftOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("check runtime AGENTS drift: %w", err)
 	}

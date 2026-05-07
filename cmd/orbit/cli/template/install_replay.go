@@ -136,7 +136,9 @@ func BuildInstallOwnedCleanupPlan(
 	existingRecord InstallRecord,
 	nextPreview TemplateApplyPreview,
 ) (InstallOwnedCleanupPlan, error) {
-	if err := validateDestructiveReplayInstallRecord(existingRecord); err != nil {
+	var err error
+	existingRecord, err = recordWithDestructiveReplayVariablesSnapshot(ctx, repoRoot, existingRecord)
+	if err != nil {
 		return InstallOwnedCleanupPlan{}, err
 	}
 
@@ -251,7 +253,9 @@ func AnalyzeInstalledTemplateDrift(ctx context.Context, repoRoot string, orbitID
 		}
 	}
 
-	agentsDrift, err := runtimeAgentsHasDrift(repoRoot, orbitID, replay.RenderedSharedAgentsFile)
+	agentsDrift, err := runtimeAgentsHasDrift(repoRoot, orbitID, replay.RenderedSharedAgentsFile, runtimeAgentsDriftOptions{
+		AllowMarkerlessPresentation: true,
+	})
 	if err != nil || agentsDrift {
 		findings = append(findings, InstallDriftFinding{
 			Kind: DriftKindRuntimeFile,
@@ -325,15 +329,32 @@ func replayInstalledTemplateBestEffort(ctx context.Context, repoRoot string, rec
 	return replay, true
 }
 
-func validateDestructiveReplayInstallRecord(record InstallRecord) error {
-	if record.Variables == nil {
-		return fmt.Errorf(
-			"install record for orbit %q does not contain variables snapshot required for overwrite replay",
-			record.OrbitID,
-		)
+func recordWithDestructiveReplayVariablesSnapshot(
+	ctx context.Context,
+	repoRoot string,
+	record InstallRecord,
+) (InstallRecord, error) {
+	if record.Variables != nil {
+		return record, nil
 	}
 
-	return nil
+	source, err := resolveInstalledTemplateSource(ctx, repoRoot, record)
+	if err != nil {
+		return InstallRecord{}, err
+	}
+	if len(source.Manifest.Variables) > 0 {
+		return InstallRecord{}, missingVariablesSnapshotForOverwriteReplayError(record)
+	}
+
+	record.Variables = &InstallVariablesSnapshot{}
+	return record, nil
+}
+
+func missingVariablesSnapshotForOverwriteReplayError(record InstallRecord) error {
+	return fmt.Errorf(
+		"install record for orbit %q is missing replay provenance: variables snapshot required for overwrite replay",
+		record.OrbitID,
+	)
 }
 
 func normalizeRecordedRemoteTemplateRef(ref string) string {
@@ -387,7 +408,11 @@ func ensureRuntimeAgentsBlockMatches(repoRoot string, orbitID string, payload []
 	return nil
 }
 
-func runtimeAgentsHasDrift(repoRoot string, orbitID string, expected *CandidateFile) (bool, error) {
+type runtimeAgentsDriftOptions struct {
+	AllowMarkerlessPresentation bool
+}
+
+func runtimeAgentsHasDrift(repoRoot string, orbitID string, expected *CandidateFile, options runtimeAgentsDriftOptions) (bool, error) {
 	filename := filepath.Join(repoRoot, sharedFilePathAgents)
 	//nolint:gosec // The AGENTS path is fixed under the repo root.
 	data, err := os.ReadFile(filename)
@@ -408,6 +433,9 @@ func runtimeAgentsHasDrift(repoRoot string, orbitID string, expected *CandidateF
 		return found, nil
 	}
 	if !found {
+		if options.AllowMarkerlessPresentation && runtimeAgentsDocumentHasMarkerlessPresentationContent(document) {
+			return false, nil
+		}
 		if runtimeAgentsDocumentContainsRunViewPayload(document, data, expected.Content) {
 			return false, nil
 		}

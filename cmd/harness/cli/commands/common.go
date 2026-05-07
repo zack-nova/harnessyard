@@ -18,10 +18,21 @@ import (
 type contextKey string
 
 const workingDirContextKey contextKey = "working_dir"
+const guidanceComposeInteractiveContextKey contextKey = "guidance_compose_interactive"
 
 // WithWorkingDir injects the working directory used by command tests.
 func WithWorkingDir(ctx context.Context, workingDir string) context.Context {
 	return context.WithValue(ctx, workingDirContextKey, workingDir)
+}
+
+// WithGuidanceComposeInteractive preserves terminal interactivity after tests or wrappers replace command streams.
+func WithGuidanceComposeInteractive(ctx context.Context) context.Context {
+	return context.WithValue(ctx, guidanceComposeInteractiveContextKey, true)
+}
+
+func guidanceComposeInteractiveFromContext(ctx context.Context) bool {
+	interactive, ok := ctx.Value(guidanceComposeInteractiveContextKey).(bool)
+	return ok && interactive
 }
 
 func addJSONFlag(cmd *cobra.Command) {

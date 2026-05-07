@@ -170,6 +170,15 @@ func runtimeAgentsDocumentHasNoBlocks(document AgentsRuntimeDocument) bool {
 	return true
 }
 
+func runtimeAgentsDocumentHasMarkerlessPresentationContent(document AgentsRuntimeDocument) bool {
+	for _, segment := range document.Segments {
+		if segment.Kind == AgentsRuntimeSegmentUnmarked && len(bytes.TrimSpace(segment.Content)) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 func runtimeAgentsDocumentContainsRunViewPayload(document AgentsRuntimeDocument, data []byte, payload []byte) bool {
 	if !runtimeAgentsDocumentHasNoBlocks(document) {
 		return false

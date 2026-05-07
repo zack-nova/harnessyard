@@ -168,6 +168,66 @@ func TestBuildTemplateInstallPreviewSnapshotsPackageFrameworkRecommendation(t *t
 	require.Equal(t, "claude", preview.BundleRecord.RecommendedFramework)
 }
 
+func TestBuildTemplateInstallPreviewSnapshotsEmptyVariablesContract(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	sourceRepo := seedHarnessTemplateInstallSourceRepo(t)
+	sourceRepo.WriteFile(t, ".harness/template.yaml", ""+
+		"schema_version: 1\n"+
+		"kind: harness_template\n"+
+		"template:\n"+
+		"  harness_id: workspace\n"+
+		"  default_template: false\n"+
+		"  created_from_branch: main\n"+
+		"  created_from_commit: abc123\n"+
+		"  created_at: 2026-04-03T00:00:00Z\n"+
+		"  root_guidance:\n"+
+		"    agents: false\n"+
+		"    humans: false\n"+
+		"    bootstrap: false\n"+
+		"members:\n"+
+		"  - orbit_id: workspace\n"+
+		"variables: {}\n")
+	sourceRepo.WriteFile(t, "docs/guide.md", "Static workspace guide\n")
+	sourceRepo.AddAndCommit(t, "remove harness template variables")
+	source, err := ResolveLocalTemplateInstallSource(ctx, sourceRepo.Root, "HEAD")
+	require.NoError(t, err)
+
+	runtimeRepo := testutil.NewRepo(t)
+	now := time.Date(2026, time.April, 10, 12, 30, 0, 0, time.UTC)
+	_, err = BootstrapRuntimeControlPlane(runtimeRepo.Root, now)
+	require.NoError(t, err)
+
+	preview, err := BuildTemplateInstallPreview(ctx, TemplateInstallPreviewInput{
+		RepoRoot: runtimeRepo.Root,
+		Source:   source,
+		InstallSource: orbittemplate.Source{
+			SourceKind:     orbittemplate.InstallSourceKindLocalBranch,
+			SourceRef:      "harness-template/workspace",
+			TemplateCommit: source.Commit,
+		},
+		Now: now,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, preview.BundleRecord.Variables)
+	require.Equal(t, &orbittemplate.InstallVariablesSnapshot{
+		Declarations:    map[string]bindings.VariableDeclaration{},
+		ResolvedAtApply: map[string]bindings.VariableBinding{},
+	}, preview.BundleRecord.Variables)
+
+	filename, err := WriteBundleRecord(runtimeRepo.Root, preview.BundleRecord)
+	require.NoError(t, err)
+	data, err := os.ReadFile(filename)
+	require.NoError(t, err)
+	require.Contains(t, string(data), ""+
+		"variables:\n"+
+		"    declarations: {}\n"+
+		"    resolved_at_apply: {}\n"+
+		"    unresolved_at_apply: []\n"+
+		"    observed_runtime_unresolved: []\n")
+}
+
 func TestApplyTemplateInstallPreviewRollsBackWhenBundleRecordWriteFails(t *testing.T) {
 	t.Parallel()
 

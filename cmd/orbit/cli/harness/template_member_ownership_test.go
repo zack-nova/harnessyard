@@ -210,6 +210,85 @@ func TestAnalyzeTemplateMemberOwnershipRejectsUnownedPayloadPath(t *testing.T) {
 	require.ErrorContains(t, err, `template payload paths are not owned by any member snapshot: docs/extra.md`)
 }
 
+func TestAnalyzeTemplateMemberOwnershipAllowsRootGuidancePayloadPaths(t *testing.T) {
+	t.Parallel()
+
+	source := LocalTemplateInstallSource{
+		Manifest: TemplateManifest{
+			Members: []TemplateMember{
+				{OrbitID: "docs"},
+			},
+		},
+		MemberSnapshots: map[string]TemplateMemberSnapshot{
+			"docs": {
+				SchemaVersion: 1,
+				Kind:          TemplateMemberSnapshotKind,
+				OrbitID:       "docs",
+				MemberSource:  MemberSourceManual,
+				Snapshot: TemplateMemberSnapshotData{
+					ExportedPaths: []string{"docs/guide.md"},
+					FileDigests: map[string]string{
+						"docs/guide.md": contentDigest([]byte("docs guide\n")),
+					},
+					Variables: map[string]TemplateVariableSpec{},
+				},
+			},
+		},
+		Files: []orbittemplate.CandidateFile{
+			{Path: "AGENTS.md", Content: []byte("agent guidance\n")},
+			{Path: "BOOTSTRAP.md", Content: []byte("bootstrap guidance\n")},
+			{Path: "HUMANS.md", Content: []byte("human guidance\n")},
+			{Path: "docs/guide.md", Content: []byte("docs guide\n")},
+		},
+	}
+
+	ownership, err := AnalyzeTemplateMemberOwnership(source, "docs")
+	require.NoError(t, err)
+	require.Equal(t, []string{"docs/guide.md"}, ownership.ExclusivePaths)
+	require.Empty(t, ownership.SharedPaths)
+}
+
+func TestAnalyzeTemplateMemberOwnershipIgnoresSnapshotRootGuidancePaths(t *testing.T) {
+	t.Parallel()
+
+	source := LocalTemplateInstallSource{
+		Manifest: TemplateManifest{
+			Members: []TemplateMember{
+				{OrbitID: "docs"},
+			},
+		},
+		MemberSnapshots: map[string]TemplateMemberSnapshot{
+			"docs": {
+				SchemaVersion: 1,
+				Kind:          TemplateMemberSnapshotKind,
+				OrbitID:       "docs",
+				MemberSource:  MemberSourceManual,
+				Snapshot: TemplateMemberSnapshotData{
+					ExportedPaths: []string{"AGENTS.md", "BOOTSTRAP.md", "HUMANS.md", "docs/guide.md"},
+					FileDigests: map[string]string{
+						"AGENTS.md":     contentDigest([]byte("agent guidance\n")),
+						"BOOTSTRAP.md":  contentDigest([]byte("bootstrap guidance\n")),
+						"HUMANS.md":     contentDigest([]byte("human guidance\n")),
+						"docs/guide.md": contentDigest([]byte("docs guide\n")),
+					},
+					Variables: map[string]TemplateVariableSpec{},
+				},
+			},
+		},
+		Files: []orbittemplate.CandidateFile{
+			{Path: "AGENTS.md", Content: []byte("agent guidance\n")},
+			{Path: "BOOTSTRAP.md", Content: []byte("bootstrap guidance\n")},
+			{Path: "HUMANS.md", Content: []byte("human guidance\n")},
+			{Path: "docs/guide.md", Content: []byte("docs guide\n")},
+		},
+	}
+
+	ownership, err := AnalyzeTemplateMemberOwnership(source, "docs")
+	require.NoError(t, err)
+	require.Equal(t, []string{"docs/guide.md"}, ownership.ExclusivePaths)
+	require.Empty(t, ownership.SharedPaths)
+}
+
 func TestAnalyzeTemplateMemberOwnershipRejectsSnapshotVariableManifestDrift(t *testing.T) {
 	t.Parallel()
 

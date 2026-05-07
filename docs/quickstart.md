@@ -66,8 +66,16 @@ Harness Runtime around it:
 hyard init runtime
 hyard install https://github.com/acme/harness-templates.git --ref harness-template/frontend-lab
 hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/docs --bindings .harness/vars.yaml
+hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/api --bindings .harness/vars.yaml
+hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/ui --bindings .harness/vars.yaml
+hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/ops --bindings .harness/vars.yaml
 hyard check --json
 ```
+
+Each Run View Orbit Package install outputs its package guidance incrementally.
+You can start using the newly installed guidance immediately; standalone
+runtime-wide guidance output remains an explicit `hyard guide sync --output`
+operation.
 
 Uninstall package content with the typed package lifecycle commands:
 

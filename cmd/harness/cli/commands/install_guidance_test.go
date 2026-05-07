@@ -32,7 +32,7 @@ func TestComposeInstallScopedGuidanceRollsBackArtifactsAndReturnsWarning(t *test
 	require.Empty(t, outcome.WrittenPaths)
 	require.Len(t, outcome.Warnings, 1)
 	require.Contains(t, outcome.Warnings[0], "compose failed")
-	require.Contains(t, outcome.Warnings[0], "hyard guide sync --target all")
+	require.Contains(t, outcome.Warnings[0], "hyard guide sync --target all --output")
 
 	agentsData, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
 	require.NoError(t, err)

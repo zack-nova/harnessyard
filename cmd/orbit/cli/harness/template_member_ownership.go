@@ -47,7 +47,7 @@ func AnalyzeTemplateMemberOwnership(
 		SharedPaths:    []string{},
 	}
 	for _, path := range targetSnapshot.Snapshot.ExportedPaths {
-		if path == rootAgentsPath {
+		if isRootGuidancePath(path) {
 			continue
 		}
 
