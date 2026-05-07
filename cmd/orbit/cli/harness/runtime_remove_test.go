@@ -104,6 +104,131 @@ func TestUninstallRuntimeOrbitPackageDeletesInstallOwnedRuntimeFilesAndGuidance(
 	require.FileExists(t, filepath.Join(repo.Root, "docs", "local-note.md"))
 }
 
+func TestUninstallRuntimeOrbitPackagePreservesUnrelatedMarkedAndMarkerlessRootGuidance(t *testing.T) {
+	t.Parallel()
+
+	repo := seedRuntimePackageUninstallRepo(t)
+	docsBlock, err := orbittemplate.WrapRuntimeAgentsOwnerBlock(orbittemplate.OwnerKindOrbit, "docs", []byte("Docs runtime guidance\n"))
+	require.NoError(t, err)
+	apiBlock, err := orbittemplate.WrapRuntimeAgentsOwnerBlock(orbittemplate.OwnerKindOrbit, "api", []byte("API runtime guidance\n"))
+	require.NoError(t, err)
+	harnessBlock, err := orbittemplate.WrapRuntimeAgentsOwnerBlock(orbittemplate.OwnerKindHarness, "docs", []byte("Harness runtime guidance\n"))
+	require.NoError(t, err)
+	repo.WriteFile(t, "AGENTS.md", ""+
+		"Markerless run view guidance.\n\n"+
+		string(docsBlock)+
+		string(apiBlock)+
+		string(harnessBlock)+
+		"Tail markerless guidance.\n")
+	humansDocsBlock, err := orbittemplate.WrapRuntimeAgentsOwnerBlock(orbittemplate.OwnerKindOrbit, "docs", []byte("Docs human guidance\n"))
+	require.NoError(t, err)
+	humansHarnessBlock, err := orbittemplate.WrapRuntimeAgentsOwnerBlock(orbittemplate.OwnerKindHarness, "docs", []byte("Harness human guidance\n"))
+	require.NoError(t, err)
+	repo.WriteFile(t, "HUMANS.md", string(humansDocsBlock)+string(humansHarnessBlock))
+	bootstrapDocsBlock, err := orbittemplate.WrapRuntimeAgentsOwnerBlock(orbittemplate.OwnerKindOrbit, "docs", []byte("Docs bootstrap guidance\n"))
+	require.NoError(t, err)
+	repo.WriteFile(t, "BOOTSTRAP.md", string(bootstrapDocsBlock))
+
+	discovered, err := gitpkg.DiscoverRepo(context.Background(), repo.Root)
+	require.NoError(t, err)
+
+	result, err := UninstallRuntimeOrbitPackageWithOptions(
+		context.Background(),
+		discovered,
+		"docs",
+		time.Date(2026, time.May, 7, 10, 30, 0, 0, time.UTC),
+		RemoveRuntimeMemberOptions{},
+	)
+	require.NoError(t, err)
+	require.Contains(t, result.RemovedPaths, "AGENTS.md")
+	require.Contains(t, result.RemovedPaths, "HUMANS.md")
+	require.Contains(t, result.RemovedPaths, "BOOTSTRAP.md")
+	require.True(t, result.RemovedAgentsBlock)
+
+	agentsData, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoError(t, err)
+	require.Equal(t, ""+
+		"Markerless run view guidance.\n\n"+
+		"<!-- orbit:begin workflow=\"api\" -->\n"+
+		"API runtime guidance\n"+
+		"<!-- orbit:end workflow=\"api\" -->\n"+
+		"<!-- harness:begin workflow=\"docs\" -->\n"+
+		"Harness runtime guidance\n"+
+		"<!-- harness:end workflow=\"docs\" -->\n"+
+		"Tail markerless guidance.\n", string(agentsData))
+	humansData, err := os.ReadFile(filepath.Join(repo.Root, "HUMANS.md"))
+	require.NoError(t, err)
+	require.Equal(t, ""+
+		"<!-- harness:begin workflow=\"docs\" -->\n"+
+		"Harness human guidance\n"+
+		"<!-- harness:end workflow=\"docs\" -->\n", string(humansData))
+	require.NoFileExists(t, filepath.Join(repo.Root, "BOOTSTRAP.md"))
+}
+
+func TestUninstallRuntimeOrbitPackageFailsClosedOnAmbiguousRootGuidanceMarkers(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name          string
+		guidance      string
+		errorContains string
+	}{
+		{
+			name: "duplicate target block",
+			guidance: "" +
+				"<!-- orbit:begin workflow=\"docs\" -->\n" +
+				"first docs block\n" +
+				"<!-- orbit:end workflow=\"docs\" -->\n" +
+				"<!-- orbit:begin workflow=\"docs\" -->\n" +
+				"second docs block\n" +
+				"<!-- orbit:end workflow=\"docs\" -->\n",
+			errorContains: "duplicate orbit block",
+		},
+		{
+			name: "mismatched owner end marker",
+			guidance: "" +
+				"<!-- orbit:begin workflow=\"docs\" -->\n" +
+				"docs block\n" +
+				"<!-- harness:end workflow=\"docs\" -->\n",
+			errorContains: "does not match begin orbit block",
+		},
+		{
+			name:          "malformed marker attribute",
+			guidance:      "<!-- orbit:begin workflow=\"docs\" extra=\"value\" -->\n",
+			errorContains: "malformed orbit block marker",
+		},
+	}
+
+	for _, testCase := range testCases {
+		testCase := testCase
+
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			repo := seedRuntimePackageUninstallRepo(t)
+			repo.WriteFile(t, "AGENTS.md", testCase.guidance)
+			discovered, err := gitpkg.DiscoverRepo(context.Background(), repo.Root)
+			require.NoError(t, err)
+
+			_, err = UninstallRuntimeOrbitPackageWithOptions(
+				context.Background(),
+				discovered,
+				"docs",
+				time.Date(2026, time.May, 7, 10, 30, 0, 0, time.UTC),
+				RemoveRuntimeMemberOptions{},
+			)
+			require.Error(t, err)
+			require.ErrorContains(t, err, "remove root AGENTS.md block")
+			require.ErrorContains(t, err, testCase.errorContains)
+			require.FileExists(t, filepath.Join(repo.Root, ".harness", "orbits", "docs.yaml"))
+			require.FileExists(t, filepath.Join(repo.Root, "docs", "guide.md"))
+			agentsData, readErr := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
+			require.NoError(t, readErr)
+			require.Equal(t, testCase.guidance, string(agentsData))
+		})
+	}
+}
+
 func TestRemoveRuntimeMemberRejectsBundleBackedMember(t *testing.T) {
 	t.Parallel()
 

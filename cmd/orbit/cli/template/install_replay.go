@@ -42,6 +42,11 @@ type InstallOwnedCleanupPlan struct {
 	RemoveSharedAgentsFile bool
 }
 
+// InstallOwnedCleanupOptions controls which install-owned surfaces the cleanup plan validates.
+type InstallOwnedCleanupOptions struct {
+	SkipSharedAgentsBlock bool
+}
+
 // ReplayInstalledTemplate reconstructs the install-backed template payload using the recorded source pin
 // plus the current runtime bindings context from the repository.
 func ReplayInstalledTemplate(ctx context.Context, input InstalledTemplateReplayInput) (TemplateApplyPreview, error) {
@@ -136,6 +141,19 @@ func BuildInstallOwnedCleanupPlan(
 	existingRecord InstallRecord,
 	nextPreview TemplateApplyPreview,
 ) (InstallOwnedCleanupPlan, error) {
+	return BuildInstallOwnedCleanupPlanWithOptions(ctx, repoRoot, existingRecord, nextPreview, InstallOwnedCleanupOptions{})
+}
+
+// BuildInstallOwnedCleanupPlanWithOptions reconstructs the current install-owned payload
+// and identifies stale runtime paths that are safe to remove after a successful overwrite
+// or package lifecycle operation.
+func BuildInstallOwnedCleanupPlanWithOptions(
+	ctx context.Context,
+	repoRoot string,
+	existingRecord InstallRecord,
+	nextPreview TemplateApplyPreview,
+	options InstallOwnedCleanupOptions,
+) (InstallOwnedCleanupPlan, error) {
 	var err error
 	existingRecord, err = recordWithDestructiveReplayVariablesSnapshot(ctx, repoRoot, existingRecord)
 	if err != nil {
@@ -168,7 +186,7 @@ func BuildInstallOwnedCleanupPlan(
 		plan.DeletePaths = append(plan.DeletePaths, oldFile.Path)
 	}
 
-	if previousPreview.RenderedSharedAgentsFile != nil && nextPreview.RenderedSharedAgentsFile == nil {
+	if !options.SkipSharedAgentsBlock && previousPreview.RenderedSharedAgentsFile != nil && nextPreview.RenderedSharedAgentsFile == nil {
 		if err := ensureRuntimeAgentsBlockMatches(repoRoot, existingRecord.OrbitID, previousPreview.RenderedSharedAgentsFile.Content); err != nil {
 			return InstallOwnedCleanupPlan{}, err
 		}

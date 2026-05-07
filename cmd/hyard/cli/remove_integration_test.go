@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	harnesspkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/harness"
+	orbittemplate "github.com/zack-nova/harnessyard/cmd/orbit/cli/template"
 	"github.com/zack-nova/harnessyard/cmd/orbit/cli/testutil"
 )
 
@@ -168,6 +169,102 @@ func TestHyardUninstallOrbitAllowsUntrackedInstallOwnedFilesBeforeCheckpoint(t *
 	require.ErrorIs(t, err, os.ErrNotExist)
 	require.NoFileExists(t, filepath.Join(repo.Root, ".harness", "orbits", "docs.yaml"))
 	require.NoFileExists(t, filepath.Join(repo.Root, "docs", "guide.md"))
+}
+
+func TestHyardUninstallOrbitPreservesUntrackedRootGuidanceBoundaries(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardRunViewOrbitInstallRepo(t)
+
+	_, stderr, err := executeHyardCLI(t, repo.Root, "install", "orbit-template/docs", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	docsBlock, err := orbittemplate.WrapRuntimeAgentsOwnerBlock(orbittemplate.OwnerKindOrbit, "docs", []byte("Use docs marked guidance.\n"))
+	require.NoError(t, err)
+	apiBlock, err := orbittemplate.WrapRuntimeAgentsOwnerBlock(orbittemplate.OwnerKindOrbit, "api", []byte("Use api marked guidance.\n"))
+	require.NoError(t, err)
+	harnessBlock, err := orbittemplate.WrapRuntimeAgentsOwnerBlock(orbittemplate.OwnerKindHarness, "docs", []byte("Use docs harness guidance.\n"))
+	require.NoError(t, err)
+	repo.WriteFile(t, "AGENTS.md", ""+
+		"Markerless Run View guidance.\n\n"+
+		string(docsBlock)+
+		string(apiBlock)+
+		string(harnessBlock)+
+		"Tail markerless guidance.\n")
+	require.Contains(t, repo.Run(t, "status", "--short", "--", "AGENTS.md"), "?? AGENTS.md")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "uninstall", "orbit", "docs", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		RemovedPaths []string `json:"removed_paths"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Contains(t, payload.RemovedPaths, "AGENTS.md")
+	require.Equal(t, ""+
+		"Markerless Run View guidance.\n\n"+
+		"<!-- orbit:begin workflow=\"api\" -->\n"+
+		"Use api marked guidance.\n"+
+		"<!-- orbit:end workflow=\"api\" -->\n"+
+		"<!-- harness:begin workflow=\"docs\" -->\n"+
+		"Use docs harness guidance.\n"+
+		"<!-- harness:end workflow=\"docs\" -->\n"+
+		"Tail markerless guidance.\n", readRepoFile(t, repo.Root, "AGENTS.md"))
+}
+
+func TestHyardUninstallOrbitFailsClosedOnAmbiguousRootGuidanceMarkers(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name          string
+		command       []string
+		guidance      string
+		errorContains string
+	}{
+		{
+			name:    "uninstall rejects malformed marker",
+			command: []string{"uninstall", "orbit", "docs"},
+			guidance: "" +
+				"<!-- orbit:begin workflow=\"docs\" extra=\"value\" -->\n" +
+				"Use docs marked guidance.\n" +
+				"<!-- orbit:end workflow=\"docs\" -->\n",
+			errorContains: "malformed orbit block marker",
+		},
+		{
+			name:    "remove rejects duplicate marker",
+			command: []string{"remove", "orbit", "docs"},
+			guidance: "" +
+				"<!-- orbit:begin workflow=\"docs\" -->\n" +
+				"first docs guidance\n" +
+				"<!-- orbit:end workflow=\"docs\" -->\n" +
+				"<!-- orbit:begin workflow=\"docs\" -->\n" +
+				"second docs guidance\n" +
+				"<!-- orbit:end workflow=\"docs\" -->\n",
+			errorContains: "duplicate orbit block",
+		},
+	}
+
+	for _, testCase := range testCases {
+		testCase := testCase
+
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			repo := seedCommittedHyardInstallBackedRuntimeRepo(t)
+			repo.WriteFile(t, "AGENTS.md", testCase.guidance)
+
+			_, _, err := executeHyardCLI(t, repo.Root, testCase.command...)
+			require.Error(t, err)
+			require.ErrorContains(t, err, "remove root AGENTS.md block")
+			require.ErrorContains(t, err, testCase.errorContains)
+			require.Equal(t, testCase.guidance, readRepoFile(t, repo.Root, "AGENTS.md"))
+			require.FileExists(t, filepath.Join(repo.Root, "docs", "guide.md"))
+			_, loadErr := harnesspkg.LoadInstallRecord(repo.Root, "docs")
+			require.NoError(t, loadErr)
+		})
+	}
 }
 
 func TestHyardUninstallBareNameResolvesUnambiguousOrbitPackage(t *testing.T) {
