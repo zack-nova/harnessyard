@@ -5,10 +5,16 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
+	"path/filepath"
+	"sort"
 	"strings"
+
+	"github.com/bmatcuk/doublestar/v4"
 
 	gitpkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/git"
 	"github.com/zack-nova/harnessyard/cmd/orbit/cli/ids"
+	orbitpkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/orbit"
 )
 
 const (
@@ -73,6 +79,12 @@ type AuditRuntimeReadinessSummary struct {
 	Summary               ReadinessSummary `json:"summary"`
 }
 
+type auditedHostedOrbitSpec struct {
+	Spec    orbitpkg.OrbitSpec
+	Path    string
+	Package string
+}
+
 // AuditRevision inspects the current Git worktree through the Harness Yard revision identity contract.
 func AuditRevision(ctx context.Context, workingDir string) (AuditResult, error) {
 	repo, err := gitpkg.DiscoverRepo(ctx, workingDir)
@@ -106,6 +118,10 @@ func AuditRevision(ctx context.Context, workingDir string) (AuditResult, error) 
 			Packages:     []AuditPackageSummary{},
 			Findings:     findings,
 		}, nil
+	}
+
+	if manifest.Kind == ManifestKindSource {
+		return auditSourceRevision(ctx, repo.Root, manifest)
 	}
 
 	result := AuditResult{
@@ -289,8 +305,364 @@ func auditReadinessReasonPackage(reason ReadinessReason) string {
 	return ""
 }
 
+func auditSourceRevision(ctx context.Context, repoRoot string, manifest ManifestFile) (AuditResult, error) {
+	trackedFiles, err := gitpkg.TrackedFiles(ctx, repoRoot)
+	if err != nil {
+		return AuditResult{}, fmt.Errorf("list tracked files: %w", err)
+	}
+	trackedSet, err := auditPathSet(trackedFiles)
+	if err != nil {
+		return AuditResult{}, fmt.Errorf("index tracked files: %w", err)
+	}
+	worktreeFiles, err := gitpkg.WorktreeFiles(ctx, repoRoot)
+	if err != nil {
+		return AuditResult{}, fmt.Errorf("list worktree files: %w", err)
+	}
+	trackedDirectories, err := auditTrackedDirectories(trackedFiles)
+	if err != nil {
+		return AuditResult{}, fmt.Errorf("list tracked directories: %w", err)
+	}
+
+	findings := []AuditFinding{}
+	specs := []auditedHostedOrbitSpec{}
+	if _, ok := trackedSet[ManifestRepoPath()]; !ok {
+		findings = append(findings, AuditFinding{
+			Severity: AuditStatusFail,
+			Kind:     "manifest_untracked",
+			Path:     ManifestRepoPath(),
+			Message:  fmt.Sprintf("required source manifest %q is not tracked", ManifestRepoPath()),
+		})
+	}
+
+	sourcePackageName := ""
+	expectedSourceSpecPath := ""
+	if manifest.Source != nil {
+		sourcePackageName = manifest.Source.OrbitID
+		expectedSourceSpecPath, err = orbitpkg.HostedDefinitionRelativePath(sourcePackageName)
+		if err != nil {
+			return AuditResult{}, fmt.Errorf("build source hosted OrbitSpec path: %w", err)
+		}
+	}
+
+	hostedSpecPaths := auditHostedOrbitSpecPaths(worktreeFiles)
+	hostedSpecPathSet, err := auditPathSet(hostedSpecPaths)
+	if err != nil {
+		return AuditResult{}, fmt.Errorf("index hosted OrbitSpec paths: %w", err)
+	}
+	if expectedSourceSpecPath != "" {
+		if _, ok := hostedSpecPathSet[expectedSourceSpecPath]; !ok {
+			findings = append(findings, AuditFinding{
+				Severity: AuditStatusFail,
+				Kind:     "source_package_orbit_spec_missing",
+				Package:  sourcePackageName,
+				Path:     expectedSourceSpecPath,
+				Message:  fmt.Sprintf("source package %q has no hosted OrbitSpec at %q", sourcePackageName, expectedSourceSpecPath),
+			})
+		}
+	}
+
+	for _, relativePath := range hostedSpecPaths {
+		if _, ok := trackedSet[relativePath]; !ok {
+			findings = append(findings, AuditFinding{
+				Severity: AuditStatusFail,
+				Kind:     "orbit_spec_untracked",
+				Package:  auditHostedOrbitSpecPackage(relativePath),
+				Path:     relativePath,
+				Message:  fmt.Sprintf("required hosted OrbitSpec %q is not tracked", relativePath),
+			})
+		}
+
+		data, err := gitpkg.ReadFileWorktreeOrHEAD(ctx, repoRoot, relativePath)
+		if err != nil {
+			findings = append(findings, AuditFinding{
+				Severity: AuditStatusFail,
+				Kind:     "orbit_spec_unreadable",
+				Package:  auditHostedOrbitSpecPackage(relativePath),
+				Path:     relativePath,
+				Message:  stableAuditRepoError(err, repoRoot),
+			})
+			continue
+		}
+
+		spec, err := orbitpkg.ParseHostedOrbitSpecData(data, filepath.Join(repoRoot, filepath.FromSlash(relativePath)))
+		if err != nil {
+			findings = append(findings, AuditFinding{
+				Severity: AuditStatusFail,
+				Kind:     "orbit_spec_schema_invalid",
+				Package:  auditHostedOrbitSpecPackage(relativePath),
+				Path:     relativePath,
+				Message:  stableAuditRepoError(err, repoRoot),
+			})
+			continue
+		}
+		if sourcePackageName != "" && spec.ID != sourcePackageName {
+			findings = append(findings, AuditFinding{
+				Severity: AuditStatusFail,
+				Kind:     "package_identity_mismatch",
+				Package:  spec.ID,
+				Path:     relativePath,
+				Message:  fmt.Sprintf("hosted OrbitSpec %q package %q does not match source manifest package %q", relativePath, spec.ID, sourcePackageName),
+			})
+		}
+		specs = append(specs, auditedHostedOrbitSpec{
+			Spec:    spec,
+			Path:    relativePath,
+			Package: auditHostedOrbitSpecPackage(relativePath),
+		})
+	}
+
+	for _, spec := range specs {
+		findings = append(findings, auditHostedOrbitSpecPathFindings(spec, trackedFiles, trackedDirectories)...)
+	}
+
+	return AuditResult{
+		RepoRoot:     repoRoot,
+		Status:       DeriveAuditStatus(findings),
+		RevisionKind: manifest.Kind,
+		Packages:     auditPackageSummaries(manifest),
+		Findings:     findings,
+	}, nil
+}
+
 func stableAuditManifestError(err error, repoRoot string) string {
 	return strings.ReplaceAll(err.Error(), ManifestPath(repoRoot), ManifestRepoPath())
+}
+
+func stableAuditRepoError(err error, repoRoot string) string {
+	message := err.Error()
+	message = strings.ReplaceAll(message, filepath.Join(repoRoot, "."), ".")
+	message = strings.ReplaceAll(message, repoRoot+string(filepath.Separator), "")
+	message = strings.ReplaceAll(message, repoRoot, ".")
+
+	return message
+}
+
+func auditHostedOrbitSpecPaths(trackedFiles []string) []string {
+	paths := make([]string, 0)
+	for _, trackedFile := range trackedFiles {
+		if path.Dir(trackedFile) != OrbitSpecsDirRepoPath() || strings.ToLower(path.Ext(trackedFile)) != ".yaml" {
+			continue
+		}
+		paths = append(paths, trackedFile)
+	}
+	sort.Strings(paths)
+
+	return paths
+}
+
+func auditHostedOrbitSpecPackage(relativePath string) string {
+	return strings.TrimSuffix(path.Base(relativePath), path.Ext(relativePath))
+}
+
+func auditPathSet(paths []string) (map[string]struct{}, error) {
+	set := make(map[string]struct{}, len(paths))
+	for _, rawPath := range paths {
+		normalizedPath, err := ids.NormalizeRepoRelativePath(rawPath)
+		if err != nil {
+			return nil, fmt.Errorf("normalize path %q: %w", rawPath, err)
+		}
+		set[normalizedPath] = struct{}{}
+	}
+
+	return set, nil
+}
+
+func auditHostedOrbitSpecPathFindings(
+	auditedSpec auditedHostedOrbitSpec,
+	trackedFiles []string,
+	trackedDirectories []string,
+) []AuditFinding {
+	spec := auditedSpec.Spec
+	findings := []AuditFinding{}
+	packageName := spec.ID
+	if packageName == "" {
+		packageName = auditedSpec.Package
+	}
+
+	if spec.Capabilities != nil {
+		if spec.Capabilities.Commands != nil {
+			findings = append(
+				findings,
+				auditUnmatchedPatternFindings(
+					packageName,
+					"command_capability_path_unmatched",
+					spec.Capabilities.Commands.Paths,
+					trackedFiles,
+					"command capability path %q matches no tracked files",
+					AuditStatusWarn,
+				)...,
+			)
+		}
+		if spec.Capabilities.Skills != nil && spec.Capabilities.Skills.Local != nil {
+			findings = append(
+				findings,
+				auditUnmatchedPatternFindings(
+					packageName,
+					"local_skill_capability_path_unmatched",
+					spec.Capabilities.Skills.Local.Paths,
+					trackedDirectories,
+					"local skill capability root %q matches no tracked directories",
+					AuditStatusWarn,
+				)...,
+			)
+		}
+	}
+
+	for _, member := range spec.Members {
+		findings = append(
+			findings,
+			auditContentMemberPatternFindings(
+				packageName,
+				member.Paths,
+				trackedFiles,
+			)...,
+		)
+	}
+
+	return findings
+}
+
+func auditContentMemberPatternFindings(
+	packageName string,
+	paths orbitpkg.OrbitMemberPaths,
+	trackedFiles []string,
+) []AuditFinding {
+	findings := []AuditFinding{}
+	for _, pattern := range paths.Include {
+		matches, err := auditPatternMatchesCandidates(pattern, paths.Exclude, trackedFiles)
+		if err != nil {
+			findings = append(findings, AuditFinding{
+				Severity: AuditStatusFail,
+				Kind:     "audit_pattern_match_error",
+				Package:  packageName,
+				Path:     pattern,
+				Message:  err.Error(),
+			})
+			continue
+		}
+		if matches {
+			continue
+		}
+
+		severity := AuditStatusWarn
+		if auditRequiredControlPlanePattern(pattern, packageName) {
+			severity = AuditStatusFail
+		}
+		findings = append(findings, AuditFinding{
+			Severity: severity,
+			Kind:     "content_member_pattern_unmatched",
+			Package:  packageName,
+			Path:     pattern,
+			Message:  fmt.Sprintf("content member pattern %q matches no tracked files", pattern),
+		})
+	}
+
+	return findings
+}
+
+func auditUnmatchedPatternFindings(
+	packageName string,
+	kind string,
+	paths orbitpkg.OrbitMemberPaths,
+	candidates []string,
+	messageFormat string,
+	severity string,
+) []AuditFinding {
+	findings := []AuditFinding{}
+	for _, pattern := range paths.Include {
+		matches, err := auditPatternMatchesCandidates(pattern, paths.Exclude, candidates)
+		if err != nil {
+			findings = append(findings, AuditFinding{
+				Severity: AuditStatusFail,
+				Kind:     "audit_pattern_match_error",
+				Package:  packageName,
+				Path:     pattern,
+				Message:  err.Error(),
+			})
+			continue
+		}
+		if matches {
+			continue
+		}
+		findings = append(findings, AuditFinding{
+			Severity: severity,
+			Kind:     kind,
+			Package:  packageName,
+			Path:     pattern,
+			Message:  fmt.Sprintf(messageFormat, pattern),
+		})
+	}
+
+	return findings
+}
+
+func auditPatternMatchesCandidates(pattern string, excludePatterns []string, candidates []string) (bool, error) {
+	for _, candidate := range candidates {
+		included, err := doublestar.Match(pattern, candidate)
+		if err != nil {
+			return false, fmt.Errorf("match include pattern %q: %w", pattern, err)
+		}
+		if !included {
+			continue
+		}
+
+		excluded := false
+		for _, excludePattern := range excludePatterns {
+			matched, err := doublestar.Match(excludePattern, candidate)
+			if err != nil {
+				return false, fmt.Errorf("match exclude pattern %q: %w", excludePattern, err)
+			}
+			if matched {
+				excluded = true
+				break
+			}
+		}
+		if !excluded {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func auditRequiredControlPlanePattern(pattern string, packageName string) bool {
+	if strings.ContainsAny(pattern, "*?[") {
+		return false
+	}
+	if pattern == ManifestRepoPath() {
+		return true
+	}
+
+	hostedSpecPath, err := orbitpkg.HostedDefinitionRelativePath(packageName)
+	if err != nil {
+		return false
+	}
+
+	return pattern == hostedSpecPath
+}
+
+func auditTrackedDirectories(trackedFiles []string) ([]string, error) {
+	directories := map[string]struct{}{}
+	for _, trackedFile := range trackedFiles {
+		normalizedPath, err := ids.NormalizeRepoRelativePath(trackedFile)
+		if err != nil {
+			return nil, fmt.Errorf("normalize tracked file %q: %w", trackedFile, err)
+		}
+
+		dir := path.Dir(normalizedPath)
+		for dir != "." && dir != "/" {
+			directories[dir] = struct{}{}
+			dir = path.Dir(dir)
+		}
+	}
+
+	values := make([]string, 0, len(directories))
+	for directory := range directories {
+		values = append(values, directory)
+	}
+	sort.Strings(values)
+
+	return values, nil
 }
 
 func auditPackageSummary(identity ids.PackageIdentity, revisionRole string, orbitID string, harnessID string, source string) AuditPackageSummary {

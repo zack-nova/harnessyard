@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -345,4 +346,334 @@ func TestHyardAuditInvalidManifestReportsFailJSON(t *testing.T) {
 	require.Equal(t, ".harness/manifest.yaml", payload.Findings[0].Path)
 	require.NotContains(t, payload.Findings[0].Message, repo.Root)
 	require.Contains(t, payload.Findings[0].Message, "kind must be one of")
+}
+
+func TestHyardAuditSourceRevisionRejectsInvalidHostedOrbitSpec(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	_, err := harnesspkg.WriteManifestFile(repo.Root, harnesspkg.ManifestFile{
+		SchemaVersion: 1,
+		Kind:          harnesspkg.ManifestKindSource,
+		Source: &harnesspkg.ManifestSourceMetadata{
+			Package:      ids.PackageIdentity{Type: ids.PackageTypeOrbit, Name: "docs"},
+			OrbitID:      "docs",
+			SourceBranch: "main",
+		},
+	})
+	require.NoError(t, err)
+	repo.WriteFile(t, ".harness/orbits/docs.yaml", ""+
+		"package:\n"+
+		"  type: orbit\n"+
+		"  name: docs\n"+
+		"meta:\n"+
+		"  file: .orbit/orbits/docs.yaml\n"+
+		"content:\n"+
+		"  - name: docs-content\n"+
+		"    role: subject\n"+
+		"    paths:\n"+
+		"      include:\n"+
+		"        - docs/**\n")
+	repo.AddAndCommit(t, "seed invalid source audit fixture")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "audit", "--json")
+	require.Error(t, err)
+	require.Empty(t, stderr)
+
+	exitCode, ok := hyardcli.ErrorExitCode(err)
+	require.True(t, ok)
+	require.Equal(t, 1, exitCode)
+
+	var payload struct {
+		Status       string `json:"status"`
+		RevisionKind string `json:"revision_kind"`
+		Findings     []struct {
+			Severity string `json:"severity"`
+			Kind     string `json:"kind"`
+			Package  string `json:"package,omitempty"`
+			Path     string `json:"path"`
+			Message  string `json:"message"`
+		} `json:"findings"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "fail", payload.Status)
+	require.Equal(t, "source", payload.RevisionKind)
+	require.Len(t, payload.Findings, 1)
+	require.Equal(t, "fail", payload.Findings[0].Severity)
+	require.Equal(t, "orbit_spec_schema_invalid", payload.Findings[0].Kind)
+	require.Equal(t, "docs", payload.Findings[0].Package)
+	require.Equal(t, ".harness/orbits/docs.yaml", payload.Findings[0].Path)
+	require.NotContains(t, payload.Findings[0].Message, repo.Root)
+	require.Contains(t, payload.Findings[0].Message, "meta.file")
+	expectedMetaFile, err := orbitpkg.HostedDefinitionRelativePath("docs")
+	require.NoError(t, err)
+	require.Contains(t, payload.Findings[0].Message, expectedMetaFile)
+}
+
+func TestHyardAuditSourceRevisionReportsMissingPackagePathsAsWarnings(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	_, err := harnesspkg.WriteManifestFile(repo.Root, harnesspkg.ManifestFile{
+		SchemaVersion: 1,
+		Kind:          harnesspkg.ManifestKindSource,
+		Source: &harnesspkg.ManifestSourceMetadata{
+			Package:      ids.PackageIdentity{Type: ids.PackageTypeOrbit, Name: "docs"},
+			OrbitID:      "docs",
+			SourceBranch: "main",
+		},
+	})
+	require.NoError(t, err)
+	repo.WriteFile(t, ".harness/orbits/docs.yaml", ""+
+		"package:\n"+
+		"  type: orbit\n"+
+		"  name: docs\n"+
+		"meta:\n"+
+		"  file: .harness/orbits/docs.yaml\n"+
+		"capabilities:\n"+
+		"  commands:\n"+
+		"    paths:\n"+
+		"      include:\n"+
+		"        - commands/docs.md\n"+
+		"  skills:\n"+
+		"    local:\n"+
+		"      paths:\n"+
+		"        include:\n"+
+		"          - skills/docs\n"+
+		"content:\n"+
+		"  - name: docs-content\n"+
+		"    role: subject\n"+
+		"    paths:\n"+
+		"      include:\n"+
+		"        - docs/missing.md\n")
+	repo.AddAndCommit(t, "seed source audit warning fixture")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "audit", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Status       string `json:"status"`
+		RevisionKind string `json:"revision_kind"`
+		Findings     []struct {
+			Severity string `json:"severity"`
+			Kind     string `json:"kind"`
+			Package  string `json:"package,omitempty"`
+			Path     string `json:"path"`
+			Message  string `json:"message"`
+		} `json:"findings"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "warn", payload.Status)
+	require.Equal(t, "source", payload.RevisionKind)
+	require.Len(t, payload.Findings, 3)
+	requireAuditFinding(t, payload.Findings, "warn", "command_capability_path_unmatched", "docs", "commands/docs.md")
+	requireAuditFinding(t, payload.Findings, "warn", "local_skill_capability_path_unmatched", "docs", "skills/docs")
+	requireAuditFinding(t, payload.Findings, "warn", "content_member_pattern_unmatched", "docs", "docs/missing.md")
+}
+
+func TestHyardAuditSourceRevisionRejectsPackageIdentityMismatch(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	_, err := harnesspkg.WriteManifestFile(repo.Root, harnesspkg.ManifestFile{
+		SchemaVersion: 1,
+		Kind:          harnesspkg.ManifestKindSource,
+		Source: &harnesspkg.ManifestSourceMetadata{
+			Package:      ids.PackageIdentity{Type: ids.PackageTypeOrbit, Name: "docs"},
+			OrbitID:      "docs",
+			SourceBranch: "main",
+		},
+	})
+	require.NoError(t, err)
+	repo.WriteFile(t, ".harness/orbits/api.yaml", ""+
+		"package:\n"+
+		"  type: orbit\n"+
+		"  name: api\n"+
+		"meta:\n"+
+		"  file: .harness/orbits/api.yaml\n")
+	repo.AddAndCommit(t, "seed mismatched source audit fixture")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "audit", "--json")
+	require.Error(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Status   string `json:"status"`
+		Findings []struct {
+			Severity string `json:"severity"`
+			Kind     string `json:"kind"`
+			Package  string `json:"package,omitempty"`
+			Path     string `json:"path"`
+			Message  string `json:"message"`
+		} `json:"findings"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "fail", payload.Status)
+	requireAuditFinding(t, payload.Findings, "fail", "package_identity_mismatch", "api", ".harness/orbits/api.yaml")
+	requireAuditFinding(t, payload.Findings, "fail", "source_package_orbit_spec_missing", "docs", ".harness/orbits/docs.yaml")
+}
+
+func TestHyardAuditSourceRevisionBlocksUntrackedControlPlaneMemberPattern(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, ".harness/manifest.yaml", ""+
+		"schema_version: 1\n"+
+		"kind: source\n"+
+		"source:\n"+
+		"  package:\n"+
+		"    type: orbit\n"+
+		"    name: docs\n"+
+		"  source_branch: main\n")
+	repo.WriteFile(t, ".harness/orbits/docs.yaml", ""+
+		"package:\n"+
+		"  type: orbit\n"+
+		"  name: docs\n"+
+		"meta:\n"+
+		"  file: .harness/orbits/docs.yaml\n"+
+		"content:\n"+
+		"  - name: manifest\n"+
+		"    role: meta\n"+
+		"    paths:\n"+
+		"      include:\n"+
+		"        - .harness/manifest.yaml\n")
+	repo.AddAndCommit(t, "track hosted spec only", ".harness/orbits/docs.yaml")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "audit", "--json")
+	require.Error(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Status   string `json:"status"`
+		Findings []struct {
+			Severity string `json:"severity"`
+			Kind     string `json:"kind"`
+			Package  string `json:"package,omitempty"`
+			Path     string `json:"path"`
+			Message  string `json:"message"`
+		} `json:"findings"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "fail", payload.Status)
+	requireAuditFinding(t, payload.Findings, "fail", "manifest_untracked", "", ".harness/manifest.yaml")
+	requireAuditFinding(t, payload.Findings, "fail", "content_member_pattern_unmatched", "docs", ".harness/manifest.yaml")
+}
+
+func TestHyardAuditSourceRevisionDoesNotRewriteLegacyRules(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	_, err := harnesspkg.WriteManifestFile(repo.Root, harnesspkg.ManifestFile{
+		SchemaVersion: 1,
+		Kind:          harnesspkg.ManifestKindSource,
+		Source: &harnesspkg.ManifestSourceMetadata{
+			Package:      ids.PackageIdentity{Type: ids.PackageTypeOrbit, Name: "docs"},
+			OrbitID:      "docs",
+			SourceBranch: "main",
+		},
+	})
+	require.NoError(t, err)
+	repo.WriteFile(t, ".harness/orbits/docs.yaml", ""+
+		"package:\n"+
+		"  type: orbit\n"+
+		"  name: docs\n"+
+		"meta:\n"+
+		"  file: .harness/orbits/docs.yaml\n"+
+		"content:\n"+
+		"  - name: docs-content\n"+
+		"    role: subject\n"+
+		"    paths:\n"+
+		"      include:\n"+
+		"        - docs/**\n"+
+		"rules:\n"+
+		"  scope:\n"+
+		"    write_roles: [meta, rule, subject]\n")
+	repo.WriteFile(t, "docs/guide.md", "# Guide\n")
+	repo.AddAndCommit(t, "seed legacy rules source fixture")
+
+	specPath := filepath.Join(repo.Root, ".harness", "orbits", "docs.yaml")
+	before, err := os.ReadFile(specPath)
+	require.NoError(t, err)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "audit", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Status   string `json:"status"`
+		Findings []struct {
+			Kind string `json:"kind"`
+		} `json:"findings"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "pass", payload.Status)
+	require.Empty(t, payload.Findings)
+
+	after, err := os.ReadFile(specPath)
+	require.NoError(t, err)
+	require.Equal(t, string(before), string(after))
+	require.Contains(t, string(after), "rules:\n")
+	require.NotContains(t, string(after), "behavior:\n")
+}
+
+func TestHyardAuditGPDWLikeLegacyHarnessFixtureFailsWithStableFindings(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, ".harness/manifest.yaml", ""+
+		"schema_version: 1\n"+
+		"kind: source\n"+
+		"source_branch: main\n"+
+		"publish:\n"+
+		"  package:\n"+
+		"    type: orbit\n"+
+		"    name: docs\n")
+	repo.WriteFile(t, ".harness/orbits/docs.yaml", ""+
+		"id: docs\n"+
+		"include:\n"+
+		"  - docs/**\n")
+	repo.AddAndCommit(t, "seed legacy harness fixture")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "audit", "--json")
+	require.Error(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Status       string `json:"status"`
+		RevisionKind string `json:"revision_kind"`
+		Findings     []struct {
+			Severity string `json:"severity"`
+			Kind     string `json:"kind"`
+			Path     string `json:"path"`
+			Message  string `json:"message"`
+		} `json:"findings"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "fail", payload.Status)
+	require.Equal(t, "none", payload.RevisionKind)
+	require.Len(t, payload.Findings, 1)
+	require.Equal(t, "fail", payload.Findings[0].Severity)
+	require.Equal(t, "manifest_schema_invalid", payload.Findings[0].Kind)
+	require.Equal(t, ".harness/manifest.yaml", payload.Findings[0].Path)
+	require.NotContains(t, payload.Findings[0].Message, repo.Root)
+	require.Contains(t, payload.Findings[0].Message, "source_branch")
+}
+
+func requireAuditFinding(t *testing.T, findings []struct {
+	Severity string `json:"severity"`
+	Kind     string `json:"kind"`
+	Package  string `json:"package,omitempty"`
+	Path     string `json:"path"`
+	Message  string `json:"message"`
+}, severity string, kind string, packageName string, path string) {
+	t.Helper()
+
+	for _, finding := range findings {
+		if finding.Severity == severity && finding.Kind == kind && finding.Package == packageName && finding.Path == path {
+			require.Contains(t, finding.Message, path)
+			return
+		}
+	}
+	require.Failf(t, "missing audit finding", "severity=%s kind=%s package=%s path=%s findings=%+v", severity, kind, packageName, path, findings)
 }
