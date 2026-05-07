@@ -1258,13 +1258,9 @@ func TestHarnessFrameworkApplyYesUsesProjectRoutesWithoutGlobalWrites(t *testing
 	})
 	require.Empty(t, payload.Warnings)
 
-	agentsBody, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
-	require.NoError(t, err)
-	require.Contains(t, string(agentsBody), "You are the docs orbit.")
-
-	humansBody, err := os.ReadFile(filepath.Join(repo.Root, "HUMANS.md"))
-	require.NoError(t, err)
-	require.Contains(t, string(humansBody), "Run the docs workflow.")
+	require.NoFileExists(t, filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "HUMANS.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "BOOTSTRAP.md"))
 
 	claudeAliasPath := filepath.Join(repo.Root, "CLAUDE.md")
 	aliasTarget, err := os.Readlink(claudeAliasPath)
