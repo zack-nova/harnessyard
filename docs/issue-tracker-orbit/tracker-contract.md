@@ -25,6 +25,7 @@ issue:
             needs-info: "state:needs-info"
             ready-for-dev: "state:ready-for-dev"
             in-progress: "state:in-progress"
+            blocked: "state:blocked"
             in-review: "state:in-review"
             human-review: "state:human-review"
             to-rework: "state:to-rework"
@@ -51,12 +52,6 @@ issue:
             required: false
             representation: label
             prefix: "size:"
-            values: []
-        blocked:
-            required: false
-            representation: label
-            prefix: "blocked:"
-            blocks_advancement: true
             values: []
         resolution:
             required: false
@@ -96,7 +91,6 @@ backend_mapping:
         optional_metadata:
             priority: "zero or one GitHub label with prefix priority:"
             size: "zero or one GitHub label with prefix size:"
-            blocked: "zero or one GitHub label with prefix blocked:"
             resolution: "zero or one GitHub label with prefix resolution:"
         sections: "GitHub issue comments containing the configured canonical headings"
         review_artifact:
@@ -132,7 +126,7 @@ safety:
         - issue_has_multiple_states
         - dev_brief_type_missing_or_mismatched
         - required_section_missing
-        - active_blocked_metadata
+        - issue_in_blocked_state
         - validation_failed_without_waiver
         - review_artifact_missing
         - review_output_without_human_decision
@@ -144,6 +138,7 @@ safety:
 - `backend` is the only backend selector. Do not add a second selector for PR/MR/local review type.
 - Do not add `consumers`, `permissions`, or runtime actor role fields. Consumer action authority is defined by the consumer's own orbit, tool, or human process.
 - `issue.type` is the source of truth for issue type; the Dev Brief Type line is only a human-readable mirror and uses the canonical type value.
+- `blocked` is a canonical state role, not metadata. Do not create or require `blocked:*` labels; record the concrete blocker and intended resume state in issue text. If a template default would add another `state:*` label, replace it with `state:blocked` rather than adding a second state.
 - `sections` maps canonical issue section storage and headings. Required and optional section semantics are defined by the backend-neutral core.
 - `review_artifact.required` is a core gate. Its concrete form is defined by the selected backend mapping.
 - Concrete commands, API clients, and execution procedures belong to contract consumers, tools, or human process.

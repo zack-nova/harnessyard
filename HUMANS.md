@@ -24,11 +24,11 @@ Before an issue enters `ready-for-dev`, it must have a complete Dev Brief. You n
 - acceptance criteria are verifiable,
 - the validation plan is realistically executable,
 - out-of-scope boundaries are explicit,
-- there is no active blocked metadata.
+- the issue is not in `blocked`.
 
 ### Blocked
 
-Blocked is not a state. It means the current issue is blocked by a dependency, external factor, or human decision. After the block is removed, remove blocked metadata; do not reopen the issue as a new state.
+Blocked is a state. It means the current issue is paused by a dependency, external factor, or human decision. Record the concrete blocker and intended resume state in issue text; after the block is resolved, move the issue out of `blocked` only when the target state's gates are satisfied.
 
 ### Debt Notes
 

@@ -17,9 +17,9 @@ Stop and ask a human maintainer when:
 
 - an open issue has no state,
 - an open issue has multiple states,
+- an issue is in `blocked` and the requested operation would advance work,
 - the Dev Brief Type mirror is missing or conflicts with issue type metadata,
 - a required issue section is missing,
-- active blocked metadata exists,
 - a template target exists and differs from the proposed template,
 - review state conflicts with issue state,
 - validation fails and no waiver exists,

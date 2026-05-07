@@ -24,9 +24,6 @@ issue:
     size:
       representation: frontmatter
       field: size
-    blocked:
-      representation: frontmatter
-      field: blocked
     resolution:
       representation: frontmatter
       field: resolution
@@ -71,3 +68,5 @@ It does not simulate inline PR comments, checks UI, branch protections, or merge
 - Create review artifact: create a markdown file from `templates/backends/local-markdown/review-artifact.template.md`.
 
 Bootstrap must choose the concrete issue path pattern and review artifact path pattern for the repository.
+
+Use `state: blocked` for blocked issues. Do not add a separate `blocked` metadata field.

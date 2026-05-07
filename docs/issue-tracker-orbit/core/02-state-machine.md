@@ -13,6 +13,10 @@ needs-triage
        -> human Decision: hold   -> human-review
        -> human Decision: rework -> to-rework -> in-review
        -> human Decision: merge  -> to-merge  -> land -> merged
+
+any open non-merged state
+  -> blocked
+  -> target state whose gates are satisfied
 ```
 
 ## State Meanings
@@ -21,6 +25,7 @@ needs-triage
 - `needs-info`: Waiting for reporter or owner information.
 - `ready-for-dev`: A complete Dev Brief exists and development can start.
 - `in-progress`: active development work has been created or assigned.
+- `blocked`: Work is paused by a dependency, external factor, or human decision.
 - `in-review`: A review artifact exists and review evidence is being collected.
 - `human-review`: Review Sweep evidence exists and a human review decision or state advancement is pending.
 - `to-rework`: A human requested changes after review, and rework should be picked up.
@@ -34,7 +39,7 @@ needs-triage
 - `in-review` triggers Review Sweep evidence collection.
 - `to-rework` triggers requested changes.
 - `to-merge` triggers Land.
-- `needs-info`, `in-progress`, `human-review`, and `merged` do not directly trigger runtime operations.
+- `needs-info`, `in-progress`, `blocked`, `human-review`, and `merged` do not directly trigger runtime operations.
 
 Contract consumers must prevent duplicate operation pickup through their own manager or orchestrator claim state. The tracker contract must not add claim, running, retry, queue, or dispatcher ownership fields or sections.
 
@@ -46,10 +51,11 @@ An issue can enter `ready-for-dev` only when:
 - one Dev Brief exists,
 - the Dev Brief Type mirror exists and matches the issue type,
 - no unanswered triage question remains,
-- no active blocked metadata exists,
 - acceptance criteria are clear,
 - validation plan is clear,
 - out-of-scope boundaries are explicit.
+
+Any open issue except `merged` may enter `blocked` when a dependency, external factor, or human decision prevents safe advancement. The issue text must record the concrete blocker and intended resume state. A blocked issue may leave `blocked` only after the blocker is resolved and the target state's gates are satisfied.
 
 An issue can enter `in-progress` only when:
 

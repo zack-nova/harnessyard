@@ -37,7 +37,7 @@ Also read available project memory compatibly; it is not publishing rules and no
 - Repository-declared domain language, context maps, or design decision records.
 - Relevant context already present in the conversation, issue body, or task description.
 
-When publishing, use only the repository-defined issue templates, states, labels, assignees, milestones, and project fields.
+When publishing, use only the repository-defined issue templates, states, labels, assignees, milestones, and project fields. For `to-issues`, publish slices with no blockers in the repository's normal new-issue state. Publish slices with unresolved `Blocked by` dependencies in `blocked`, replacing any template default state rather than adding a second state label, and record both the blocker and intended resume state in the issue text.
 
 ## Candidate Fallback
 
