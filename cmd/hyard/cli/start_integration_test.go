@@ -28,8 +28,13 @@ type hyardStartDryRunPayload struct {
 		Candidates        []string `json:"candidates"`
 	} `json:"framework_resolution"`
 	Activation struct {
-		Status string `json:"status"`
-		Route  string `json:"route"`
+		Status          string `json:"status"`
+		Route           string `json:"route"`
+		GuidanceOutputs []struct {
+			Path   string `json:"path"`
+			Action string `json:"action"`
+			Kind   string `json:"kind"`
+		} `json:"guidance_outputs"`
 	} `json:"activation"`
 	BootstrapAgentSkill struct {
 		Framework string `json:"framework"`
@@ -120,6 +125,50 @@ func addHyardStartAgentCapability(t *testing.T, repo *testutil.Repo) {
 		"        - docs/**\n")
 	repo.WriteFile(t, "orbit/commands/review.md", "Review docs work.\n")
 	repo.AddAndCommit(t, "seed start command capability")
+}
+
+func seedHyardStartPendingBootstrapRepo(t *testing.T) *testutil.Repo {
+	t.Helper()
+
+	repo := testutil.NewRepo(t)
+	repo.Run(t, "branch", "-m", "main")
+
+	err := executeHarnessCLIForHyardTest(t, repo.Root, "init")
+	require.NoError(t, err)
+
+	_, err = harnesspkg.WriteFrameworksFile(repo.Root, harnesspkg.FrameworksFile{
+		SchemaVersion:        1,
+		RecommendedFramework: "codex",
+	})
+	require.NoError(t, err)
+
+	repo.WriteFile(t, ".harness/orbits/docs.yaml", ""+
+		"id: docs\n"+
+		"description: Docs orbit\n"+
+		"meta:\n"+
+		"  file: .harness/orbits/docs.yaml\n"+
+		"  bootstrap_template: |\n"+
+		"    Bootstrap the docs orbit.\n"+
+		"  include_in_projection: true\n"+
+		"  include_in_write: true\n"+
+		"  include_in_export: true\n"+
+		"  include_description_in_orchestration: true\n"+
+		"members:\n"+
+		"  - key: docs-content\n"+
+		"    role: subject\n"+
+		"    scopes:\n"+
+		"      export: true\n"+
+		"    paths:\n"+
+		"      include:\n"+
+		"        - docs/**\n")
+	repo.WriteFile(t, "docs/guide.md", "Orbit guide\n")
+
+	err = executeHarnessCLIForHyardTest(t, repo.Root, "add", "docs")
+	require.NoError(t, err)
+
+	repo.AddAndCommit(t, "seed pending bootstrap runtime")
+
+	return repo
 }
 
 func frameworkActivationOutputPaths(outputs []harnesspkg.FrameworkActivationOutput) []string {
@@ -309,6 +358,32 @@ func TestHyardStartAllowsUnrelatedDirtyWorktreeChanges(t *testing.T) {
 	require.Contains(t, repo.Run(t, "status", "--short"), "?? scratch/")
 }
 
+func TestHyardStartAllowsDirtyRootGuidanceBecauseItDoesNotWriteIt(t *testing.T) {
+	repo := seedCommittedHyardRuntimeRepo(t)
+	addHyardStartAgentCapability(t, repo)
+	rootGuidance := "" +
+		"Workspace overview.\n" +
+		"<!-- orbit:begin workflow=\"docs\" -->\n" +
+		"Locally edited docs guidance.\n" +
+		"<!-- orbit:end workflow=\"docs\" -->\n"
+	repo.WriteFile(t, "AGENTS.md", rootGuidance)
+
+	lockHyardProcessEnv(t)
+	t.Setenv("HOME", t.TempDir())
+	launcher := &recordingStartLauncher{}
+
+	stdout, stderr, err := executeHyardCLIWithStartLauncherUnlocked(t, repo.Root, launcher, "start", "--with", "codex")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+	require.Contains(t, stdout, "harness start handed off to codex")
+
+	require.Len(t, launcher.requests, 1)
+	agentsData, readErr := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoError(t, readErr)
+	require.Equal(t, rootGuidance, string(agentsData))
+	require.Contains(t, repo.Run(t, "status", "--short"), "?? AGENTS.md")
+}
+
 func TestHyardStartAllowsExistingOwnedFrameworkOutputs(t *testing.T) {
 	repo := seedCommittedHyardRuntimeRepo(t)
 	addHyardStartAgentCapability(t, repo)
@@ -440,6 +515,28 @@ func TestHyardStartDryRunJSONPlansHarnessStartWithoutMutatingRuntime(t *testing.
 	require.NoFileExists(t, harnesspkg.FrameworkSelectionPath(repo.GitDir(t)))
 	require.NoDirExists(t, filepath.Join(repo.GitDir(t), "orbit", "state", "agents", "activations"))
 	require.NoFileExists(t, filepath.Join(repo.Root, ".codex", "skills", harnesspkg.BootstrapAgentSkillName, "SKILL.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "BOOTSTRAP.md"))
+}
+
+func TestHyardStartDryRunJSONDoesNotPlanRootGuidanceForPendingBootstrap(t *testing.T) {
+	repo := seedHyardStartPendingBootstrapRepo(t)
+	beforeStatus := repo.Run(t, "status", "--short")
+
+	lockHyardProcessEnv(t)
+	configureHyardStartDetectionPath(t, map[string]string{})
+
+	stdout, stderr, err := executeHyardCLIUnlocked(t, repo.Root, "start", "--dry-run", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	payload := decodeHyardStartDryRunPayload(t, stdout)
+	require.Equal(t, "resolved", payload.FrameworkResolution.Status)
+	require.Equal(t, "codex", payload.FrameworkResolution.SelectedFramework)
+	require.Equal(t, "planned", payload.Activation.Status)
+	require.Empty(t, payload.Activation.GuidanceOutputs)
+	require.Empty(t, payload.WriteConflicts)
+
+	require.Equal(t, beforeStatus, repo.Run(t, "status", "--short"))
 	require.NoFileExists(t, filepath.Join(repo.Root, "BOOTSTRAP.md"))
 }
 

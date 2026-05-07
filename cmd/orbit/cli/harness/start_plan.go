@@ -124,7 +124,7 @@ func BuildStartPlan(ctx context.Context, input StartPlanInput) (StartPlan, error
 		Status:                    "planned",
 		Route:                     "project",
 		Framework:                 resolution.Framework,
-		GuidanceOutputs:           append([]FrameworkPlanOutput(nil), frameworkPlan.ProjectOutputs...),
+		GuidanceOutputs:           startActivationGuidanceOutputs(frameworkPlan),
 		RecommendedProjectOutputs: append([]FrameworkRoutePlanOutput(nil), frameworkPlan.RecommendedProjectOutputs...),
 		CompatibilityOutputs:      append([]FrameworkRoutePlanOutput(nil), frameworkPlan.CompatibilityOutputs...),
 		Warnings:                  append([]string(nil), frameworkPlan.Warnings...),
@@ -146,6 +146,18 @@ func BuildStartPlan(ctx context.Context, input StartPlanInput) (StartPlan, error
 	plan.WriteConflicts = writeConflicts
 
 	return plan, nil
+}
+
+func startActivationGuidanceOutputs(frameworkPlan FrameworkPlan) []FrameworkPlanOutput {
+	outputs := make([]FrameworkPlanOutput, 0, len(frameworkPlan.ProjectOutputs))
+	for _, output := range frameworkPlan.ProjectOutputs {
+		if isRootGuidancePath(output.Path) {
+			continue
+		}
+		outputs = append(outputs, output)
+	}
+
+	return outputs
 }
 
 func resolveFrameworkForStartPlan(ctx context.Context, input StartPlanInput) (FrameworkResolution, error) {
