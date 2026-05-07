@@ -76,7 +76,7 @@ func TestUninstallRuntimeOrbitPackageDeletesInstallOwnedRuntimeFilesAndGuidance(
 		discovered,
 		"docs",
 		time.Date(2026, time.May, 7, 10, 30, 0, 0, time.UTC),
-		RemoveRuntimeMemberOptions{},
+		RemoveRuntimeMemberOptions{ConfirmLocalChanges: true},
 	)
 	require.NoError(t, err)
 	require.Equal(t, []string{
@@ -137,7 +137,7 @@ func TestUninstallRuntimeOrbitPackagePreservesUnrelatedMarkedAndMarkerlessRootGu
 		discovered,
 		"docs",
 		time.Date(2026, time.May, 7, 10, 30, 0, 0, time.UTC),
-		RemoveRuntimeMemberOptions{},
+		RemoveRuntimeMemberOptions{ConfirmLocalChanges: true},
 	)
 	require.NoError(t, err)
 	require.Contains(t, result.RemovedPaths, "AGENTS.md")
@@ -227,6 +227,41 @@ func TestUninstallRuntimeOrbitPackageFailsClosedOnAmbiguousRootGuidanceMarkers(t
 			require.Equal(t, testCase.guidance, string(agentsData))
 		})
 	}
+}
+
+func TestBuildUninstallRuntimeOrbitPackagePlanReportsUntrackedInstallOwnedFiles(t *testing.T) {
+	t.Parallel()
+
+	repo := seedRuntimePackageUninstallRepo(t)
+	discovered, err := gitpkg.DiscoverRepo(context.Background(), repo.Root)
+	require.NoError(t, err)
+
+	plan, err := BuildUninstallRuntimeOrbitPackagePlanWithOptions(
+		context.Background(),
+		discovered,
+		"docs",
+		RemoveRuntimeMemberOptions{},
+	)
+	require.NoError(t, err)
+	require.Contains(t, plan.RemovedPaths, "docs/guide.md")
+	require.True(t, plan.ConfirmationRequired)
+	require.Contains(t, plan.LocallyChangedPaths, RuntimeUninstallLocalChange{
+		Path:      "docs/guide.md",
+		GitStatus: "??",
+		Tracked:   false,
+		Staged:    false,
+	})
+
+	_, err = ApplyUninstallRuntimeOrbitPackagePlanWithOptions(
+		context.Background(),
+		discovered,
+		plan,
+		time.Date(2026, time.May, 7, 10, 30, 0, 0, time.UTC),
+		RemoveRuntimeMemberOptions{},
+	)
+	require.Error(t, err)
+	require.ErrorContains(t, err, `requires --yes to delete locally changed target-owned files`)
+	require.FileExists(t, filepath.Join(repo.Root, "docs", "guide.md"))
 }
 
 func TestRemoveRuntimeMemberRejectsBundleBackedMember(t *testing.T) {

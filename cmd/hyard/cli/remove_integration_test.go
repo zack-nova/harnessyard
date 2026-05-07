@@ -16,6 +16,13 @@ import (
 	"github.com/zack-nova/harnessyard/cmd/orbit/cli/testutil"
 )
 
+type hyardLocalChangeRiskPayload struct {
+	Path      string `json:"path"`
+	GitStatus string `json:"git_status"`
+	Tracked   bool   `json:"tracked"`
+	Staged    bool   `json:"staged"`
+}
+
 func TestHyardRemoveOrbitRemovesUnambiguousRuntimeOrbit(t *testing.T) {
 	t.Parallel()
 
@@ -49,7 +56,7 @@ func TestHyardUninstallOrbitJSONRemovesInstallBackedRuntimeOrbit(t *testing.T) {
 
 	repo := seedCommittedHyardInstallBackedRuntimeRepo(t)
 
-	stdout, stderr, err := executeHyardCLI(t, repo.Root, "uninstall", "orbit", "docs", "--json")
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "uninstall", "orbit", "docs", "--yes", "--json")
 	require.NoError(t, err)
 	require.Empty(t, stderr)
 
@@ -147,7 +154,7 @@ func TestHyardUninstallOrbitAllowsUntrackedInstallOwnedFilesBeforeCheckpoint(t *
 	require.NoError(t, err)
 	require.Empty(t, stderr)
 
-	stdout, stderr, err := executeHyardCLI(t, repo.Root, "uninstall", "orbit", "docs", "--json")
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "uninstall", "orbit", "docs", "--yes", "--json")
 	require.NoError(t, err)
 	require.Empty(t, stderr)
 
@@ -194,7 +201,7 @@ func TestHyardUninstallOrbitPreservesUntrackedRootGuidanceBoundaries(t *testing.
 		"Tail markerless guidance.\n")
 	require.Contains(t, repo.Run(t, "status", "--short", "--", "AGENTS.md"), "?? AGENTS.md")
 
-	stdout, stderr, err := executeHyardCLI(t, repo.Root, "uninstall", "orbit", "docs", "--json")
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "uninstall", "orbit", "docs", "--yes", "--json")
 	require.NoError(t, err)
 	require.Empty(t, stderr)
 
@@ -265,6 +272,158 @@ func TestHyardUninstallOrbitFailsClosedOnAmbiguousRootGuidanceMarkers(t *testing
 			require.NoError(t, loadErr)
 		})
 	}
+}
+
+func TestHyardUninstallOrbitYesDeletesUnstagedInstallOwnedFile(t *testing.T) {
+	t.Parallel()
+
+	repo := seedCommittedHyardInstallBackedRuntimeRepo(t)
+	require.NoError(t, os.WriteFile(filepath.Join(repo.Root, "docs", "guide.md"), []byte("Locally edited guide\n"), 0o644))
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "uninstall", "orbit", "docs", "--yes", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		TargetType           string                        `json:"target_type"`
+		OrbitPackage         string                        `json:"orbit_package"`
+		DryRun               bool                          `json:"dry_run"`
+		RemovedPaths         []string                      `json:"removed_paths"`
+		LocallyChangedPaths  []hyardLocalChangeRiskPayload `json:"locally_changed_paths"`
+		ConfirmationRequired bool                          `json:"confirmation_required"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "orbit", payload.TargetType)
+	require.Equal(t, "docs", payload.OrbitPackage)
+	require.False(t, payload.DryRun)
+	require.Contains(t, payload.RemovedPaths, "docs/guide.md")
+	risk := requireHyardGuideLocalChangeRisk(t, payload.LocallyChangedPaths, "M")
+	require.True(t, risk.Tracked)
+	require.False(t, risk.Staged)
+	require.True(t, payload.ConfirmationRequired)
+	require.NoFileExists(t, filepath.Join(repo.Root, "docs", "guide.md"))
+}
+
+func TestHyardUninstallOrbitDryRunReportsLocallyChangedInstallOwnedFile(t *testing.T) {
+	t.Parallel()
+
+	repo := seedCommittedHyardInstallBackedRuntimeRepo(t)
+	require.NoError(t, os.WriteFile(filepath.Join(repo.Root, "docs", "guide.md"), []byte("Locally edited guide\n"), 0o644))
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "uninstall", "orbit", "docs", "--dry-run", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		TargetType           string                        `json:"target_type"`
+		OrbitPackage         string                        `json:"orbit_package"`
+		DryRun               bool                          `json:"dry_run"`
+		RemovedPaths         []string                      `json:"removed_paths"`
+		LocallyChangedPaths  []hyardLocalChangeRiskPayload `json:"locally_changed_paths"`
+		ConfirmationRequired bool                          `json:"confirmation_required"`
+		RemainingMemberCount int                           `json:"remaining_member_count"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "orbit", payload.TargetType)
+	require.Equal(t, "docs", payload.OrbitPackage)
+	require.True(t, payload.DryRun)
+	require.Contains(t, payload.RemovedPaths, "docs/guide.md")
+	requireHyardGuideLocalChangeRisk(t, payload.LocallyChangedPaths, "M")
+	require.True(t, payload.ConfirmationRequired)
+	require.Equal(t, 0, payload.RemainingMemberCount)
+	require.Equal(t, "Locally edited guide\n", readRepoFile(t, repo.Root, "docs/guide.md"))
+
+	runtimeFile, err := harnesspkg.LoadRuntimeFile(repo.Root)
+	require.NoError(t, err)
+	require.Len(t, runtimeFile.Members, 1)
+}
+
+func TestHyardUninstallOrbitJSONRequiresYesOrDryRunForLocallyChangedInstallOwnedFile(t *testing.T) {
+	t.Parallel()
+
+	repo := seedCommittedHyardInstallBackedRuntimeRepo(t)
+	require.NoError(t, os.WriteFile(filepath.Join(repo.Root, "docs", "guide.md"), []byte("Locally edited guide\n"), 0o644))
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "uninstall", "orbit", "docs", "--json")
+	require.Error(t, err)
+	require.Empty(t, stdout)
+	require.Empty(t, stderr)
+	require.ErrorContains(t, err, "uninstall orbit --json requires --yes to delete locally changed target-owned files or --dry-run to inspect")
+
+	runtimeFile, loadErr := harnesspkg.LoadRuntimeFile(repo.Root)
+	require.NoError(t, loadErr)
+	require.Len(t, runtimeFile.Members, 1)
+	require.Equal(t, "Locally edited guide\n", readRepoFile(t, repo.Root, "docs/guide.md"))
+}
+
+func TestHyardUninstallOrbitInteractiveConfirmationControlsLocallyChangedInstallOwnedDeletion(t *testing.T) {
+	t.Parallel()
+
+	declineRepo := seedCommittedHyardInstallBackedRuntimeRepo(t)
+	require.NoError(t, os.WriteFile(filepath.Join(declineRepo.Root, "docs", "guide.md"), []byte("Declined local edit\n"), 0o644))
+
+	stdout, stderr, err := executeHyardCLIWithInput(t, declineRepo.Root, "\n", "uninstall", "orbit", "docs")
+	require.Error(t, err)
+	require.Contains(t, stdout, "Uninstall orbit package docs?")
+	require.Contains(t, stdout, "Locally changed target-owned files:")
+	require.Contains(t, stdout, "  - docs/guide.md (M)")
+	require.Contains(t, stderr, "Continue? [y/N]")
+	require.ErrorContains(t, err, `uninstall canceled for orbit package "docs"`)
+	require.Equal(t, "Declined local edit\n", readRepoFile(t, declineRepo.Root, "docs/guide.md"))
+
+	acceptRepo := seedCommittedHyardInstallBackedRuntimeRepo(t)
+	require.NoError(t, os.WriteFile(filepath.Join(acceptRepo.Root, "docs", "guide.md"), []byte("Accepted local edit\n"), 0o644))
+
+	stdout, stderr, err = executeHyardCLIWithInput(t, acceptRepo.Root, "y\n", "uninstall", "orbit", "docs")
+	require.NoError(t, err)
+	require.Contains(t, stdout, "Uninstall orbit package docs?")
+	require.Contains(t, stdout, "Locally changed target-owned files:")
+	require.Contains(t, stdout, "uninstalled orbit package docs")
+	require.Contains(t, stderr, "Continue? [y/N]")
+	require.NoFileExists(t, filepath.Join(acceptRepo.Root, "docs", "guide.md"))
+}
+
+func TestHyardUninstallOrbitYesReportsStagedInstallOwnedFile(t *testing.T) {
+	t.Parallel()
+
+	repo := seedCommittedHyardInstallBackedRuntimeRepo(t)
+	require.NoError(t, os.WriteFile(filepath.Join(repo.Root, "docs", "guide.md"), []byte("Staged local edit\n"), 0o644))
+	repo.Run(t, "add", "docs/guide.md")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "uninstall", "orbit", "docs", "--yes", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		LocallyChangedPaths []hyardLocalChangeRiskPayload `json:"locally_changed_paths"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	risk := requireHyardGuideLocalChangeRisk(t, payload.LocallyChangedPaths, "M")
+	require.True(t, risk.Tracked)
+	require.True(t, risk.Staged)
+	require.NoFileExists(t, filepath.Join(repo.Root, "docs", "guide.md"))
+}
+
+func TestHyardUninstallOrbitYesReportsUntrackedInstallOwnedFile(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardRunViewOrbitInstallRepo(t)
+	_, stderr, err := executeHyardCLI(t, repo.Root, "install", "orbit-template/docs", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "uninstall", "orbit", "docs", "--yes", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		LocallyChangedPaths []hyardLocalChangeRiskPayload `json:"locally_changed_paths"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	risk := requireHyardGuideLocalChangeRisk(t, payload.LocallyChangedPaths, "??")
+	require.False(t, risk.Tracked)
+	require.False(t, risk.Staged)
+	require.NoFileExists(t, filepath.Join(repo.Root, "docs", "guide.md"))
 }
 
 func TestHyardUninstallBareNameResolvesUnambiguousOrbitPackage(t *testing.T) {
@@ -561,7 +720,7 @@ func TestHyardRemoveRejectsVersionedPackageCoordinate(t *testing.T) {
 	require.Equal(t, "docs", runtimeFile.Members[0].OrbitID)
 }
 
-func TestHyardRemoveOrbitDryRunGuidancePrefersUninstall(t *testing.T) {
+func TestHyardRemoveOrbitDryRunRequiresInstallBackedPackage(t *testing.T) {
 	t.Parallel()
 
 	repo := seedCommittedHyardRuntimeRepo(t)
@@ -570,9 +729,40 @@ func TestHyardRemoveOrbitDryRunGuidancePrefersUninstall(t *testing.T) {
 	require.Error(t, err)
 	require.Empty(t, stdout)
 	require.Empty(t, stderr)
-	require.ErrorContains(t, err, "remove orbit --dry-run is not supported")
-	require.ErrorContains(t, err, "hyard uninstall harness <name> --dry-run")
-	require.NotContains(t, err.Error(), "hyard remove harness <name> --dry-run")
+	require.ErrorContains(t, err, "remove orbit --dry-run is only supported for install-backed orbit packages")
+}
+
+func TestHyardRemoveOrbitDryRunJSONReportsInstallOwnedFiles(t *testing.T) {
+	t.Parallel()
+
+	repo := seedCommittedHyardInstallBackedRuntimeRepo(t)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "remove", "orbit", "docs", "--dry-run", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		TargetType           string   `json:"target_type"`
+		OrbitPackage         string   `json:"orbit_package"`
+		DryRun               bool     `json:"dry_run"`
+		RemovedPaths         []string `json:"removed_paths"`
+		RemovedPathCount     int      `json:"removed_path_count"`
+		ConfirmationRequired bool     `json:"confirmation_required"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "orbit", payload.TargetType)
+	require.Equal(t, "docs", payload.OrbitPackage)
+	require.True(t, payload.DryRun)
+	require.Contains(t, payload.RemovedPaths, ".harness/installs/docs.yaml")
+	require.Contains(t, payload.RemovedPaths, ".harness/orbits/docs.yaml")
+	require.Contains(t, payload.RemovedPaths, "docs/guide.md")
+	require.Equal(t, len(payload.RemovedPaths), payload.RemovedPathCount)
+	require.False(t, payload.ConfirmationRequired)
+
+	runtimeFile, err := harnesspkg.LoadRuntimeFile(repo.Root)
+	require.NoError(t, err)
+	require.Len(t, runtimeFile.Members, 1)
+	require.FileExists(t, filepath.Join(repo.Root, "docs", "guide.md"))
 }
 
 func TestHyardUninstallOrbitRejectsVersionedPackageCoordinate(t *testing.T) {
@@ -925,6 +1115,23 @@ func TestHyardRemoveHarnessFailsClosedWithDirtyTouchedPath(t *testing.T) {
 	runtimeFile, err := harnesspkg.LoadRuntimeFile(runtimeRoot)
 	require.NoError(t, err)
 	require.Len(t, runtimeFile.Members, 1)
+}
+
+func requireHyardGuideLocalChangeRisk(
+	t *testing.T,
+	risks []hyardLocalChangeRiskPayload,
+	gitStatus string,
+) hyardLocalChangeRiskPayload {
+	t.Helper()
+
+	for _, risk := range risks {
+		if risk.Path == "docs/guide.md" && risk.GitStatus == gitStatus {
+			return risk
+		}
+	}
+
+	require.Failf(t, "missing local change risk", "wanted docs/guide.md (%s) in %#v", gitStatus, risks)
+	return hyardLocalChangeRiskPayload{}
 }
 
 func cloneHyardHarnessRuntime(t *testing.T) (string, string) {

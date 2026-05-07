@@ -198,6 +198,41 @@ func BuildInstallOwnedCleanupPlanWithOptions(
 	return plan, nil
 }
 
+// BuildInstallOwnedUninstallPlan reconstructs the current install-owned payload and
+// identifies package-owned runtime paths that uninstall should delete. Unlike
+// overwrite cleanup, uninstall does not require the worktree bytes to still match
+// replayed content; local Git status is handled as confirmation input by callers.
+func BuildInstallOwnedUninstallPlan(
+	ctx context.Context,
+	repoRoot string,
+	existingRecord InstallRecord,
+) (InstallOwnedCleanupPlan, error) {
+	var err error
+	existingRecord, err = recordWithDestructiveReplayVariablesSnapshot(ctx, repoRoot, existingRecord)
+	if err != nil {
+		return InstallOwnedCleanupPlan{}, err
+	}
+
+	previousPreview, err := ReplayInstalledTemplate(ctx, InstalledTemplateReplayInput{
+		RepoRoot: repoRoot,
+		Record:   existingRecord,
+	})
+	if err != nil {
+		return InstallOwnedCleanupPlan{}, fmt.Errorf("replay existing install: %w", err)
+	}
+
+	plan := InstallOwnedCleanupPlan{
+		DeletePaths: make([]string, 0, len(previousPreview.RenderedFiles)),
+	}
+	for _, oldFile := range previousPreview.RenderedFiles {
+		plan.DeletePaths = append(plan.DeletePaths, oldFile.Path)
+	}
+	plan.RemoveSharedAgentsFile = previousPreview.RenderedSharedAgentsFile != nil
+	sort.Strings(plan.DeletePaths)
+
+	return plan, nil
+}
+
 // ApplyInstallOwnedCleanup removes the stale paths previously validated by BuildInstallOwnedCleanupPlan.
 func ApplyInstallOwnedCleanup(repoRoot string, orbitID string, plan InstallOwnedCleanupPlan) ([]string, error) {
 	removed := make([]string, 0, len(plan.DeletePaths)+1)

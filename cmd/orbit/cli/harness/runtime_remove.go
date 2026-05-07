@@ -23,6 +23,8 @@ type RemoveRuntimeMemberResult struct {
 	ManifestPath          string
 	Runtime               RuntimeFile
 	RemovedPaths          []string
+	LocallyChangedPaths   []RuntimeUninstallLocalChange
+	ConfirmationRequired  bool
 	RemovedAgentsBlock    bool
 	AutoLeftCurrentOrbit  bool
 	DetachedInstallRecord bool
@@ -32,6 +34,32 @@ type RemoveRuntimeMemberResult struct {
 // RemoveRuntimeMemberOptions controls package-remove side effects.
 type RemoveRuntimeMemberOptions struct {
 	AllowGlobalAgentCleanup bool
+	ConfirmLocalChanges     bool
+}
+
+// RuntimeUninstallLocalChange captures one locally changed path that uninstall plans to delete.
+type RuntimeUninstallLocalChange struct {
+	Path      string `json:"path"`
+	GitStatus string `json:"git_status"`
+	Tracked   bool   `json:"tracked"`
+	Staged    bool   `json:"staged"`
+}
+
+// RuntimeOrbitPackageUninstallPlan captures one planned install-backed Orbit Package uninstall.
+type RuntimeOrbitPackageUninstallPlan struct {
+	OrbitID               string
+	Runtime               RuntimeFile
+	RemovedPaths          []string
+	LocallyChangedPaths   []RuntimeUninstallLocalChange
+	ConfirmationRequired  bool
+	RemovedAgentsBlock    bool
+	CurrentOrbitRemoved   bool
+	DetachedInstallRecord bool
+	OwnershipPlan         orbittemplate.InstallOwnedCleanupPlan
+	GuidanceMutations     []runtimeRootGuidanceMutation
+	DefinitionRepoPath    string
+	InstallRecordRepoPath string
+	AgentCleanup          AgentCleanupResult
 }
 
 type runtimeRemovePlan struct {
@@ -87,7 +115,6 @@ func UninstallRuntimeOrbitPackageWithOptions(
 	if err != nil {
 		return RemoveRuntimeMemberResult{}, fmt.Errorf("load harness runtime: %w", err)
 	}
-
 	targetMember, found := findRuntimeMember(runtimeFile, orbitID)
 	if !found {
 		return RemoveRuntimeMemberResult{}, fmt.Errorf("member %q not found", orbitID)
@@ -96,54 +123,67 @@ func UninstallRuntimeOrbitPackageWithOptions(
 		return RemoveRuntimeMemberWithOptions(ctx, repo, orbitID, now, options)
 	}
 
-	store, err := statepkg.NewFSStore(repo.GitDir)
-	if err != nil {
-		return RemoveRuntimeMemberResult{}, fmt.Errorf("create state store: %w", err)
-	}
-	currentIsTarget, err := currentOrbitMatches(store, orbitID)
+	plan, err := BuildUninstallRuntimeOrbitPackagePlanWithOptions(ctx, repo, orbitID, options)
 	if err != nil {
 		return RemoveRuntimeMemberResult{}, err
 	}
 
-	agentCleanupPlan, err := PlanAgentCleanupForPackageRemove(ctx, repo.Root, repo.GitDir, []string{orbitID}, AgentCleanupOptions{
-		AllowGlobal: options.AllowGlobalAgentCleanup,
-	})
+	return ApplyUninstallRuntimeOrbitPackagePlanWithOptions(ctx, repo, plan, now, options)
+}
+
+// BuildUninstallRuntimeOrbitPackagePlanWithOptions validates and previews fully uninstalling
+// one install-backed Orbit Package from the runtime.
+func BuildUninstallRuntimeOrbitPackagePlanWithOptions(
+	ctx context.Context,
+	repo gitpkg.Repo,
+	orbitID string,
+	options RemoveRuntimeMemberOptions,
+) (RuntimeOrbitPackageUninstallPlan, error) {
+	runtimeFile, err := LoadRuntimeFile(repo.Root)
 	if err != nil {
-		return RemoveRuntimeMemberResult{}, fmt.Errorf("plan agent cleanup for package uninstall: %w", err)
+		return RuntimeOrbitPackageUninstallPlan{}, fmt.Errorf("load harness runtime: %w", err)
 	}
-	if agentCleanupBlocked(agentCleanupPlan) || agentCleanupRequiresConfirmation(agentCleanupPlan) {
-		return RemoveRuntimeMemberResult{}, fmt.Errorf("%s", agentCleanupErrorMessage(agentCleanupPlan))
+
+	targetMember, found := findRuntimeMember(runtimeFile, orbitID)
+	if !found {
+		return RuntimeOrbitPackageUninstallPlan{}, fmt.Errorf("member %q not found", orbitID)
+	}
+	if targetMember.Source != MemberSourceInstallOrbit {
+		return RuntimeOrbitPackageUninstallPlan{}, fmt.Errorf("member %q is not an install-backed orbit package", orbitID)
 	}
 
 	installRecord, err := LoadInstallRecord(repo.Root, orbitID)
 	if err != nil {
-		return RemoveRuntimeMemberResult{}, fmt.Errorf("load install record for %q: %w", orbitID, err)
+		return RuntimeOrbitPackageUninstallPlan{}, fmt.Errorf("load install record for %q: %w", orbitID, err)
 	}
 	if orbittemplate.EffectiveInstallRecordStatus(installRecord) != orbittemplate.InstallRecordStatusActive {
-		return RemoveRuntimeMemberResult{}, fmt.Errorf("install record for orbit %q is not active", orbitID)
+		return RuntimeOrbitPackageUninstallPlan{}, fmt.Errorf("install record for orbit %q is not active", orbitID)
 	}
 
-	ownershipPlan, err := orbittemplate.BuildInstallOwnedCleanupPlanWithOptions(
-		ctx,
-		repo.Root,
-		installRecord,
-		orbittemplate.TemplateApplyPreview{},
-		orbittemplate.InstallOwnedCleanupOptions{SkipSharedAgentsBlock: true},
-	)
+	ownershipPlan, err := orbittemplate.BuildInstallOwnedUninstallPlan(ctx, repo.Root, installRecord)
 	if err != nil {
-		return RemoveRuntimeMemberResult{}, fmt.Errorf("build package ownership scope for %q: %w", orbitID, err)
+		return RuntimeOrbitPackageUninstallPlan{}, fmt.Errorf("build package ownership scope for %q: %w", orbitID, err)
 	}
 	definitionRepoPath, err := orbitpkg.HostedDefinitionRelativePath(orbitID)
 	if err != nil {
-		return RemoveRuntimeMemberResult{}, fmt.Errorf("build hosted orbit definition path: %w", err)
+		return RuntimeOrbitPackageUninstallPlan{}, fmt.Errorf("build hosted orbit definition path: %w", err)
 	}
 	installRecordRepoPath, err := InstallRecordRepoPath(orbitID)
 	if err != nil {
-		return RemoveRuntimeMemberResult{}, err
+		return RuntimeOrbitPackageUninstallPlan{}, err
 	}
 	guidanceMutations, err := analyzeRuntimeUninstallRootGuidance(ctx, repo.Root, orbitID)
 	if err != nil {
-		return RemoveRuntimeMemberResult{}, err
+		return RuntimeOrbitPackageUninstallPlan{}, err
+	}
+
+	store, err := statepkg.NewFSStore(repo.GitDir)
+	if err != nil {
+		return RuntimeOrbitPackageUninstallPlan{}, fmt.Errorf("create state store: %w", err)
+	}
+	currentIsTarget, err := currentOrbitMatches(store, orbitID)
+	if err != nil {
+		return RuntimeOrbitPackageUninstallPlan{}, err
 	}
 
 	touchedPaths := append([]string{
@@ -159,47 +199,99 @@ func UninstallRuntimeOrbitPackageWithOptions(
 
 	hiddenPaths, err := hiddenRuntimeRemovePaths(ctx, repo.Root, touchedPaths)
 	if err != nil {
-		return RemoveRuntimeMemberResult{}, err
+		return RuntimeOrbitPackageUninstallPlan{}, err
 	}
 	if len(hiddenPaths) > 0 && !currentIsTarget {
-		return RemoveRuntimeMemberResult{}, fmt.Errorf(
+		return RuntimeOrbitPackageUninstallPlan{}, fmt.Errorf(
 			"cannot uninstall orbit package %q while the current orbit projection hides touched paths: %s; leave the current orbit first",
 			orbitID,
 			strings.Join(hiddenPaths, ", "),
 		)
 	}
 
+	removedPaths := plannedRuntimeUninstallRemovedPaths(ownershipPlan.DeletePaths, definitionRepoPath, installRecordRepoPath, guidanceMutations)
+	locallyChangedPaths, err := locallyChangedRuntimeUninstallPaths(ctx, repo.Root, removedPaths)
+	if err != nil {
+		return RuntimeOrbitPackageUninstallPlan{}, err
+	}
+
+	agentCleanupPlan, err := PlanAgentCleanupForPackageRemove(ctx, repo.Root, repo.GitDir, []string{orbitID}, AgentCleanupOptions{
+		AllowGlobal: options.AllowGlobalAgentCleanup,
+	})
+	if err != nil {
+		return RuntimeOrbitPackageUninstallPlan{}, fmt.Errorf("plan agent cleanup for package uninstall: %w", err)
+	}
+
+	return RuntimeOrbitPackageUninstallPlan{
+		OrbitID:               orbitID,
+		Runtime:               runtimeFile,
+		RemovedPaths:          removedPaths,
+		LocallyChangedPaths:   locallyChangedPaths,
+		ConfirmationRequired:  len(locallyChangedPaths) > 0,
+		RemovedAgentsBlock:    runtimeUninstallRemovesGuidance(guidanceMutations),
+		CurrentOrbitRemoved:   currentIsTarget,
+		DetachedInstallRecord: false,
+		OwnershipPlan:         ownershipPlan,
+		GuidanceMutations:     guidanceMutations,
+		DefinitionRepoPath:    definitionRepoPath,
+		InstallRecordRepoPath: installRecordRepoPath,
+		AgentCleanup:          agentCleanupPlan,
+	}, nil
+}
+
+// ApplyUninstallRuntimeOrbitPackagePlanWithOptions applies a previously validated
+// install-backed Orbit Package uninstall plan.
+func ApplyUninstallRuntimeOrbitPackagePlanWithOptions(
+	ctx context.Context,
+	repo gitpkg.Repo,
+	plan RuntimeOrbitPackageUninstallPlan,
+	now time.Time,
+	options RemoveRuntimeMemberOptions,
+) (RemoveRuntimeMemberResult, error) {
+	if agentCleanupBlocked(plan.AgentCleanup) || (agentCleanupRequiresConfirmation(plan.AgentCleanup) && !options.AllowGlobalAgentCleanup) {
+		return RemoveRuntimeMemberResult{}, fmt.Errorf("%s", agentCleanupErrorMessage(plan.AgentCleanup))
+	}
+	if plan.ConfirmationRequired && !options.ConfirmLocalChanges {
+		return RemoveRuntimeMemberResult{}, fmt.Errorf("%s", runtimeUninstallLocalChangesError(plan.OrbitID, plan.LocallyChangedPaths))
+	}
+
+	store, err := statepkg.NewFSStore(repo.GitDir)
+	if err != nil {
+		return RemoveRuntimeMemberResult{}, fmt.Errorf("create state store: %w", err)
+	}
+
 	autoLeft := false
-	if currentIsTarget {
+	if plan.CurrentOrbitRemoved {
 		leaveResult, err := viewpkg.Leave(ctx, repo, store)
 		if err != nil {
-			return RemoveRuntimeMemberResult{}, fmt.Errorf("auto leave current orbit %q: %w", orbitID, err)
+			return RemoveRuntimeMemberResult{}, fmt.Errorf("auto leave current orbit %q: %w", plan.OrbitID, err)
 		}
 		autoLeft = leaveResult.Left || leaveResult.StateCleared || leaveResult.ProjectionRestored
 	}
 
-	removedPaths := append([]string(nil), ownershipPlan.DeletePaths...)
-	if err := removeRuntimeInfluencePaths(repo.Root, ownershipPlan.DeletePaths); err != nil {
+	removedPaths := append([]string(nil), plan.OwnershipPlan.DeletePaths...)
+	if err := removeRuntimeInfluencePaths(repo.Root, plan.OwnershipPlan.DeletePaths); err != nil {
 		return RemoveRuntimeMemberResult{}, err
 	}
-	guidanceRemovedPaths, err := applyRuntimeUninstallRootGuidance(repo.Root, guidanceMutations)
+	guidanceRemovedPaths, err := applyRuntimeUninstallRootGuidance(repo.Root, plan.GuidanceMutations)
 	if err != nil {
 		return RemoveRuntimeMemberResult{}, err
 	}
 	removedPaths = append(removedPaths, guidanceRemovedPaths...)
-	if err := removeRepoPath(repo.Root, definitionRepoPath, "hosted orbit definition"); err != nil {
+	if err := removeRepoPath(repo.Root, plan.DefinitionRepoPath, "hosted orbit definition"); err != nil {
 		return RemoveRuntimeMemberResult{}, err
 	}
-	removedPaths = append(removedPaths, definitionRepoPath)
-	if err := removeRepoPath(repo.Root, installRecordRepoPath, "install record"); err != nil {
+	removedPaths = append(removedPaths, plan.DefinitionRepoPath)
+	if err := removeRepoPath(repo.Root, plan.InstallRecordRepoPath, "install record"); err != nil {
 		return RemoveRuntimeMemberResult{}, err
 	}
-	removedPaths = append(removedPaths, installRecordRepoPath)
+	removedPaths = append(removedPaths, plan.InstallRecordRepoPath)
 	removedPaths = sortedUniqueStrings(removedPaths)
 
+	runtimeFile := plan.Runtime
 	nextMembers := make([]RuntimeMember, 0, len(runtimeFile.Members)-1)
 	for _, member := range runtimeFile.Members {
-		if member.OrbitID == orbitID {
+		if member.OrbitID == plan.OrbitID {
 			continue
 		}
 		nextMembers = append(nextMembers, member)
@@ -212,7 +304,7 @@ func UninstallRuntimeOrbitPackageWithOptions(
 		return RemoveRuntimeMemberResult{}, fmt.Errorf("write harness manifest: %w", err)
 	}
 
-	agentCleanup, err := ReconcileAgentCleanupAfterPackageRemove(ctx, repo.Root, repo.GitDir, []string{orbitID}, AgentCleanupOptions{
+	agentCleanup, err := ReconcileAgentCleanupAfterPackageRemove(ctx, repo.Root, repo.GitDir, []string{plan.OrbitID}, AgentCleanupOptions{
 		AllowGlobal: options.AllowGlobalAgentCleanup,
 	})
 	if err != nil {
@@ -223,6 +315,8 @@ func UninstallRuntimeOrbitPackageWithOptions(
 		ManifestPath:          manifestPath,
 		Runtime:               runtimeFile,
 		RemovedPaths:          appendAgentCleanupRemovedPaths(removedPaths, agentCleanup),
+		LocallyChangedPaths:   append([]RuntimeUninstallLocalChange(nil), plan.LocallyChangedPaths...),
+		ConfirmationRequired:  plan.ConfirmationRequired,
 		RemovedAgentsBlock:    len(guidanceRemovedPaths) > 0,
 		AutoLeftCurrentOrbit:  autoLeft,
 		DetachedInstallRecord: false,
@@ -705,6 +799,82 @@ func applyRuntimeUninstallRootGuidance(
 	}
 
 	return sortedUniqueStrings(removedPaths), nil
+}
+
+func plannedRuntimeUninstallRemovedPaths(
+	ownedRuntimePaths []string,
+	definitionRepoPath string,
+	installRecordRepoPath string,
+	guidanceMutations []runtimeRootGuidanceMutation,
+) []string {
+	removedPaths := append([]string(nil), ownedRuntimePaths...)
+	removedPaths = append(removedPaths, definitionRepoPath, installRecordRepoPath)
+	for _, mutation := range guidanceMutations {
+		if mutation.RemovedBlock {
+			removedPaths = append(removedPaths, mutation.Path)
+		}
+	}
+
+	return sortedUniqueStrings(removedPaths)
+}
+
+func runtimeUninstallRemovesGuidance(mutations []runtimeRootGuidanceMutation) bool {
+	for _, mutation := range mutations {
+		if mutation.RemovedBlock {
+			return true
+		}
+	}
+
+	return false
+}
+
+func locallyChangedRuntimeUninstallPaths(
+	ctx context.Context,
+	repoRoot string,
+	removedPaths []string,
+) ([]RuntimeUninstallLocalChange, error) {
+	statusEntries, err := gitpkg.WorktreeStatus(ctx, repoRoot)
+	if err != nil {
+		return nil, fmt.Errorf("load package uninstall worktree status: %w", err)
+	}
+
+	statusByPath := make(map[string]gitpkg.StatusEntry, len(statusEntries))
+	for _, entry := range statusEntries {
+		statusByPath[entry.Path] = entry
+	}
+
+	risks := make([]RuntimeUninstallLocalChange, 0)
+	for _, path := range sortedUniqueStrings(removedPaths) {
+		entry, ok := statusByPath[path]
+		if !ok {
+			continue
+		}
+		risks = append(risks, RuntimeUninstallLocalChange{
+			Path:      path,
+			GitStatus: entry.Code,
+			Tracked:   entry.Tracked,
+			Staged:    entry.Staged,
+		})
+	}
+
+	return risks, nil
+}
+
+func runtimeUninstallLocalChangesError(orbitID string, risks []RuntimeUninstallLocalChange) string {
+	return fmt.Sprintf(
+		"uninstall orbit package %q requires --yes to delete locally changed target-owned files: %s; use --dry-run to inspect",
+		orbitID,
+		strings.Join(formatRuntimeUninstallLocalChanges(risks), ", "),
+	)
+}
+
+func formatRuntimeUninstallLocalChanges(risks []RuntimeUninstallLocalChange) []string {
+	formatted := make([]string, 0, len(risks))
+	for _, risk := range risks {
+		formatted = append(formatted, fmt.Sprintf("%s (%s)", risk.Path, risk.GitStatus))
+	}
+
+	return formatted
 }
 
 func ensureRuntimeRemovePathsClean(ctx context.Context, repoRoot string, orbitID string, touchedPaths []string) error {
