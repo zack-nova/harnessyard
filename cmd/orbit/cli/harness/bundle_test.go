@@ -62,6 +62,43 @@ func TestWriteAndLoadBundleRecordRoundTrip(t *testing.T) {
 	require.Equal(t, input, loaded)
 }
 
+func TestWriteAndLoadBundleRecordRoundTripWithEmptyVariableSnapshot(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := t.TempDir()
+	appliedAt := time.Date(2026, time.April, 1, 9, 15, 0, 0, time.UTC)
+	input := BundleRecord{
+		SchemaVersion:        1,
+		HarnessID:            "workspace",
+		Template:             orbittemplate.Source{SourceKind: orbittemplate.InstallSourceKindLocalBranch, SourceRepo: "", SourceRef: "harness-template/workspace", TemplateCommit: "abc123"},
+		RecommendedFramework: "claude",
+		MemberIDs:            []string{"docs"},
+		AppliedAt:            appliedAt,
+		IncludesRootAgents:   false,
+		OwnedPaths:           []string{"docs/guide.md"},
+		Variables: &orbittemplate.InstallVariablesSnapshot{
+			Declarations:    map[string]bindings.VariableDeclaration{},
+			ResolvedAtApply: map[string]bindings.VariableBinding{},
+		},
+	}
+
+	filename, err := WriteBundleRecord(repoRoot, input)
+	require.NoError(t, err)
+
+	data, err := os.ReadFile(filename)
+	require.NoError(t, err)
+	require.Contains(t, string(data), ""+
+		"variables:\n"+
+		"    declarations: {}\n"+
+		"    resolved_at_apply: {}\n"+
+		"    unresolved_at_apply: []\n"+
+		"    observed_runtime_unresolved: []\n")
+
+	loaded, err := LoadBundleRecord(repoRoot, "workspace")
+	require.NoError(t, err)
+	require.Equal(t, input, loaded)
+}
+
 func TestLoadBundleRecordRejectsMismatchedHarnessID(t *testing.T) {
 	t.Parallel()
 

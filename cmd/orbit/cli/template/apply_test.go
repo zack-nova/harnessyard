@@ -1613,8 +1613,101 @@ func TestBuildInstallOwnedCleanupPlanFailsClosedWithoutVariablesSnapshot(t *test
 
 	_, err = BuildInstallOwnedCleanupPlan(context.Background(), repo.Root, record, preview)
 	require.Error(t, err)
+	require.ErrorContains(t, err, "missing replay provenance")
 	require.ErrorContains(t, err, "variables snapshot")
 	require.ErrorContains(t, err, "overwrite replay")
+}
+
+func TestBuildInstallOwnedCleanupPlanReplaysExplicitEmptyVariablesContract(t *testing.T) {
+	t.Parallel()
+
+	repo, sourceRef := seedLocalTemplateApplyRepoWithoutVariables(t)
+
+	_, err := ApplyLocalTemplate(context.Background(), TemplateApplyInput{
+		Preview: TemplateApplyPreviewInput{
+			RepoRoot:  repo.Root,
+			SourceRef: sourceRef,
+			Now:       time.Date(2026, time.March, 21, 12, 50, 0, 0, time.UTC),
+		},
+	})
+	require.NoError(t, err)
+	repo.AddAndCommit(t, "commit zero-variable installed runtime before overwrite")
+
+	record, err := loadRuntimeInstallRecord(repo.Root, "docs")
+	require.NoError(t, err)
+	require.Equal(t, &InstallVariablesSnapshot{
+		Declarations:    map[string]bindings.VariableDeclaration{},
+		ResolvedAtApply: map[string]bindings.VariableBinding{},
+	}, record.Variables)
+
+	runtimeBranch := strings.TrimSpace(repo.Run(t, "branch", "--show-current"))
+	repo.Run(t, "checkout", sourceRef)
+	repo.WriteFile(t, "docs/reference.md", "Static reference\n")
+	repo.Run(t, "rm", "-f", "docs/guide.md")
+	repo.AddAndCommit(t, "replace zero-variable template content")
+	repo.Run(t, "checkout", runtimeBranch)
+
+	preview, err := BuildTemplateApplyPreview(context.Background(), TemplateApplyPreviewInput{
+		RepoRoot:          repo.Root,
+		SourceRef:         sourceRef,
+		OverwriteExisting: true,
+		Now:               time.Date(2026, time.March, 21, 13, 0, 0, 0, time.UTC),
+	})
+	require.NoError(t, err)
+
+	plan, err := BuildInstallOwnedCleanupPlan(context.Background(), repo.Root, record, preview)
+	require.NoError(t, err)
+	require.Equal(t, []string{"docs/guide.md"}, plan.DeletePaths)
+	require.False(t, plan.RemoveSharedAgentsFile)
+}
+
+func TestBuildInstallOwnedCleanupPlanReplaysLegacySnapshotlessZeroVariableRecord(t *testing.T) {
+	t.Parallel()
+
+	repo, sourceRef := seedLocalTemplateApplyRepoWithoutVariables(t)
+
+	_, err := ApplyLocalTemplate(context.Background(), TemplateApplyInput{
+		Preview: TemplateApplyPreviewInput{
+			RepoRoot:  repo.Root,
+			SourceRef: sourceRef,
+			Now:       time.Date(2026, time.March, 21, 13, 5, 0, 0, time.UTC),
+		},
+	})
+	require.NoError(t, err)
+	repo.AddAndCommit(t, "commit legacy zero-variable installed runtime")
+
+	record, err := loadRuntimeInstallRecord(repo.Root, "docs")
+	require.NoError(t, err)
+	record.Variables = nil
+	recordPath, err := runtimeInstallRecordPath(repo.Root, "docs")
+	require.NoError(t, err)
+	_, err = WriteInstallRecordFile(recordPath, record)
+	require.NoError(t, err)
+	repo.AddAndCommit(t, "remove legacy zero-variable snapshot")
+
+	runtimeBranch := strings.TrimSpace(repo.Run(t, "branch", "--show-current"))
+	repo.Run(t, "checkout", sourceRef)
+	repo.WriteFile(t, "docs/reference.md", "Static reference\n")
+	repo.Run(t, "rm", "-f", "docs/guide.md")
+	repo.AddAndCommit(t, "replace legacy zero-variable template content")
+	repo.Run(t, "checkout", runtimeBranch)
+
+	preview, err := BuildTemplateApplyPreview(context.Background(), TemplateApplyPreviewInput{
+		RepoRoot:          repo.Root,
+		SourceRef:         sourceRef,
+		OverwriteExisting: true,
+		Now:               time.Date(2026, time.March, 21, 13, 15, 0, 0, time.UTC),
+	})
+	require.NoError(t, err)
+
+	record, err = loadRuntimeInstallRecord(repo.Root, "docs")
+	require.NoError(t, err)
+	require.Nil(t, record.Variables)
+
+	plan, err := BuildInstallOwnedCleanupPlan(context.Background(), repo.Root, record, preview)
+	require.NoError(t, err)
+	require.Equal(t, []string{"docs/guide.md"}, plan.DeletePaths)
+	require.False(t, plan.RemoveSharedAgentsFile)
 }
 
 func TestAnalyzeInstalledTemplateDriftReportsDefinitionAndRuntimeFileDrift(t *testing.T) {

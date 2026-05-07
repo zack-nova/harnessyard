@@ -352,7 +352,7 @@ func recordWithDestructiveReplayVariablesSnapshot(
 
 func missingVariablesSnapshotForOverwriteReplayError(record InstallRecord) error {
 	return fmt.Errorf(
-		"install record for orbit %q does not contain variables snapshot required for overwrite replay",
+		"install record for orbit %q is missing replay provenance: variables snapshot required for overwrite replay",
 		record.OrbitID,
 	)
 }

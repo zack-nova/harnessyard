@@ -122,6 +122,59 @@ func TestInspectMissingBindingsReportsSnapshotlessInstallRecord(t *testing.T) {
 	}, result.Orbits[0])
 }
 
+func TestInspectMissingBindingsTreatsExplicitEmptySnapshotAsZeroVariableContract(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repoRoot := repo.Root
+	now := time.Date(2026, time.April, 11, 12, 35, 0, 0, time.UTC)
+	_, err := WriteRuntimeFile(repoRoot, RuntimeFile{
+		SchemaVersion: 1,
+		Kind:          RuntimeKind,
+		Harness: RuntimeMetadata{
+			ID:        "workspace",
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+		Members: []RuntimeMember{
+			{OrbitID: "docs", Source: MemberSourceInstallOrbit, AddedAt: now},
+		},
+	})
+	require.NoError(t, err)
+	_, err = WriteVarsFile(repoRoot, bindings.VarsFile{
+		SchemaVersion: 1,
+		Variables:     map[string]bindings.VariableBinding{},
+	})
+	require.NoError(t, err)
+	_, err = WriteInstallRecord(repoRoot, orbittemplate.InstallRecord{
+		SchemaVersion: 1,
+		OrbitID:       "docs",
+		Template: orbittemplate.Source{
+			SourceKind:     orbittemplate.InstallSourceKindLocalBranch,
+			SourceRef:      "orbit-template/docs",
+			TemplateCommit: "abc123",
+		},
+		AppliedAt: now,
+		Variables: &orbittemplate.InstallVariablesSnapshot{
+			Declarations:    map[string]bindings.VariableDeclaration{},
+			ResolvedAtApply: map[string]bindings.VariableBinding{},
+		},
+	})
+	require.NoError(t, err)
+
+	result, err := InspectMissingBindings(context.Background(), MissingBindingsInput{
+		RepoRoot: repoRoot,
+		OrbitID:  "docs",
+	})
+	require.NoError(t, err)
+	require.Len(t, result.Orbits, 1)
+	require.Equal(t, MissingBindingsOrbitResult{
+		OrbitID:         "docs",
+		SnapshotMissing: false,
+		Variables:       []MissingBindingsVariableResult{},
+	}, result.Orbits[0])
+}
+
 func TestInspectMissingBindingsRejectsDetachedInstallRecord(t *testing.T) {
 	t.Parallel()
 
