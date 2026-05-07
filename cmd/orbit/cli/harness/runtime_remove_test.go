@@ -64,6 +64,46 @@ func TestRemoveRuntimeMemberDeletesInfluencePathsAndDetachesInstallRecord(t *tes
 	require.Equal(t, orbittemplate.InstallRecordStatusDetached, record.Status)
 }
 
+func TestUninstallRuntimeOrbitPackageDeletesInstallOwnedRuntimeFilesAndGuidance(t *testing.T) {
+	t.Parallel()
+
+	repo := seedRuntimePackageUninstallRepo(t)
+	discovered, err := gitpkg.DiscoverRepo(context.Background(), repo.Root)
+	require.NoError(t, err)
+
+	result, err := UninstallRuntimeOrbitPackageWithOptions(
+		context.Background(),
+		discovered,
+		"docs",
+		time.Date(2026, time.May, 7, 10, 30, 0, 0, time.UTC),
+		RemoveRuntimeMemberOptions{},
+	)
+	require.NoError(t, err)
+	require.Equal(t, []string{
+		".harness/installs/docs.yaml",
+		".harness/orbits/docs.yaml",
+		"AGENTS.md",
+		"docs/guide.md",
+		"docs/process/flow.md",
+		"docs/rules/review.md",
+	}, result.RemovedPaths)
+	require.True(t, result.RemovedAgentsBlock)
+	require.False(t, result.DetachedInstallRecord)
+
+	runtimeFile, err := LoadRuntimeFile(repo.Root)
+	require.NoError(t, err)
+	require.Empty(t, runtimeFile.Members)
+
+	_, err = LoadInstallRecord(repo.Root, "docs")
+	require.ErrorIs(t, err, os.ErrNotExist)
+	require.NoFileExists(t, filepath.Join(repo.Root, ".harness", "orbits", "docs.yaml"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "docs", "guide.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "docs", "rules", "review.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "docs", "process", "flow.md"))
+	require.FileExists(t, filepath.Join(repo.Root, "docs", "local-note.md"))
+}
+
 func TestRemoveRuntimeMemberRejectsBundleBackedMember(t *testing.T) {
 	t.Parallel()
 
@@ -183,6 +223,99 @@ func seedRuntimeRemoveRepo(t *testing.T, options runtimeRemoveSeedOptions) *test
 	}
 
 	repo.AddAndCommit(t, "seed runtime remove repo")
+
+	return repo
+}
+
+func seedRuntimePackageUninstallRepo(t *testing.T) *testutil.Repo {
+	t.Helper()
+
+	repo := testutil.NewRepo(t)
+	now := time.Date(2026, time.May, 7, 10, 0, 0, 0, time.UTC)
+	_, err := BootstrapRuntimeControlPlane(repo.Root, now)
+	require.NoError(t, err)
+
+	spec, err := orbitpkg.DefaultHostedMemberSchemaSpec("docs")
+	require.NoError(t, err)
+	spec.Description = "Docs orbit"
+	require.NotNil(t, spec.Meta)
+	spec.Meta.AgentsTemplate = "Docs runtime guidance\n"
+	spec.Members = []orbitpkg.OrbitMember{
+		{
+			Key:  "docs-content",
+			Role: orbitpkg.OrbitMemberSubject,
+			Paths: orbitpkg.OrbitMemberPaths{
+				Include: []string{"docs/*.md"},
+			},
+		},
+		{
+			Key:  "docs-rules",
+			Role: orbitpkg.OrbitMemberRule,
+			Paths: orbitpkg.OrbitMemberPaths{
+				Include: []string{"docs/rules/**"},
+			},
+		},
+		{
+			Key:  "docs-process",
+			Role: orbitpkg.OrbitMemberProcess,
+			Paths: orbitpkg.OrbitMemberPaths{
+				Include: []string{"docs/process/**"},
+			},
+		},
+	}
+	require.NotNil(t, spec.Behavior)
+	spec.Behavior.Scope.ExportRoles = []orbitpkg.OrbitMemberRole{
+		orbitpkg.OrbitMemberMeta,
+		orbitpkg.OrbitMemberSubject,
+		orbitpkg.OrbitMemberRule,
+		orbitpkg.OrbitMemberProcess,
+	}
+	_, err = orbitpkg.WriteHostedOrbitSpec(repo.Root, spec)
+	require.NoError(t, err)
+	repo.WriteFile(t, "docs/guide.md", "Docs guide\n")
+	repo.WriteFile(t, "docs/rules/review.md", "Review checklist\n")
+	repo.WriteFile(t, "docs/process/flow.md", "Process flow\n")
+	repo.AddAndCommit(t, "seed docs orbit template source")
+
+	_, err = orbittemplate.SaveTemplateBranch(context.Background(), orbittemplate.TemplateSaveInput{
+		Preview: orbittemplate.TemplateSavePreviewInput{
+			RepoRoot:     repo.Root,
+			OrbitID:      "docs",
+			TargetBranch: "orbit-template/docs",
+			Now:          now,
+		},
+	})
+	require.NoError(t, err)
+
+	repo.Run(t, "rm", "-f",
+		filepath.Join(".harness", "orbits", "docs.yaml"),
+		filepath.Join("docs", "guide.md"),
+		filepath.Join("docs", "rules", "review.md"),
+		filepath.Join("docs", "process", "flow.md"),
+	)
+	repo.AddAndCommit(t, "clear docs runtime content")
+
+	_, err = orbittemplate.ApplyLocalTemplate(context.Background(), orbittemplate.TemplateApplyInput{
+		Preview: orbittemplate.TemplateApplyPreviewInput{
+			RepoRoot:  repo.Root,
+			SourceRef: "orbit-template/docs",
+			Now:       now.Add(15 * time.Minute),
+		},
+	})
+	require.NoError(t, err)
+
+	runtimeFile, err := LoadRuntimeFile(repo.Root)
+	require.NoError(t, err)
+	runtimeFile.Members = []RuntimeMember{{
+		OrbitID: "docs",
+		Source:  MemberSourceInstallOrbit,
+		AddedAt: now.Add(15 * time.Minute),
+	}}
+	runtimeFile.Harness.UpdatedAt = now.Add(15 * time.Minute)
+	_, err = WriteManifestFile(repo.Root, ManifestFileFromRuntimeFile(runtimeFile))
+	require.NoError(t, err)
+
+	repo.WriteFile(t, "docs/local-note.md", "Local note that matches the orbit scope but was not installed.\n")
 
 	return repo
 }
