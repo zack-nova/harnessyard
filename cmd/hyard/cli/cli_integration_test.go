@@ -4193,6 +4193,9 @@ func TestHyardBootstrapSetupWritesExplicitFrameworkSkill(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(repo.Root, ".codex", "skills", "harness-runtime-bootstrap", "SKILL.md"))
 	require.NoError(t, err)
 	require.Equal(t, string(harnesspkg.BootstrapAgentSkillData()), string(data))
+	require.NotContains(t, string(data), "hyard guide render --target bootstrap")
+	require.Contains(t, string(data), "If `BOOTSTRAP.md` exists, read it and execute the initialization guide it contains.")
+	require.Contains(t, string(data), "If `BOOTSTRAP.md` does not exist, do not render guidance automatically.")
 }
 
 func TestHyardBootstrapSetupResolvesSelectedFrameworkBeforeRecommendation(t *testing.T) {

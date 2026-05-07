@@ -158,13 +158,14 @@ description: Use when entering, initializing, preparing, or first working in a H
 
 Use this skill when you enter, initialize, prepare, or first work in a Harness Yard runtime that may still have bootstrap guidance.
 
-1. Run ` + "`hyard guide render --target bootstrap --json`" + ` from the runtime root.
-2. If no bootstrap guidance is rendered or ` + "`BOOTSTRAP.md`" + ` does not exist afterward, stop this bootstrap flow and continue with the user's normal request.
-3. Read ` + "`BOOTSTRAP.md`" + ` and execute the initialization guide it contains.
-4. Run ` + "`hyard bootstrap complete --check --json`" + `.
-5. Inspect ` + "`removed_paths`" + ` and ` + "`removed_bootstrap_blocks`" + `. Only continue if every removed path is an expected bootstrap-lane runtime artifact or root ` + "`BOOTSTRAP.md`" + ` removal caused by completed bootstrap guidance.
-6. If the preview includes unexpected project files, stop and report the preview instead of completing bootstrap.
-7. When the preview is safe, run ` + "`hyard bootstrap complete --yes`" + `.
+1. Check whether ` + "`BOOTSTRAP.md`" + ` exists in the runtime root.
+2. If ` + "`BOOTSTRAP.md`" + ` does not exist, do not render guidance automatically. Tell the user no bootstrap guide was found; initialization may be unnecessary, or the runtime may need an authoring or recovery render step before bootstrap can continue.
+3. If ` + "`BOOTSTRAP.md`" + ` exists, read it and execute the initialization guide it contains.
+4. Only after executing ` + "`BOOTSTRAP.md`" + `, run ` + "`hyard bootstrap complete --check --json`" + `.
+5. Inspect ` + "`removed_paths`" + ` and ` + "`removed_bootstrap_blocks`" + `. Only continue if every removed path is an expected bootstrap-lane runtime artifact, expected root ` + "`BOOTSTRAP.md`" + ` removal, or expected bootstrap block removal.
+6. If root ` + "`BOOTSTRAP.md`" + ` is retained after a plain Run View bootstrap guide, do not treat that as a failure.
+7. If the preview includes unexpected project files, stop and report the preview instead of completing bootstrap.
+8. When the preview is safe, run ` + "`hyard bootstrap complete --yes`" + `.
 `)
 }
 

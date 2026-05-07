@@ -136,6 +136,23 @@ _Avoid_: config sync, installing the agent
 A framework-specific agent skill that guides an agent through pending runtime bootstrap guidance.
 _Avoid_: init skill, normal workflow skill
 
+**Bootstrap Initialization Entry**:
+The first user-facing or agent-facing handoff in a Harness Runtime that decides
+whether pending bootstrap guidance should be read, materialized, skipped, or
+reported.
+_Avoid_: unconditional render step
+
+**Bootstrap Guide**:
+Pending runtime initialization guidance exposed for one or more runtime orbits
+through the repository bootstrap surface; it may be a plain Run View
+`BOOTSTRAP.md` payload or an owner-marked guidance block.
+_Avoid_: always-rendered guide, marker-only guide
+
+**Guide Render**:
+An authoring or recovery action that materializes authored guidance into editable
+runtime guidance artifacts.
+_Avoid_: required bootstrap discovery step
+
 **Harness Start**:
 The high-level handoff flow that turns an installed Harness Runtime into an initialized interactive agent session.
 _Avoid_: package install, plain prepare, app start
@@ -235,6 +252,24 @@ _Avoid_: rule
 - A **Harness Start** performs **Framework Activation** before handing control to an **Agent Framework**.
 - A **Harness Start** uses a **Bootstrap Agent Skill** when pending runtime bootstrap guidance needs agent-led initialization.
 - A **Harness Start** installs the **Bootstrap Agent Skill** after project-only Framework Activation and before launching the Interactive Agent Session.
+- **Bootstrap Initialization Entry** discovers an existing **Bootstrap Guide** in
+  `BOOTSTRAP.md` without running **Guide Render**.
+- **Guide Render** may create or refresh a **Bootstrap Guide** only when
+  discovery shows that materialization is likely missing and a human chooses
+  authoring or recovery.
+- **Bootstrap Initialization Entry** owns non-destructive bootstrap discovery.
+- **Guide Render** owns materializing authored guidance; it is not mandatory when
+  a **Bootstrap Guide** is already present.
+- Installed bootstrap skill discovery is a plain `BOOTSTRAP.md` existence check
+  instead of a guide render or guide inspection command.
+- Installed bootstrap skill guidance does not run **Guide Render** automatically;
+  if `BOOTSTRAP.md` is absent, it reminds the user that bootstrap may be
+  unnecessary or that authored guidance may need to be rendered separately.
+- Installed bootstrap skill guidance does not run guide inspection before
+  bootstrap execution; it treats an existing `BOOTSTRAP.md` as the
+  initialization entry regardless of whether the file contains owner markers.
+- Bootstrap closeout runs only after an existing `BOOTSTRAP.md` has been read and
+  executed, and a retained plain `BOOTSTRAP.md` is not a closeout failure.
 - A **Harness Start** defaults to project-only **Framework Activation** and must not write the user's global agent environment unless the user explicitly chooses a global route.
 - A **Harness Start** does not require a globally clean worktree, but must fail closed on conflicting local edits to paths it would write.
 - A **Harness Start** does not create Git commits; checkpointing belongs to authoring and publishing flows.
@@ -388,6 +423,10 @@ _Avoid_: rule
 > **Dev:** "AGENTS.md links to docs/architecture.md; should adoption make it a rule?"
 > **Domain expert:** "Recommend rule, then ask me; if I decline, make me choose the correct member role or ignore it."
 
+> **Agent:** "I found an existing **Bootstrap Guide**. Should I render first?"
+> **Maintainer:** "No. Read the guide first; render is only for missing or
+> recoverable guidance."
+
 ## Flagged Ambiguities
 
 - "extract" was used to mean both detached template export and invasive runtime conversion; resolved: this feature is **Adoption**, and template export happens after adoption.
@@ -407,6 +446,15 @@ _Avoid_: rule
 - "detected agent" could mean a desktop app, package, gateway, or CLI; resolved: **Harness Start** success requires a terminal-launchable framework, while non-launchable detections receive prompt and usage instructions.
 - "launcher" could become scattered framework-specific process code; resolved: each **Agent Framework Launcher** declares its invocation contract, and **Harness Start** depends on that contract.
 - "init skill" could be confused with ordinary skill dependencies; resolved: use **Bootstrap Agent Skill** for the framework-specific skill that drives runtime bootstrap.
+- "Initialize the skill" previously implied that every bootstrap entry should run
+  **Guide Render**. Resolution: bootstrap entry is discovery-first; render is a
+  conditional recovery or authoring action.
+- "Existing bootstrap guide" was briefly narrowed to owner-marked blocks.
+  Resolution: a plain Run View `BOOTSTRAP.md` payload is also a **Bootstrap
+  Guide** and should be executed during initialization.
+- "Discover bootstrap" was briefly modeled as `hyard guide render --check`.
+  Resolution: installed bootstrap skill discovery is a plain `BOOTSTRAP.md`
+  existence check; render/check commands belong to authoring or recovery.
 - "uninstall" could imply install provenance always exists; resolved: `hyard uninstall orbit` may remove a manually added orbit package, but must report its manual source.
 - "uninstall" could imply detaching an active member while retaining hosted package truth; resolved: **Package Uninstallation** fully removes the package from the current Harness Runtime, and any retained evidence must not keep it installed, active, reapplicable, or readiness-relevant.
 - A detached install record could be treated as uninstall evidence, but it keeps package provenance in the active install-record host; resolved: **Package Uninstallation** deletes the install record, and ordinary Git history carries uninstall evidence.
@@ -451,3 +499,10 @@ _Avoid_: rule
 - Invalid **Member Hint Frontmatter** could be ignored as ordinary metadata, but that would hide a failed member declaration; resolved: nested `orbit_member` intent makes malformed frontmatter an invalid hint.
 - Strict YAML frontmatter delimiters could reject CRLF-authored files unexpectedly; resolved: normalize CRLF before applying the delimiter contract.
 - Unknown Member Hint fields could appear to take effect when they are ignored; resolved: unknown fields inside `orbit_member` are invalid.
+
+## Open Questions
+
+- Should Harness Yard eventually expose a dedicated bootstrap discovery command
+  if a plain `BOOTSTRAP.md` existence check becomes too weak?
+- How should bootstrap closeout messaging describe a plain Run View
+  `BOOTSTRAP.md` payload when no owner-marked bootstrap block is removed?

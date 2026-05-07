@@ -340,6 +340,9 @@ func TestHyardStartPrintPromptPrintsStartPromptInRuntime(t *testing.T) {
 	require.Contains(t, stdout, "Harness Start")
 	require.Contains(t, stdout, "Start Prompt")
 	require.Contains(t, stdout, "First handle any pending Harness Runtime bootstrap work.")
+	require.NotContains(t, stdout, "hyard guide render --target bootstrap")
+	require.Contains(t, stdout, "If `BOOTSTRAP.md` exists, read it and perform the initialization work it describes.")
+	require.Contains(t, stdout, "If `BOOTSTRAP.md` does not exist, do not render guidance automatically.")
 	require.Contains(t, stdout, "Then introduce this Harness Runtime in the same session.")
 }
 
