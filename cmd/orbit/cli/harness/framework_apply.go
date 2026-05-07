@@ -125,15 +125,6 @@ func ApplyFramework(ctx context.Context, input FrameworkApplyInput) (FrameworkAp
 		return FrameworkApplyResult{}, err
 	}
 
-	if state.Summary.HasAgentGuidance || state.Summary.HasHumanGuidance || state.Summary.HasPendingBootstrapGuidance {
-		if _, err := ComposeRuntimeGuidance(ctx, ComposeRuntimeGuidanceInput{
-			RepoRoot: input.RepoRoot,
-			Target:   GuidanceTargetAll,
-		}); err != nil {
-			return FrameworkApplyResult{}, fmt.Errorf("compose runtime guidance: %w", err)
-		}
-	}
-
 	createdOutputs := make([]FrameworkActivationOutput, 0, len(managedOutputs.ProjectOutputs)+len(managedOutputs.GlobalOutputs))
 	rollbackOutputs := func() {
 		for index := len(createdOutputs) - 1; index >= 0; index-- {

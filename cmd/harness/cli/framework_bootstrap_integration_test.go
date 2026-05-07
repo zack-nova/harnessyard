@@ -3,7 +3,6 @@ package cli_test
 import (
 	"context"
 	"encoding/json"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -43,7 +42,7 @@ func TestHarnessFrameworkPlanIncludesBootstrapOutputForPendingBootstrapOnly(t *t
 	})
 }
 
-func TestHarnessFrameworkApplyMaterializesPendingBootstrapWithoutRevivingCompletedBootstrap(t *testing.T) {
+func TestHarnessFrameworkApplyDoesNotMaterializePendingBootstrapGuidance(t *testing.T) {
 	repo := seedHarnessFrameworkBootstrapRepo(t, frameworkBootstrapSeedOptions{
 		PendingOrbits:   []string{"docs"},
 		CompletedOrbits: []string{"ops"},
@@ -56,18 +55,31 @@ func TestHarnessFrameworkApplyMaterializesPendingBootstrapWithoutRevivingComplet
 	require.Empty(t, stderr)
 
 	var payload struct {
-		HarnessRoot string `json:"harness_root"`
-		Framework   string `json:"framework"`
+		HarnessRoot        string `json:"harness_root"`
+		Framework          string `json:"framework"`
+		ActivationPath     string `json:"activation_path"`
+		ProjectOutputCount int    `json:"project_output_count"`
+		GlobalOutputCount  int    `json:"global_output_count"`
+		ArtifactResults    []struct {
+			Path string `json:"path"`
+		} `json:"artifact_results"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
 	require.Equal(t, repo.Root, payload.HarnessRoot)
 	require.Equal(t, "claudecode", payload.Framework)
+	require.NotEmpty(t, payload.ActivationPath)
+	require.Zero(t, payload.ProjectOutputCount)
+	require.Zero(t, payload.GlobalOutputCount)
+	require.Empty(t, payload.ArtifactResults)
 
-	bootstrapData, err := os.ReadFile(filepath.Join(repo.Root, "BOOTSTRAP.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "BOOTSTRAP.md"))
+
+	activation, err := harnesspkg.LoadFrameworkActivation(repo.GitDir(t), "claudecode")
 	require.NoError(t, err)
-	require.Contains(t, string(bootstrapData), `workflow="docs"`)
-	require.Contains(t, string(bootstrapData), "Bootstrap the docs orbit.\n")
-	require.NotContains(t, string(bootstrapData), `workflow="ops"`)
+	require.Equal(t, "claudecode", activation.Framework)
+	require.Empty(t, activation.ProjectOutputs)
+	require.Empty(t, activation.GlobalOutputs)
+	require.NotEmpty(t, activation.GuidanceHash)
 }
 
 type frameworkBootstrapSeedOptions struct {

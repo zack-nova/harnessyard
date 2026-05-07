@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -206,6 +207,57 @@ func TestHyardAgentApplyMaterializesUntrackedLocalSkillFromWorktree(t *testing.T
 	require.NoError(t, err)
 	require.Len(t, activation.ProjectOutputs, 1)
 	require.Equal(t, ".codex/skills/docs-style", activation.ProjectOutputs[0].Path)
+}
+
+func TestHyardAgentApplyProjectOnlyPreservesExistingRootGuidance(t *testing.T) {
+	repo := seedHyardRuntimeWithUntrackedLocalSkillAndGuidance(t, hyardLocalSkillGuidance{
+		Agents:    "# Docs agents\n\nUse the docs skill.\n",
+		Humans:    "# Docs humans\n\nReview docs changes.\n",
+		Bootstrap: "# Docs bootstrap\n\nBootstrap the docs orbit.\n",
+	})
+	selectHyardAgentAddonFramework(t, repo)
+	for path, content := range map[string]string{
+		"AGENTS.md":    "Existing agent guidance.\n",
+		"HUMANS.md":    "Existing human guidance.\n",
+		"BOOTSTRAP.md": "Existing bootstrap guidance.\n",
+	} {
+		repo.WriteFile(t, path, content)
+	}
+	before := readRootGuidanceArtifacts(t, repo.Root)
+
+	lockHyardProcessEnv(t)
+	stubCodexExecutableOnPath(t)
+
+	stdout, stderr, err := executeHyardCLIUnlocked(t, repo.Root, "agent", "apply", "--project-only", "--yes", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	requireHyardCodexSkillApplied(t, repo, stdout)
+	require.Equal(t, before, readRootGuidanceArtifacts(t, repo.Root))
+}
+
+func TestHyardAgentApplyProjectOnlyDoesNotCreateMissingRootGuidance(t *testing.T) {
+	repo := seedHyardRuntimeWithUntrackedLocalSkillAndGuidance(t, hyardLocalSkillGuidance{
+		Agents:    "# Docs agents\n\nUse the docs skill.\n",
+		Humans:    "# Docs humans\n\nReview docs changes.\n",
+		Bootstrap: "# Docs bootstrap\n\nBootstrap the docs orbit.\n",
+	})
+	selectHyardAgentAddonFramework(t, repo)
+	for _, path := range []string{"AGENTS.md", "HUMANS.md", "BOOTSTRAP.md"} {
+		require.NoFileExists(t, filepath.Join(repo.Root, path))
+	}
+
+	lockHyardProcessEnv(t)
+	stubCodexExecutableOnPath(t)
+
+	stdout, stderr, err := executeHyardCLIUnlocked(t, repo.Root, "agent", "apply", "--project-only", "--yes", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	requireHyardCodexSkillApplied(t, repo, stdout)
+	for _, path := range []string{"AGENTS.md", "HUMANS.md", "BOOTSTRAP.md"} {
+		require.NoFileExists(t, filepath.Join(repo.Root, path))
+	}
 }
 
 func TestHyardReadyWarnsWhenAgentActivationDependsOnUntrackedLocalSkill(t *testing.T) {
@@ -605,9 +657,33 @@ func selectHyardAgentAddonFramework(t *testing.T, repo *testutil.Repo) {
 func seedHyardRuntimeWithUntrackedLocalSkill(t *testing.T) *testutil.Repo {
 	t.Helper()
 
+	return seedHyardRuntimeWithUntrackedLocalSkillAndGuidance(t, hyardLocalSkillGuidance{
+		Agents: "# Docs\n",
+	})
+}
+
+type hyardLocalSkillGuidance struct {
+	Agents    string
+	Humans    string
+	Bootstrap string
+}
+
+func seedHyardRuntimeWithUntrackedLocalSkillAndGuidance(t *testing.T, guidance hyardLocalSkillGuidance) *testutil.Repo {
+	t.Helper()
+
 	repo := testutil.NewRepo(t)
 	_, _, err := executeHyardCLI(t, repo.Root, "init", "runtime")
 	require.NoError(t, err)
+	guidanceYAML := ""
+	if guidance.Agents != "" {
+		guidanceYAML += "  agents_template: |\n" + indentYAMLBlock(guidance.Agents)
+	}
+	if guidance.Humans != "" {
+		guidanceYAML += "  humans_template: |\n" + indentYAMLBlock(guidance.Humans)
+	}
+	if guidance.Bootstrap != "" {
+		guidanceYAML += "  bootstrap_template: |\n" + indentYAMLBlock(guidance.Bootstrap)
+	}
 	repo.WriteFile(t, ".harness/orbits/docs.yaml", ""+
 		"package:\n"+
 		"  type: orbit\n"+
@@ -615,8 +691,7 @@ func seedHyardRuntimeWithUntrackedLocalSkill(t *testing.T) *testutil.Repo {
 		"name: Docs\n"+
 		"meta:\n"+
 		"  file: .harness/orbits/docs.yaml\n"+
-		"  agents_template: |\n"+
-		"    # Docs\n"+
+		guidanceYAML+
 		"  include_in_projection: true\n"+
 		"  include_in_write: true\n"+
 		"  include_in_export: true\n"+
@@ -649,6 +724,80 @@ func seedHyardRuntimeWithUntrackedLocalSkill(t *testing.T) *testutil.Repo {
 	repo.Run(t, "add", ".harness")
 
 	return repo
+}
+
+func requireHyardCodexSkillApplied(t *testing.T, repo *testutil.Repo, stdout string) {
+	t.Helper()
+
+	var payload struct {
+		Status             string `json:"status"`
+		ActivationPath     string `json:"activation_path"`
+		ProjectOutputCount int    `json:"project_output_count"`
+		GlobalOutputCount  int    `json:"global_output_count"`
+		ArtifactResults    []struct {
+			Artifact       string `json:"artifact"`
+			ArtifactType   string `json:"artifact_type"`
+			Path           string `json:"path"`
+			EffectiveScope string `json:"effective_scope"`
+			Status         string `json:"status"`
+		} `json:"artifact_results"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "ok", payload.Status)
+	require.NotEmpty(t, payload.ActivationPath)
+	require.Equal(t, 1, payload.ProjectOutputCount)
+	require.Zero(t, payload.GlobalOutputCount)
+	require.Contains(t, payload.ArtifactResults, struct {
+		Artifact       string `json:"artifact"`
+		ArtifactType   string `json:"artifact_type"`
+		Path           string `json:"path"`
+		EffectiveScope string `json:"effective_scope"`
+		Status         string `json:"status"`
+	}{
+		Artifact:       "docs-style",
+		ArtifactType:   "local-skill",
+		Path:           ".codex/skills/docs-style",
+		EffectiveScope: "project",
+		Status:         "project_applied",
+	})
+	for _, artifact := range payload.ArtifactResults {
+		require.NotContains(t, []string{"AGENTS.md", "HUMANS.md", "BOOTSTRAP.md"}, artifact.Path)
+	}
+
+	target, err := os.Readlink(filepath.Join(repo.Root, ".codex", "skills", "docs-style"))
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(repo.Root, "skills", "docs", "docs-style"), target)
+
+	activation, err := harnesspkg.LoadFrameworkActivation(filepath.Join(repo.Root, ".git"), "codex")
+	require.NoError(t, err)
+	require.Len(t, activation.ProjectOutputs, 1)
+	require.Equal(t, ".codex/skills/docs-style", activation.ProjectOutputs[0].Path)
+}
+
+func readRootGuidanceArtifacts(t *testing.T, repoRoot string) map[string]string {
+	t.Helper()
+
+	artifacts := map[string]string{}
+	for _, path := range []string{"AGENTS.md", "HUMANS.md", "BOOTSTRAP.md"} {
+		data, err := os.ReadFile(filepath.Join(repoRoot, path))
+		require.NoError(t, err)
+		artifacts[path] = string(data)
+	}
+
+	return artifacts
+}
+
+func indentYAMLBlock(value string) string {
+	lines := strings.SplitAfter(value, "\n")
+	result := ""
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		result += "    " + line
+	}
+
+	return result
 }
 
 func makeHyardAgentAddonHandlerExecutable(t *testing.T, repo *testutil.Repo) {
