@@ -108,8 +108,16 @@ _Avoid_: add
 Named inputs that an installable package may declare for Package Installation; absence means the package needs no user-provided values.
 _Avoid_: environment variables, runtime state
 
+**Package-Owned Runtime File**:
+A runtime file written into the current Harness Runtime by Package Installation and owned by that package.
+_Avoid_: projection path, processed file
+
+**Package Ownership Scope**:
+The package-derived set of Package-Owned Runtime Files that a Package Uninstallation may delete.
+_Avoid_: projection scope, write scope, export scope, orchestration scope
+
 **Package Uninstallation**:
-The lifecycle operation that removes an installed Orbit Package or Harness Package from a Harness Runtime.
+The lifecycle operation that fully removes an installed Orbit Package or Harness Package from a Harness Runtime.
 _Avoid_: remove
 
 **Agent Framework**:
@@ -265,13 +273,34 @@ _Avoid_: rule
 - Top-level package lifecycle commands use install/uninstall language; scoped member-editing commands may use add/remove language.
 - A **Package Uninstallation** targets one installed package name; an ambiguous name must be qualified as an **Orbit Package** or **Harness Package**.
 - A **Package Uninstallation** identifies its target by the installed package name, not by a versioned package coordinate.
+- A **Package Uninstallation** removes the target package from the current Harness Runtime rather than detaching it from active membership while retaining package truth.
+- After **Package Uninstallation**, retained provenance or audit evidence must not keep the target visible as installed, active, reapplicable, or readiness-relevant.
+- A **Package Uninstallation** deletes the target package's install record instead of retaining a detached install record in `.harness/installs/`.
+- A **Package Uninstallation** deletes the target package's hosted OrbitSpec from `.harness/orbits/` unless another active package still owns or references it.
+- A **Package Uninstallation** removes the target package's marked root guidance block when the block has unambiguous owner identity.
+- A **Package Uninstallation** does not infer ownership from markerless **Run View Root Guidance** and must leave markerless presentation text untouched.
+- A **Package Uninstallation** may modify or delete an untracked root guidance artifact when the removed content has unambiguous target-package owner identity and any remaining content can be preserved.
+- A **Package Uninstallation** deletes target-owned **Package-Owned Runtime Files** regardless of whether Git reports them as tracked, staged, unstaged, or untracked.
+- A **Package Uninstallation** may delete locally changed **Package-Owned Runtime Files** after warning and explicit confirmation.
+- In non-interactive **Package Uninstallation**, `--yes` confirms deletion of target-owned **Package-Owned Runtime Files**, including files with local Git changes.
+- A **Package Uninstallation** dry run reports target-owned files that would be deleted and highlights any local Git changes requiring confirmation.
+- A single **Orbit Package** uninstallation may execute without confirmation when all deleted files are clearly target-owned and no local Git changes, shared ownership, global agent cleanup, or multi-package side effects require confirmation.
+- A **Package Uninstallation** asks for confirmation when it will delete locally changed target-owned files or perform broader side effects such as global agent cleanup or multi-package removal.
+- A **Package Uninstallation** cleans up empty directories created by deleting target-owned files, stopping at repository, runtime-control, and non-empty directory boundaries.
+- A member role such as subject, rule, or process does not by itself decide **Package Uninstallation** deletion; package ownership decides deletion.
+- Process-role files may be **Package-Owned Runtime Files** and should be deleted during **Package Uninstallation** when owned by the target package.
+- Files that an orbit reads, projects, edits, processes, or scopes over are not deleted by **Package Uninstallation** unless they are **Package-Owned Runtime Files**.
+- A **Package Ownership Scope** is derived from the installed package's authored member truth and source payload, not from projection, write, export, or orchestration scope.
+- A **Package Uninstallation** uses the target package's **Package Ownership Scope** to decide which runtime files to delete.
 - Package type ambiguity during **Package Uninstallation** is never guessed; the user must choose `orbit` or `harness` explicitly.
 - A **Package Uninstallation** may target a manually added **Orbit Package**, but command output must disclose the manual source because no install provenance exists.
-- Uninstalling a **Harness Package** removes that harness package and its included orbit packages as one package lifecycle operation.
+- Uninstalling a **Harness Package** fully removes that harness package, its included orbit packages, harness-owned runtime files, harness-owned root guidance, and package records as one package lifecycle operation.
 - Uninstalling one **Orbit Package** may execute immediately, while uninstalling a **Harness Package** needs preview and confirmation support because it can remove multiple orbits and global agent outputs.
 - Top-level `remove` remains a compatibility alias for **Package Uninstallation**, but documentation and user-facing examples should prefer `uninstall`.
 - The compatibility `remove` surface stays callable for existing scripts but should be hidden from top-level help.
 - The compatibility `remove` surface may keep its own help output, but that help should identify `uninstall` as the preferred command.
+- The compatibility `remove` surface must preserve **Package Uninstallation** semantics rather than expose lower-level detach or shrink behavior.
+- Lower-level runtime member detach, bundle shrink, or member removal may exist as plumbing or maintainer operations, but they are not public **Package Uninstallation**.
 - Package uninstallation JSON should preserve existing remove-shaped result fields for compatibility, even when the canonical command name is `uninstall`.
 - Human-readable output from the canonical `uninstall` surface should use `uninstalled` language.
 - Preview and confirmation output from the canonical `uninstall` surface should describe targets as items to uninstall.
@@ -379,6 +408,20 @@ _Avoid_: rule
 - "launcher" could become scattered framework-specific process code; resolved: each **Agent Framework Launcher** declares its invocation contract, and **Harness Start** depends on that contract.
 - "init skill" could be confused with ordinary skill dependencies; resolved: use **Bootstrap Agent Skill** for the framework-specific skill that drives runtime bootstrap.
 - "uninstall" could imply install provenance always exists; resolved: `hyard uninstall orbit` may remove a manually added orbit package, but must report its manual source.
+- "uninstall" could imply detaching an active member while retaining hosted package truth; resolved: **Package Uninstallation** fully removes the package from the current Harness Runtime, and any retained evidence must not keep it installed, active, reapplicable, or readiness-relevant.
+- A detached install record could be treated as uninstall evidence, but it keeps package provenance in the active install-record host; resolved: **Package Uninstallation** deletes the install record, and ordinary Git history carries uninstall evidence.
+- Keeping a hosted OrbitSpec after uninstall could support later authoring, but it leaves package truth in the runtime host; resolved: **Package Uninstallation** deletes the hosted OrbitSpec unless another active package still owns or references it.
+- "uninstall root guidance" could imply deleting presentation text by content matching; resolved: **Package Uninstallation** removes only marked root guidance blocks with unambiguous owner identity and leaves markerless **Run View Root Guidance** untouched.
+- Untracked root guidance could be treated as dirty user work, but freshly installed packages often create untracked root guidance before checkpoint; resolved: **Package Uninstallation** uses marked block owner identity to remove target-owned content and preserve the rest.
+- "files touched by an orbit" could mean projected, processed, edited, or owned files; resolved: **Package Uninstallation** deletes **Package-Owned Runtime Files**, not every file in an orbit's projection or work scope.
+- Local Git changes on owned files could block uninstall, but that makes wrong-package cleanup depend on checkpoint timing; resolved: **Package Uninstallation** warns and asks for confirmation before deleting locally changed **Package-Owned Runtime Files**.
+- Non-interactive uninstall could need a separate force flag for owned-file deletion, but that would split the package lifecycle confirmation model; resolved: `--yes` confirms deletion of target-owned files, and `--dry-run` previews the deletion set.
+- Single-orbit uninstall could always prompt for safety, but that would make wrong-package rollback feel unlike package-manager uninstall; resolved: clean single-orbit uninstall may execute immediately, while local edits or broader side effects require confirmation.
+- Package-owned file deletion could leave empty directories behind; resolved: **Package Uninstallation** removes empty directories caused by owned-file deletion while stopping at safe runtime boundaries.
+- Harness package uninstall could be treated as bundle shrink or member detach, but that would not match package-manager uninstall; resolved: **Package Uninstallation** fully removes the installed Harness Package and its owned runtime surface.
+- Compatibility `remove` could keep legacy detach/shrink behavior, but that would split package lifecycle semantics; resolved: top-level `remove` remains an alias for **Package Uninstallation**, while lower-level detach/shrink behavior belongs to plumbing or maintainer operations.
+- Process-role files could be preserved because they are projection-only in older scoped operations; resolved: process-role files are deleted during **Package Uninstallation** when they are target-owned **Package-Owned Runtime Files**.
+- "scope" could mean projection, write, export, orchestration, or ownership; resolved: uninstall deletion uses **Package Ownership Scope**, a package-derived ownership set distinct from behavior scopes.
 - "workflow" could imply a generic CI workflow, arbitrary task graph, or a full Harness Runtime; resolved: public language may call an atomic closed-loop orbit package an **Orbit Workflow**, while internal and compatibility contracts remain orbit-based.
 - `workflow="docs"` in public marker syntax could be misread as a display name distinct from the owner package id; resolved: marker `workflow` is a **Workflow ID** that must equal the underlying orbit id for `orbit:` blocks and the harness package id for `harness:` blocks.
 - **Workflow ID** could be misread as a replacement for concrete orbit and harness identities; resolved: it is only their public root-guidance marker umbrella.
