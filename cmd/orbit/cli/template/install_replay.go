@@ -136,7 +136,9 @@ func BuildInstallOwnedCleanupPlan(
 	existingRecord InstallRecord,
 	nextPreview TemplateApplyPreview,
 ) (InstallOwnedCleanupPlan, error) {
-	if err := validateDestructiveReplayInstallRecord(existingRecord); err != nil {
+	var err error
+	existingRecord, err = recordWithDestructiveReplayVariablesSnapshot(ctx, repoRoot, existingRecord)
+	if err != nil {
 		return InstallOwnedCleanupPlan{}, err
 	}
 
@@ -327,15 +329,32 @@ func replayInstalledTemplateBestEffort(ctx context.Context, repoRoot string, rec
 	return replay, true
 }
 
-func validateDestructiveReplayInstallRecord(record InstallRecord) error {
-	if record.Variables == nil {
-		return fmt.Errorf(
-			"install record for orbit %q does not contain variables snapshot required for overwrite replay",
-			record.OrbitID,
-		)
+func recordWithDestructiveReplayVariablesSnapshot(
+	ctx context.Context,
+	repoRoot string,
+	record InstallRecord,
+) (InstallRecord, error) {
+	if record.Variables != nil {
+		return record, nil
 	}
 
-	return nil
+	source, err := resolveInstalledTemplateSource(ctx, repoRoot, record)
+	if err != nil {
+		return InstallRecord{}, err
+	}
+	if len(source.Manifest.Variables) > 0 {
+		return InstallRecord{}, missingVariablesSnapshotForOverwriteReplayError(record)
+	}
+
+	record.Variables = &InstallVariablesSnapshot{}
+	return record, nil
+}
+
+func missingVariablesSnapshotForOverwriteReplayError(record InstallRecord) error {
+	return fmt.Errorf(
+		"install record for orbit %q does not contain variables snapshot required for overwrite replay",
+		record.OrbitID,
+	)
 }
 
 func normalizeRecordedRemoteTemplateRef(ref string) string {
