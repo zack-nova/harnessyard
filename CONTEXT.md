@@ -104,6 +104,10 @@ _Avoid_: arbitrary namespace, replacement package type
 The lifecycle operation that applies an Orbit Package or Harness Package to a Harness Runtime with package provenance.
 _Avoid_: add
 
+**Package Variables**:
+Named inputs that an installable package may declare for Package Installation; absence means the package needs no user-provided values.
+_Avoid_: environment variables, runtime state
+
 **Package Uninstallation**:
 The lifecycle operation that removes an installed Orbit Package or Harness Package from a Harness Runtime.
 _Avoid_: remove
@@ -205,6 +209,8 @@ _Avoid_: rule
 - A **Package Registry** lets public commands resolve **Package Handles** without exposing Git branch locators in ordinary demos.
 - Early demos may use explicit GitHub package locators before **Package Registry** resolution is ready.
 - A **Harness Runtime** may install and uninstall **Orbit Packages** and **Harness Packages** through package lifecycle commands.
+- A **Package Installation** may declare zero **Package Variables**; zero variables is a complete variable contract, not a missing one.
+- A **Package Installation** records its complete **Package Variables** contract, including the explicit zero-variable case.
 - **Package Installation** in **Run View** may automatically compose root guidance and apply **Run View Cleanup** after package truth is written.
 - **Package Installation** in **Run View** outputs guidance incrementally for the newly installed package rather than recomposing existing markerless presentation guidance.
 - **Package Installation** appends incremental **Run View Root Guidance** to the end of the relevant root guidance file with stable separation.
