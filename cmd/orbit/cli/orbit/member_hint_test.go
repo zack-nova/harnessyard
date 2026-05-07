@@ -31,6 +31,21 @@ func TestParseMarkdownMemberHintExtractsOrbitMemberAndDefaultsNameAndRole(t *tes
 	}, hint)
 }
 
+func TestParseMarkdownMemberHintNormalizesCRLFBeforeStrictDelimiters(t *testing.T) {
+	t.Parallel()
+
+	hint, ok, err := parseMarkdownMemberHint("docs/process/review.md", []byte(""+
+		"---\r\n"+
+		"orbit_member:\r\n"+
+		"  name: docs-review\r\n"+
+		"---\r\n"+
+		"\r\n"+
+		"# Review\r\n"))
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "docs-review", hint.Name)
+}
+
 func TestParseMarkdownMemberHintReturnsFalseWhenOrbitMemberIsAbsent(t *testing.T) {
 	t.Parallel()
 
@@ -45,7 +60,7 @@ func TestParseMarkdownMemberHintReturnsFalseWhenOrbitMemberIsAbsent(t *testing.T
 	require.Equal(t, resolvedMemberHint{}, hint)
 }
 
-func TestParseMarkdownMemberHintAcceptsFlatNameAndDescription(t *testing.T) {
+func TestParseMarkdownMemberHintIgnoresFlatMemberMetadata(t *testing.T) {
 	t.Parallel()
 
 	hint, ok, err := parseMarkdownMemberHint("docs/process/review.md", []byte(""+
@@ -56,15 +71,8 @@ func TestParseMarkdownMemberHintAcceptsFlatNameAndDescription(t *testing.T) {
 		"\n"+
 		"# Review\n"))
 	require.NoError(t, err)
-	require.True(t, ok)
-	require.Equal(t, resolvedMemberHint{
-		Kind:        memberHintKindFileFrontmatter,
-		HintPath:    "docs/process/review.md",
-		RootPath:    "docs/process/review.md",
-		Name:        "docs-review",
-		Description: "Documentation review workflow",
-		Role:        OrbitMemberRule,
-	}, hint)
+	require.False(t, ok)
+	require.Equal(t, resolvedMemberHint{}, hint)
 }
 
 func TestParseMarkdownMemberHintIgnoresMixedDocumentMetadata(t *testing.T) {
@@ -74,6 +82,34 @@ func TestParseMarkdownMemberHintIgnoresMixedDocumentMetadata(t *testing.T) {
 		"---\n"+
 		"name: docs-review\n"+
 		"title: Review Flow\n"+
+		"---\n"+
+		"\n"+
+		"# Review\n"))
+	require.NoError(t, err)
+	require.False(t, ok)
+	require.Equal(t, resolvedMemberHint{}, hint)
+}
+
+func TestParseMarkdownMemberHintIgnoresNonMappingDocumentFrontmatter(t *testing.T) {
+	t.Parallel()
+
+	hint, ok, err := parseMarkdownMemberHint("docs/process/review.md", []byte(""+
+		"---\n"+
+		"- Review Flow\n"+
+		"---\n"+
+		"\n"+
+		"# Review\n"))
+	require.NoError(t, err)
+	require.False(t, ok)
+	require.Equal(t, resolvedMemberHint{}, hint)
+}
+
+func TestParseMarkdownMemberHintIgnoresMalformedDocumentFrontmatterWithoutOrbitMember(t *testing.T) {
+	t.Parallel()
+
+	hint, ok, err := parseMarkdownMemberHint("docs/process/review.md", []byte(""+
+		"---\n"+
+		"title: [Review Flow\n"+
 		"---\n"+
 		"\n"+
 		"# Review\n"))
@@ -95,6 +131,21 @@ func TestParseMarkdownMemberHintRejectsInvalidOrbitMemberShape(t *testing.T) {
 	require.ErrorContains(t, err, "orbit_member must be a mapping")
 }
 
+func TestParseMarkdownMemberHintRejectsMalformedFrontmatterWithOrbitMember(t *testing.T) {
+	t.Parallel()
+
+	_, _, err := parseMarkdownMemberHint("docs/process/review.md", []byte(""+
+		"---\n"+
+		"title: [Review Flow\n"+
+		"orbit_member:\n"+
+		"  name: review\n"+
+		"---\n"+
+		"\n"+
+		"# Review\n"))
+	require.Error(t, err)
+	require.ErrorContains(t, err, "frontmatter is invalid YAML")
+}
+
 func TestParseMarkdownMemberHintRejectsReservedName(t *testing.T) {
 	t.Parallel()
 
@@ -109,37 +160,81 @@ func TestParseMarkdownMemberHintRejectsReservedName(t *testing.T) {
 	require.ErrorContains(t, err, `orbit_member.name "spec" is reserved`)
 }
 
-func TestParseMarkdownMemberHintPreservesExplicitFields(t *testing.T) {
+func TestParseMarkdownMemberHintRejectsMetaRole(t *testing.T) {
 	t.Parallel()
 
-	writeFalse := false
-	orchestrationTrue := true
+	_, _, err := parseMarkdownMemberHint("docs/spec.md", []byte(""+
+		"---\n"+
+		"orbit_member:\n"+
+		"  name: docs-meta\n"+
+		"  role: meta\n"+
+		"---\n"+
+		"\n"+
+		"# Spec\n"))
+	require.Error(t, err)
+	require.ErrorContains(t, err, `orbit_member.role: invalid member hint role "meta"`)
+}
+
+func TestParseMarkdownMemberHintRejectsDisallowedOrbitMemberFields(t *testing.T) {
+	t.Parallel()
+
+	for _, field := range []string{"paths", "scopes", "capabilities", "behavior", "meta", "unsupported"} {
+		field := field
+		t.Run(field, func(t *testing.T) {
+			t.Parallel()
+
+			_, _, err := parseMarkdownMemberHint("docs/process/review.md", []byte(""+
+				"---\n"+
+				"orbit_member:\n"+
+				"  name: docs-review\n"+
+				"  "+field+": {}\n"+
+				"---\n"+
+				"\n"+
+				"# Review\n"))
+			require.Error(t, err)
+			require.ErrorContains(t, err, "field "+field+" not found")
+		})
+	}
+}
+
+func TestParseMarkdownMemberHintRejectsNonBootstrapLane(t *testing.T) {
+	t.Parallel()
+
+	_, _, err := parseMarkdownMemberHint("docs/process/review.md", []byte(""+
+		"---\n"+
+		"orbit_member:\n"+
+		"  name: docs-review\n"+
+		"  lane: default\n"+
+		"---\n"+
+		"\n"+
+		"# Review\n"))
+	require.Error(t, err)
+	require.ErrorContains(t, err, `orbit_member.lane must be "bootstrap" when present`)
+}
+
+func TestParseMarkdownMemberHintPreservesExplicitFields(t *testing.T) {
+	t.Parallel()
 
 	hint, ok, err := parseMarkdownMemberHint("docs/process/review.md", []byte(""+
 		"---\n"+
 		"orbit_member:\n"+
 		"  name: docs-review\n"+
+		"  description: Review workflow\n"+
 		"  role: process\n"+
 		"  lane: bootstrap\n"+
-		"  scopes:\n"+
-		"    write: false\n"+
-		"    orchestration: true\n"+
 		"---\n"+
 		"\n"+
 		"# Review\n"))
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, resolvedMemberHint{
-		Kind:     memberHintKindFileFrontmatter,
-		HintPath: "docs/process/review.md",
-		RootPath: "docs/process/review.md",
-		Name:     "docs-review",
-		Role:     OrbitMemberProcess,
-		Lane:     OrbitMemberLaneBootstrap,
-		Scopes: &OrbitMemberScopePatch{
-			Write:         &writeFalse,
-			Orchestration: &orchestrationTrue,
-		},
+		Kind:        memberHintKindFileFrontmatter,
+		HintPath:    "docs/process/review.md",
+		RootPath:    "docs/process/review.md",
+		Name:        "docs-review",
+		Description: "Review workflow",
+		Role:        OrbitMemberProcess,
+		Lane:        OrbitMemberLaneBootstrap,
 	}, hint)
 }
 
@@ -170,21 +265,25 @@ func TestParseDirectoryMemberHintRejectsUnknownOrbitMemberField(t *testing.T) {
 	require.ErrorContains(t, err, "field unsupported not found")
 }
 
-func TestParseDirectoryMemberHintAcceptsFlatMarkerWithRuleDefault(t *testing.T) {
+func TestParseDirectoryMemberHintRejectsTopLevelFieldsOutsideOrbitMember(t *testing.T) {
 	t.Parallel()
 
-	hint, err := parseDirectoryMemberHint("docs/process/.orbit-member.yaml", []byte(""+
+	_, err := parseDirectoryMemberHint("docs/process/.orbit-member.yaml", []byte(""+
+		"orbit_member:\n"+
+		"  name: docs-process\n"+
+		"metadata: docs\n"))
+	require.Error(t, err)
+	require.ErrorContains(t, err, `top-level field "metadata" is not supported`)
+}
+
+func TestParseDirectoryMemberHintRejectsFlatMarker(t *testing.T) {
+	t.Parallel()
+
+	_, err := parseDirectoryMemberHint("docs/process/.orbit-member.yaml", []byte(""+
 		"name: docs-process\n"+
 		"description: Documentation review workflow\n"))
-	require.NoError(t, err)
-	require.Equal(t, resolvedMemberHint{
-		Kind:        memberHintKindDirectoryMarker,
-		HintPath:    "docs/process/.orbit-member.yaml",
-		RootPath:    "docs/process",
-		Name:        "docs-process",
-		Description: "Documentation review workflow",
-		Role:        OrbitMemberRule,
-	}, hint)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "must define nested orbit_member")
 }
 
 func TestBuildMemberHintCandidateForFileHint(t *testing.T) {
@@ -237,6 +336,35 @@ func TestBuildMemberHintCandidateForDirectoryHint(t *testing.T) {
 			Include: []string{"docs/process/**"},
 		},
 	}, candidate.Member)
+}
+
+func TestBackfilledExistingMemberPreservesExplicitScopes(t *testing.T) {
+	t.Parallel()
+
+	writeFalse := false
+	existing := OrbitMember{
+		Name: "review",
+		Role: OrbitMemberRule,
+		Paths: OrbitMemberPaths{
+			Include: []string{"docs/process/review.md"},
+		},
+		Scopes: &OrbitMemberScopePatch{
+			Write: &writeFalse,
+		},
+	}
+	hint := resolvedMemberHint{
+		Kind:     memberHintKindFileFrontmatter,
+		HintPath: "docs/process/review.md",
+		RootPath: "docs/process/review.md",
+		Name:     "review",
+		Role:     OrbitMemberProcess,
+	}
+	candidate := buildMemberHintCandidate(hint).Member
+
+	next, err := backfilledExistingMember(existing, hint, candidate)
+	require.NoError(t, err)
+	require.Equal(t, OrbitMemberProcess, next.Role)
+	require.Equal(t, existing.Scopes, next.Scopes)
 }
 
 func TestIsHintManageableMember(t *testing.T) {
@@ -342,4 +470,27 @@ func TestConsumeMemberHintPathsRollsBackAppliedHintsWhenLaterMutationFails(t *te
 	reviewAfter, err := os.ReadFile(reviewPath)
 	require.NoError(t, err)
 	require.Equal(t, reviewBefore, string(reviewAfter))
+}
+
+func TestConsumeMemberHintPathsRejectsFlatMarkdownMetadataWithoutMutation(t *testing.T) {
+	repoRoot := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(repoRoot, "docs", "rules"), 0o755))
+
+	stylePath := filepath.Join(repoRoot, "docs", "rules", "style.md")
+	styleBefore := "" +
+		"---\n" +
+		"name: docs-style\n" +
+		"description: Ordinary document metadata\n" +
+		"---\n" +
+		"\n" +
+		"# Style\n"
+	require.NoError(t, os.WriteFile(stylePath, []byte(styleBefore), 0o644))
+
+	_, err := ConsumeMemberHintPaths(repoRoot, []string{"docs/rules/style.md"})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "frontmatter does not define orbit_member")
+
+	styleAfter, err := os.ReadFile(stylePath)
+	require.NoError(t, err)
+	require.Equal(t, styleBefore, string(styleAfter))
 }

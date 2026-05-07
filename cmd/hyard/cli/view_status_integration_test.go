@@ -650,17 +650,15 @@ func TestHyardViewRunTextNonInteractiveDoesNotPromptForMarkedGuidanceResolution(
 	require.Equal(t, agentsBefore, readRepoFile(t, repo.Root, "AGENTS.md"))
 }
 
-func TestHyardViewRunJSONBlocksAmbiguousFlatMemberHintBeforeMutation(t *testing.T) {
+func TestHyardViewRunJSONIgnoresFlatMarkdownMetadata(t *testing.T) {
 	t.Parallel()
 
-	repo := seedHyardViewRunAmbiguousFlatMemberHintRuntimeRepo(t)
-	agentsBefore, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
-	require.NoError(t, err)
+	repo := seedHyardViewRunFlatMarkdownMetadataRuntimeRepo(t)
 	reviewBefore, err := os.ReadFile(filepath.Join(repo.Root, "docs", "process", "review.md"))
 	require.NoError(t, err)
 
 	stdout, stderr, err := executeHyardCLI(t, repo.Root, "view", "run", "--json")
-	require.ErrorContains(t, err, "Run View cleanup blocked by Authored Truth Drift")
+	require.NoError(t, err)
 	require.Empty(t, stderr)
 
 	var payload struct {
@@ -672,23 +670,27 @@ func TestHyardViewRunJSONBlocksAmbiguousFlatMemberHintBeforeMutation(t *testing.
 		Blockers []string `json:"blockers"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
-	require.False(t, payload.Ready)
-	require.False(t, payload.Changed)
-	require.Empty(t, payload.ChangedFiles)
-	require.Contains(t, payload.Blockers, "docs docs/process/review.md: docs/process/review.md mixes flat member hint fields with ordinary frontmatter metadata; use nested orbit_member for Run View cleanup; run `hyard orbit content apply docs --check --json`")
+	require.True(t, payload.Ready)
+	require.True(t, payload.Changed)
+	require.Empty(t, payload.Blockers)
+	require.Contains(t, payload.ChangedFiles, struct {
+		Path string `json:"path"`
+	}{
+		Path: "AGENTS.md",
+	})
 
 	agentsAfter, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
 	require.NoError(t, err)
 	reviewAfter, err := os.ReadFile(filepath.Join(repo.Root, "docs", "process", "review.md"))
 	require.NoError(t, err)
-	require.Equal(t, agentsBefore, agentsAfter)
+	require.Equal(t, "Docs orbit guidance\n", string(agentsAfter))
 	require.Equal(t, reviewBefore, reviewAfter)
 }
 
 func TestHyardViewRunJSONBlocksInvalidMemberHintBeforeMutation(t *testing.T) {
 	t.Parallel()
 
-	repo := seedHyardViewRunAmbiguousFlatMemberHintRuntimeRepo(t)
+	repo := seedHyardViewRunFlatMarkdownMetadataRuntimeRepo(t)
 	repo.WriteFile(t, "docs/process/review.md", ""+
 		"---\n"+
 		"orbit_member: review\n"+
@@ -1098,7 +1100,7 @@ func seedHyardViewRunNestedMarkdownMemberHintRuntimeRepo(t *testing.T) *testutil
 	return repo
 }
 
-func seedHyardViewRunAmbiguousFlatMemberHintRuntimeRepo(t *testing.T) *testutil.Repo {
+func seedHyardViewRunFlatMarkdownMetadataRuntimeRepo(t *testing.T) *testutil.Repo {
 	t.Helper()
 
 	repo := testutil.NewRepo(t)
@@ -1150,7 +1152,7 @@ func seedHyardViewRunAmbiguousFlatMemberHintRuntimeRepo(t *testing.T) *testutil.
 	})
 	require.NoError(t, err)
 
-	repo.AddAndCommit(t, "seed ambiguous flat member hint runtime repo")
+	repo.AddAndCommit(t, "seed flat markdown metadata runtime repo")
 
 	return repo
 }

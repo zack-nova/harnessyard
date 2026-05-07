@@ -382,8 +382,9 @@ func TestMemberBackfillCheckExcludesCapabilityHintCandidates(t *testing.T) {
 		"# Review Skill\n")
 	repo.WriteFile(t, "docs/rules/style.md", ""+
 		"---\n"+
-		"name: docs-style\n"+
-		"description: Style guide\n"+
+		"orbit_member:\n"+
+		"  name: docs-style\n"+
+		"  description: Style guide\n"+
 		"---\n"+
 		"\n"+
 		"# Style\n")

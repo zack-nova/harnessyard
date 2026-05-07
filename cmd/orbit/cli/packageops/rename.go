@@ -815,11 +815,7 @@ func renameMemberHintNameInRoot(root *yaml.Node, oldPackage string, newPackage s
 		return changed, true, err
 	}
 
-	if !isFlatMemberHintRoot(root) {
-		return false, false, nil
-	}
-	changed, err := renameMemberHintNameInMapping(root, oldPackage, newPackage)
-	return changed, true, err
+	return false, false, nil
 }
 
 func renameMemberHintNameInMapping(mapping *yaml.Node, oldPackage string, newPackage string) (bool, error) {
@@ -843,21 +839,6 @@ func renameMemberHintNameInMapping(mapping *yaml.Node, oldPackage string, newPac
 		return true, nil
 	}
 	return false, nil
-}
-
-func isFlatMemberHintRoot(root *yaml.Node) bool {
-	hasName := false
-	for index := 0; index+1 < len(root.Content); index += 2 {
-		keyNode := root.Content[index]
-		switch keyNode.Value {
-		case "name":
-			hasName = true
-		case "description", "role", "lane", "scopes":
-		default:
-			return false
-		}
-	}
-	return hasName
 }
 
 func applyFileMutations(repoRoot string, mutations []fileMutation) ([]fileMutation, error) {
