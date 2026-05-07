@@ -535,6 +535,35 @@ func TestBuildTemplateApplyPreviewReusesRepoVarsAndCollectsWrites(t *testing.T) 
 	}, preview.InstallRecord)
 }
 
+func TestBuildTemplateApplyPreviewSnapshotsEmptyVariablesContract(t *testing.T) {
+	t.Parallel()
+
+	repo, sourceRef := seedLocalTemplateApplyRepoWithoutVariables(t)
+
+	preview, err := BuildTemplateApplyPreview(context.Background(), TemplateApplyPreviewInput{
+		RepoRoot:  repo.Root,
+		SourceRef: sourceRef,
+		Now:       time.Date(2026, time.March, 21, 11, 0, 0, 0, time.UTC),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, preview.InstallRecord.Variables)
+	require.Equal(t, &InstallVariablesSnapshot{
+		Declarations:    map[string]bindings.VariableDeclaration{},
+		ResolvedAtApply: map[string]bindings.VariableBinding{},
+	}, preview.InstallRecord.Variables)
+
+	filename, err := WriteInstallRecord(repo.Root, preview.InstallRecord)
+	require.NoError(t, err)
+	data, err := os.ReadFile(filename)
+	require.NoError(t, err)
+	require.Contains(t, string(data), ""+
+		"variables:\n"+
+		"    declarations: {}\n"+
+		"    resolved_at_apply: {}\n"+
+		"    unresolved_at_apply: []\n"+
+		"    observed_runtime_unresolved: []\n")
+}
+
 func TestBuildTemplateApplyPreviewPrefersScopedRepoVars(t *testing.T) {
 	t.Parallel()
 
@@ -1744,6 +1773,46 @@ func seedLocalTemplateApplyRepo(t *testing.T) (*testutil.Repo, string) {
 
 	repo.Run(t, "rm", "-f", ".harness/orbits/docs.yaml", ".harness/vars.yaml", "docs/guide.md")
 	repo.AddAndCommit(t, "clear runtime branch")
+
+	exists, err := gitpkg.LocalBranchExists(context.Background(), repo.Root, "orbit-template/docs")
+	require.NoError(t, err)
+	require.True(t, exists)
+
+	return repo, "orbit-template/docs"
+}
+
+func seedLocalTemplateApplyRepoWithoutVariables(t *testing.T) (*testutil.Repo, string) {
+	t.Helper()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, ".orbit/config.yaml", ""+
+		"version: 1\n"+
+		"shared_scope: []\n"+
+		"behavior:\n"+
+		"  outside_changes_mode: warn\n"+
+		"  block_switch_if_hidden_dirty: true\n"+
+		"  commit_append_trailer: true\n"+
+		"  sparse_checkout_mode: no-cone\n")
+	repo.WriteFile(t, ".harness/orbits/docs.yaml", ""+
+		"id: docs\n"+
+		"description: Docs orbit\n"+
+		"include:\n"+
+		"  - docs/**\n")
+	repo.WriteFile(t, "docs/guide.md", "Static guide\n")
+	repo.AddAndCommit(t, "seed zero-variable runtime repo")
+
+	_, err := SaveTemplateBranch(context.Background(), TemplateSaveInput{
+		Preview: TemplateSavePreviewInput{
+			RepoRoot:     repo.Root,
+			OrbitID:      "docs",
+			TargetBranch: "orbit-template/docs",
+			Now:          time.Date(2026, time.March, 21, 10, 0, 0, 0, time.UTC),
+		},
+	})
+	require.NoError(t, err)
+
+	repo.Run(t, "rm", "-f", ".harness/orbits/docs.yaml", "docs/guide.md")
+	repo.AddAndCommit(t, "clear zero-variable runtime branch")
 
 	exists, err := gitpkg.LocalBranchExists(context.Background(), repo.Root, "orbit-template/docs")
 	require.NoError(t, err)

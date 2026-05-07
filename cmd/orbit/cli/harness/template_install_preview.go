@@ -610,12 +610,6 @@ func buildRenderedTemplateInstallPayload(
 	localInputs templateInstallLocalInputs,
 ) (map[string]bindings.ResolvedBinding, *bindings.VarsFile, []orbittemplate.CandidateFile, *orbittemplate.CandidateFile, *orbittemplate.InstallVariablesSnapshot, []string, error) {
 	ordinaryFiles, rootAgentsFile := splitRootAgentsTemplateFiles(input.Source.Files)
-	renderedFiles := cloneCandidateFiles(ordinaryFiles)
-	var renderedRootAgentsFile *orbittemplate.CandidateFile
-	if rootAgentsFile != nil {
-		cloned := cloneInstallCandidateFile(*rootAgentsFile)
-		renderedRootAgentsFile = &cloned
-	}
 
 	declared := make(map[string]bindings.VariableDeclaration, len(input.Source.Manifest.Variables))
 	for name, spec := range input.Source.Manifest.Variables {
@@ -623,9 +617,6 @@ func buildRenderedTemplateInstallPayload(
 			Description: spec.Description,
 			Required:    spec.Required,
 		}
-	}
-	if len(declared) == 0 {
-		return map[string]bindings.ResolvedBinding{}, nil, renderedFiles, renderedRootAgentsFile, nil, []string{}, nil
 	}
 
 	bindingsFile := localInputs.bindingsFile
@@ -656,10 +647,11 @@ func buildRenderedTemplateInstallPayload(
 		renderValues[name] = resolved.Value
 	}
 
-	renderedFiles, err = renderTemplateInstallFiles(ordinaryFiles, renderValues, !input.RequireResolvedBindings)
+	renderedFiles, err := renderTemplateInstallFiles(ordinaryFiles, renderValues, !input.RequireResolvedBindings)
 	if err != nil {
 		return nil, nil, nil, nil, nil, nil, fmt.Errorf("render harness template files: %w", err)
 	}
+	var renderedRootAgentsFile *orbittemplate.CandidateFile
 	if rootAgentsFile != nil {
 		renderedAgentsFiles, err := renderTemplateInstallFiles(
 			[]orbittemplate.CandidateFile{*rootAgentsFile},
