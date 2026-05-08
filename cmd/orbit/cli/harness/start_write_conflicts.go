@@ -189,6 +189,9 @@ func startWriteTargets(frameworkPlan FrameworkPlan, bootstrapPlan BootstrapAgent
 			1,
 	)
 	for _, output := range frameworkPlan.ProjectOutputs {
+		if isRootGuidancePath(output.Path) {
+			continue
+		}
 		targets = append(targets, startWriteTarget{
 			Path: output.Path,
 			Kind: "framework activation guidance output",
