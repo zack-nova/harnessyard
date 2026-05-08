@@ -84,7 +84,9 @@ func TestUninstallRuntimeOrbitPackageDeletesInstallOwnedRuntimeFilesAndGuidance(
 		".harness/orbits/docs.yaml",
 		"AGENTS.md",
 		"docs/guide.md",
+		"docs/process",
 		"docs/process/flow.md",
+		"docs/rules",
 		"docs/rules/review.md",
 	}, result.RemovedPaths)
 	require.True(t, result.RemovedAgentsBlock)
@@ -101,6 +103,11 @@ func TestUninstallRuntimeOrbitPackageDeletesInstallOwnedRuntimeFilesAndGuidance(
 	require.NoFileExists(t, filepath.Join(repo.Root, "docs", "guide.md"))
 	require.NoFileExists(t, filepath.Join(repo.Root, "docs", "rules", "review.md"))
 	require.NoFileExists(t, filepath.Join(repo.Root, "docs", "process", "flow.md"))
+	require.NoDirExists(t, filepath.Join(repo.Root, "docs", "rules"))
+	require.NoDirExists(t, filepath.Join(repo.Root, "docs", "process"))
+	require.DirExists(t, filepath.Join(repo.Root, "docs"))
+	require.DirExists(t, filepath.Join(repo.Root, ".harness", "orbits"))
+	require.DirExists(t, filepath.Join(repo.Root, ".harness", "installs"))
 	require.FileExists(t, filepath.Join(repo.Root, "docs", "local-note.md"))
 }
 
@@ -262,6 +269,62 @@ func TestBuildUninstallRuntimeOrbitPackagePlanReportsUntrackedInstallOwnedFiles(
 	require.Error(t, err)
 	require.ErrorContains(t, err, `requires --yes to delete locally changed target-owned files`)
 	require.FileExists(t, filepath.Join(repo.Root, "docs", "guide.md"))
+}
+
+func TestUninstallRuntimeOrbitPackageRejectsSharedInstallOwnedPath(t *testing.T) {
+	t.Parallel()
+
+	repo := seedRuntimePackageUninstallSharedOwnershipRepo(t)
+	discovered, err := gitpkg.DiscoverRepo(context.Background(), repo.Root)
+	require.NoError(t, err)
+
+	_, err = UninstallRuntimeOrbitPackageWithOptions(
+		context.Background(),
+		discovered,
+		"docs",
+		time.Date(2026, time.May, 7, 11, 0, 0, 0, time.UTC),
+		RemoveRuntimeMemberOptions{},
+	)
+	require.Error(t, err)
+	require.ErrorContains(t, err, `docs`)
+	require.ErrorContains(t, err, `shared`)
+	require.ErrorContains(t, err, `docs/guide.md`)
+
+	require.FileExists(t, filepath.Join(repo.Root, "docs", "guide.md"))
+	require.FileExists(t, filepath.Join(repo.Root, ".harness", "orbits", "docs.yaml"))
+	require.FileExists(t, filepath.Join(repo.Root, ".harness", "installs", "docs.yaml"))
+
+	runtimeFile, err := LoadRuntimeFile(repo.Root)
+	require.NoError(t, err)
+	require.Len(t, runtimeFile.Members, 2)
+}
+
+func TestUninstallRuntimeOrbitPackageRejectsUnresolvableActiveOwnershipScope(t *testing.T) {
+	t.Parallel()
+
+	repo := seedRuntimePackageUninstallRepo(t)
+	now := time.Date(2026, time.May, 7, 11, 15, 0, 0, time.UTC)
+	addUnresolvableActiveInstallMember(t, repo, "broken", now)
+	discovered, err := gitpkg.DiscoverRepo(context.Background(), repo.Root)
+	require.NoError(t, err)
+
+	_, err = UninstallRuntimeOrbitPackageWithOptions(
+		context.Background(),
+		discovered,
+		"docs",
+		now,
+		RemoveRuntimeMemberOptions{},
+	)
+	require.Error(t, err)
+	require.ErrorContains(t, err, `resolve package ownership scope for active package "broken"`)
+
+	require.FileExists(t, filepath.Join(repo.Root, "docs", "guide.md"))
+	require.FileExists(t, filepath.Join(repo.Root, ".harness", "orbits", "docs.yaml"))
+	require.FileExists(t, filepath.Join(repo.Root, ".harness", "installs", "docs.yaml"))
+
+	runtimeFile, err := LoadRuntimeFile(repo.Root)
+	require.NoError(t, err)
+	require.Len(t, runtimeFile.Members, 2)
 }
 
 func TestRemoveRuntimeMemberRejectsBundleBackedMember(t *testing.T) {
@@ -478,6 +541,149 @@ func seedRuntimePackageUninstallRepo(t *testing.T) *testutil.Repo {
 	repo.WriteFile(t, "docs/local-note.md", "Local note that matches the orbit scope but was not installed.\n")
 
 	return repo
+}
+
+func seedRuntimePackageUninstallSharedOwnershipRepo(t *testing.T) *testutil.Repo {
+	t.Helper()
+
+	repo := testutil.NewRepo(t)
+	now := time.Date(2026, time.May, 7, 10, 0, 0, 0, time.UTC)
+	_, err := BootstrapRuntimeControlPlane(repo.Root, now)
+	require.NoError(t, err)
+
+	saveSingleFileOrbitTemplateBranch(t, repo, "docs", "docs/guide.md", "Shared guide\n", now)
+	saveSingleFileOrbitTemplateBranch(t, repo, "shared", "docs/guide.md", "Shared guide\n", now.Add(time.Minute))
+
+	_, err = orbittemplate.ApplyLocalTemplate(context.Background(), orbittemplate.TemplateApplyInput{
+		Preview: orbittemplate.TemplateApplyPreviewInput{
+			RepoRoot:  repo.Root,
+			SourceRef: "orbit-template/docs",
+			Now:       now.Add(15 * time.Minute),
+		},
+	})
+	require.NoError(t, err)
+	_, err = orbittemplate.ApplyLocalTemplate(context.Background(), orbittemplate.TemplateApplyInput{
+		Preview: orbittemplate.TemplateApplyPreviewInput{
+			RepoRoot:          repo.Root,
+			SourceRef:         "orbit-template/shared",
+			OverwriteExisting: true,
+			Now:               now.Add(20 * time.Minute),
+		},
+	})
+	require.NoError(t, err)
+
+	runtimeFile, err := LoadRuntimeFile(repo.Root)
+	require.NoError(t, err)
+	runtimeFile.Members = []RuntimeMember{
+		{
+			OrbitID: "docs",
+			Source:  MemberSourceInstallOrbit,
+			AddedAt: now.Add(15 * time.Minute),
+		},
+		{
+			OrbitID: "shared",
+			Source:  MemberSourceInstallOrbit,
+			AddedAt: now.Add(20 * time.Minute),
+		},
+	}
+	runtimeFile.Harness.UpdatedAt = now.Add(20 * time.Minute)
+	_, err = WriteManifestFile(repo.Root, ManifestFileFromRuntimeFile(runtimeFile))
+	require.NoError(t, err)
+
+	return repo
+}
+
+func saveSingleFileOrbitTemplateBranch(
+	t *testing.T,
+	repo *testutil.Repo,
+	orbitID string,
+	repoPath string,
+	content string,
+	now time.Time,
+) {
+	t.Helper()
+
+	spec, err := orbitpkg.DefaultHostedMemberSchemaSpec(orbitID)
+	require.NoError(t, err)
+	spec.Description = orbitID + " orbit"
+	spec.Members = []orbitpkg.OrbitMember{
+		{
+			Key:  orbitID + "-content",
+			Role: orbitpkg.OrbitMemberSubject,
+			Paths: orbitpkg.OrbitMemberPaths{
+				Include: []string{repoPath},
+			},
+		},
+	}
+	require.NotNil(t, spec.Behavior)
+	spec.Behavior.Scope.ExportRoles = []orbitpkg.OrbitMemberRole{
+		orbitpkg.OrbitMemberMeta,
+		orbitpkg.OrbitMemberSubject,
+	}
+	_, err = orbitpkg.WriteHostedOrbitSpec(repo.Root, spec)
+	require.NoError(t, err)
+	repo.WriteFile(t, repoPath, content)
+	repo.AddAndCommit(t, "seed "+orbitID+" template source")
+
+	_, err = orbittemplate.SaveTemplateBranch(context.Background(), orbittemplate.TemplateSaveInput{
+		Preview: orbittemplate.TemplateSavePreviewInput{
+			RepoRoot:     repo.Root,
+			OrbitID:      orbitID,
+			TargetBranch: "orbit-template/" + orbitID,
+			Now:          now,
+		},
+	})
+	require.NoError(t, err)
+
+	definitionPath, err := orbitpkg.HostedDefinitionRelativePath(orbitID)
+	require.NoError(t, err)
+	repo.Run(t, "rm", "-f", definitionPath, repoPath)
+	repo.AddAndCommit(t, "clear "+orbitID+" runtime source")
+}
+
+func addUnresolvableActiveInstallMember(t *testing.T, repo *testutil.Repo, orbitID string, now time.Time) {
+	t.Helper()
+
+	spec, err := orbitpkg.DefaultHostedMemberSchemaSpec(orbitID)
+	require.NoError(t, err)
+	spec.Description = orbitID + " orbit"
+	spec.Members = []orbitpkg.OrbitMember{
+		{
+			Key:  orbitID + "-content",
+			Role: orbitpkg.OrbitMemberSubject,
+			Paths: orbitpkg.OrbitMemberPaths{
+				Include: []string{orbitID + "/guide.md"},
+			},
+		},
+	}
+	_, err = orbitpkg.WriteHostedOrbitSpec(repo.Root, spec)
+	require.NoError(t, err)
+
+	_, err = WriteInstallRecord(repo.Root, orbittemplate.InstallRecord{
+		SchemaVersion: 1,
+		OrbitID:       orbitID,
+		Template: orbittemplate.Source{
+			SourceKind:     orbittemplate.InstallSourceKindLocalBranch,
+			SourceRepo:     "",
+			SourceRef:      "orbit-template/missing-" + orbitID,
+			TemplateCommit: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+		},
+		AppliedAt: now,
+	})
+	require.NoError(t, err)
+
+	runtimeFile, err := LoadRuntimeFile(repo.Root)
+	require.NoError(t, err)
+	runtimeFile.Members = append(runtimeFile.Members, RuntimeMember{
+		OrbitID: orbitID,
+		Source:  MemberSourceInstallOrbit,
+		AddedAt: now,
+	})
+	runtimeFile.Harness.UpdatedAt = now
+	_, err = WriteManifestFile(repo.Root, ManifestFileFromRuntimeFile(runtimeFile))
+	require.NoError(t, err)
+
+	repo.AddAndCommit(t, "add unresolvable active install member")
 }
 
 func seedRuntimeRemoveSharedPathRepo(t *testing.T) *testutil.Repo {

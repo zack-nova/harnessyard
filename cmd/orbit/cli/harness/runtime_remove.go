@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	pathpkg "path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -164,6 +165,9 @@ func BuildUninstallRuntimeOrbitPackagePlanWithOptions(
 	if err != nil {
 		return RuntimeOrbitPackageUninstallPlan{}, fmt.Errorf("build package ownership scope for %q: %w", orbitID, err)
 	}
+	if err := ensureRuntimeUninstallOwnershipExclusive(ctx, repo.Root, orbitID, ownershipPlan.DeletePaths, runtimeFile); err != nil {
+		return RuntimeOrbitPackageUninstallPlan{}, err
+	}
 	definitionRepoPath, err := orbitpkg.HostedDefinitionRelativePath(orbitID)
 	if err != nil {
 		return RuntimeOrbitPackageUninstallPlan{}, fmt.Errorf("build hosted orbit definition path: %w", err)
@@ -273,6 +277,11 @@ func ApplyUninstallRuntimeOrbitPackagePlanWithOptions(
 	if err := removeRuntimeInfluencePaths(repo.Root, plan.OwnershipPlan.DeletePaths); err != nil {
 		return RemoveRuntimeMemberResult{}, err
 	}
+	removedDirs, err := cleanupEmptyRuntimeFileParentDirs(repo.Root, plan.OwnershipPlan.DeletePaths)
+	if err != nil {
+		return RemoveRuntimeMemberResult{}, err
+	}
+	removedPaths = append(removedPaths, removedDirs...)
 	guidanceRemovedPaths, err := applyRuntimeUninstallRootGuidance(repo.Root, plan.GuidanceMutations)
 	if err != nil {
 		return RemoveRuntimeMemberResult{}, err
@@ -673,6 +682,95 @@ func ensureRuntimeRemovePathsExclusive(
 	return nil
 }
 
+func ensureRuntimeUninstallOwnershipExclusive(
+	ctx context.Context,
+	repoRoot string,
+	orbitID string,
+	deletePaths []string,
+	runtimeFile RuntimeFile,
+) error {
+	plansByOrbitID, err := loadRuntimeRemovePlans(ctx, repoRoot, runtimeFile)
+	if err != nil {
+		return fmt.Errorf("resolve active runtime references for package uninstall: %w", err)
+	}
+	for _, path := range deletePaths {
+		for otherOrbitID, otherPlan := range plansByOrbitID {
+			if otherOrbitID == orbitID {
+				continue
+			}
+			if runtimeRemovePathShared(path, otherPlan.Plan.ProjectionPaths) {
+				return fmt.Errorf(
+					"cannot uninstall orbit package %q: delete candidate %q is still referenced by active package %q",
+					orbitID,
+					path,
+					otherOrbitID,
+				)
+			}
+		}
+	}
+
+	deletePathSet := stringSet(deletePaths)
+	for _, member := range runtimeFile.Members {
+		if member.OrbitID == orbitID {
+			continue
+		}
+		ownedPaths, err := runtimeUninstallActivePackageOwnedPaths(ctx, repoRoot, member)
+		if err != nil {
+			return fmt.Errorf("resolve package ownership scope for active package %q: %w", member.OrbitID, err)
+		}
+		for _, path := range ownedPaths {
+			if _, ok := deletePathSet[path]; !ok {
+				continue
+			}
+			return fmt.Errorf(
+				"cannot uninstall orbit package %q: delete candidate %q is still owned by active package %q",
+				orbitID,
+				path,
+				member.OrbitID,
+			)
+		}
+	}
+
+	return nil
+}
+
+func runtimeUninstallActivePackageOwnedPaths(
+	ctx context.Context,
+	repoRoot string,
+	member RuntimeMember,
+) ([]string, error) {
+	switch member.Source {
+	case MemberSourceInstallOrbit:
+		record, err := LoadInstallRecord(repoRoot, member.OrbitID)
+		if err != nil {
+			return nil, fmt.Errorf("load install record: %w", err)
+		}
+		if orbittemplate.EffectiveInstallRecordStatus(record) != orbittemplate.InstallRecordStatusActive {
+			return nil, fmt.Errorf("install record is not active")
+		}
+		plan, err := orbittemplate.BuildInstallOwnedCleanupPlan(ctx, repoRoot, record, orbittemplate.TemplateApplyPreview{})
+		if err != nil {
+			return nil, fmt.Errorf("build package ownership scope: %w", err)
+		}
+		paths := append([]string(nil), plan.DeletePaths...)
+		if plan.RemoveSharedAgentsFile {
+			paths = append(paths, rootAgentsPath)
+		}
+		return sortedUniqueStrings(paths), nil
+	case MemberSourceInstallBundle:
+		if strings.TrimSpace(member.OwnerHarnessID) == "" {
+			return nil, fmt.Errorf("bundle-backed member is missing owner_harness_id")
+		}
+		record, err := LoadBundleRecord(repoRoot, member.OwnerHarnessID)
+		if err != nil {
+			return nil, fmt.Errorf("load bundle record for owner_harness_id %q: %w", member.OwnerHarnessID, err)
+		}
+		return sortedUniqueStrings(record.OwnedPaths), nil
+	default:
+		return nil, nil
+	}
+}
+
 func runtimeRemovePathShared(path string, candidates []string) bool {
 	for _, candidate := range candidates {
 		if candidate == path {
@@ -931,6 +1029,68 @@ func removeRuntimeInfluencePaths(repoRoot string, deletePaths []string) error {
 	}
 
 	return nil
+}
+
+func cleanupEmptyRuntimeFileParentDirs(repoRoot string, deletedFilePaths []string) ([]string, error) {
+	removedDirs := make([]string, 0)
+	for _, repoPath := range sortedUniqueStrings(deletedFilePaths) {
+		dir := pathpkg.Dir(repoPath)
+		for !runtimeEmptyDirCleanupBoundary(dir) {
+			filename := filepath.Join(repoRoot, filepath.FromSlash(dir))
+			if err := os.Remove(filename); err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					dir = pathpkg.Dir(dir)
+					continue
+				}
+				empty, checkErr := directoryIsEmpty(filename)
+				if checkErr != nil {
+					return nil, fmt.Errorf("check runtime directory %s after cleanup failure: %w", dir, checkErr)
+				}
+				if !empty {
+					break
+				}
+				return nil, fmt.Errorf("remove empty runtime directory %s: %w", dir, err)
+			}
+			removedDirs = append(removedDirs, dir)
+			dir = pathpkg.Dir(dir)
+		}
+	}
+
+	return sortedUniqueStrings(removedDirs), nil
+}
+
+func directoryIsEmpty(filename string) (bool, error) {
+	info, err := os.Stat(filename)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return true, nil
+		}
+		return false, fmt.Errorf("stat %s: %w", filename, err)
+	}
+	if !info.IsDir() {
+		return false, nil
+	}
+	entries, err := os.ReadDir(filename)
+	if err != nil {
+		return false, fmt.Errorf("read %s: %w", filename, err)
+	}
+
+	return len(entries) == 0, nil
+}
+
+func runtimeEmptyDirCleanupBoundary(repoPath string) bool {
+	clean := pathpkg.Clean(repoPath)
+	if clean == "." || clean == "/" || clean == ".." || strings.HasPrefix(clean, "../") {
+		return true
+	}
+	if clean == ".harness" || strings.HasPrefix(clean, ".harness/") {
+		return true
+	}
+	if clean == ".git" || strings.HasPrefix(clean, ".git/") {
+		return true
+	}
+
+	return false
 }
 
 func removeRepoPath(repoRoot string, repoPath string, label string) error {
