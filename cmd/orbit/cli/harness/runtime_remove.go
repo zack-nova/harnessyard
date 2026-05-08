@@ -123,7 +123,13 @@ func UninstallRuntimeOrbitPackageWithOptions(
 		return RemoveRuntimeMemberResult{}, fmt.Errorf("install record for orbit %q is not active", orbitID)
 	}
 
-	ownershipPlan, err := orbittemplate.BuildInstallOwnedCleanupPlan(ctx, repo.Root, installRecord, orbittemplate.TemplateApplyPreview{})
+	ownershipPlan, err := orbittemplate.BuildInstallOwnedCleanupPlanWithOptions(
+		ctx,
+		repo.Root,
+		installRecord,
+		orbittemplate.TemplateApplyPreview{},
+		orbittemplate.InstallOwnedCleanupOptions{SkipSharedAgentsBlock: true},
+	)
 	if err != nil {
 		return RemoveRuntimeMemberResult{}, fmt.Errorf("build package ownership scope for %q: %w", orbitID, err)
 	}
