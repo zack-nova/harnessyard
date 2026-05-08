@@ -1,17 +1,15 @@
 ---
 name: to-issues
-description: Break a plan, spec, or PRD into independently-grabbable issues and publish them when repository publishing rules are clear.
+description: Turn a plan, spec, or PRD into one or more independently-grabbable issues, and publish them when repository publishing rules are clear.
 ---
 
 # To Issues
 
-The process below is the `to-issues` workflow. Issue Discovery Orbit only adds the publishing rules in `docs/issue-discovery-orbit/discovery-rules.md`.
+This is the `to-issues` workflow. Before running it, read the repository's issue discovery rules, for example `docs/issue-discovery-orbit/discovery-rules.md` when present.
 
-Before running, read `docs/issue-discovery-orbit/discovery-rules.md`.
+Turn a plan into one or more independently-grabbable issues using vertical slices (tracer bullets).
 
-Break a plan into independently-grabbable issues using vertical slices (tracer bullets).
-
-If repository publishing rules are clear, publish the approved slices to the issue tracker. If they are missing or conflicting, output Issue candidates instead and list what must be confirmed before publishing.
+If repository publishing rules are clear, publish the approved issue or slices to the issue tracker. If they are missing or conflicting, output Issue candidates instead and list what must be confirmed before publishing.
 
 ## Process
 
@@ -25,14 +23,14 @@ If you have not already explored the codebase, do so to understand the current s
 
 ### 3. Draft vertical slices
 
-Break the plan into **tracer bullet** issues. Each issue is a thin vertical slice that cuts through ALL necessary integration layers end-to-end, NOT a horizontal slice of one layer.
+Turn the plan into one or more **tracer bullet** issues. Each issue is a thin vertical slice that cuts through ALL necessary integration layers end-to-end, NOT a horizontal slice of one layer.
 
 Slices may be HITL or AFK. HITL slices require human interaction, such as an architectural decision or a design review. AFK slices can be implemented and merged without human interaction. Prefer AFK over HITL where possible.
 
 <vertical-slice-rules>
 - Each slice delivers a narrow but COMPLETE path through every required layer.
 - A completed slice is demoable or verifiable on its own.
-- Prefer many thin slices over few thick ones.
+- Choose issue boundaries so every resulting work item is independently useful and easy to verify.
 </vertical-slice-rules>
 
 ### 4. Quiz the user
@@ -55,7 +53,7 @@ Iterate until the user approves the breakdown.
 
 ### 5. Publish the issues to the issue tracker
 
-For each approved slice, publish a new issue to the issue tracker only if Repository Publishing Rules are clear. Use the repository's issue body template and entry labels or states.
+For each approved slice, or the single approved issue, publish a new issue to the issue tracker only if Repository Publishing Rules are clear. Use the repository's issue body template and entry labels or states.
 
 Publish issues in dependency order so you can reference real issue identifiers in the "Blocked by" field.
 

@@ -4,8 +4,8 @@ template:
     source_kind: external_git
     source_repo: https://github.com/zack-nova/issue-discovery-orbit.git
     source_ref: orbit-template/issue-discovery-orbit
-    template_commit: ca52c29726379f0648f07f1f0d68405b1d519caf
-applied_at: 2026-05-07T08:13:02Z
+    template_commit: 557460dead20094fae6e8075f7dc09f440443179
+applied_at: 2026-05-08T08:32:13Z
 variables:
     declarations: {}
     resolved_at_apply: {}

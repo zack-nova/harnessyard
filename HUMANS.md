@@ -24,11 +24,21 @@ Before an issue enters `ready-for-dev`, it must have a complete Dev Brief. You n
 - acceptance criteria are verifiable,
 - the validation plan is realistically executable,
 - out-of-scope boundaries are explicit,
+- delivery mode is either absent, `afk`, or `hitl`,
+- `hitl` has a rationale explaining why human interaction is required,
 - the issue is not in `blocked`.
+
+### Needs Split
+
+When an issue is too large, move it to `needs-split` and record the split reason and intended decomposition. After child issues exist, record their references before moving the parent to `blocked` or another valid state.
 
 ### Blocked
 
 Blocked is a state. It means the current issue is paused by a dependency, external factor, or human decision. Record the concrete blocker and intended resume state in issue text; after the block is resolved, move the issue out of `blocked` only when the target state's gates are satisfied.
+
+### Cancelled And Out Of Scope
+
+`cancelled` is the terminal non-delivery state. Use `resolution:duplicate` only with a superseding issue reference. Use `resolution:wontfix` for ordinary feature requests rejected as out of scope, and reference the matching Out-of-Scope Catalog entry.
 
 ### Debt Notes
 
@@ -36,13 +46,13 @@ When development or review finds technical debt that does not block the current 
 
 ### Review
 
-After an issue enters `in-review`, a review artifact exists. It is usually a PR/MR; the local markdown backend uses a local review artifact file to model the review gate. After Review Sweep is written, the issue enters `human-review` and waits for a human maintainer to write Human Review Decision.
+After an issue enters `in-review`, a review artifact exists. It is usually a PR/MR; the local markdown backend uses a local review artifact file to model the review gate. Review Sweep records observations and may identify objective AFK rework, objective AFK merge eligibility, or the need for `human-review`.
 
 Review Sweep is observation only, not a decision.
 
 ### Human Review Decision
 
-After review information is sufficient, a human maintainer needs to write Human Review Decision:
+When an issue is `hitl` or enters `human-review`, a human maintainer needs to write Human Review Decision:
 
 ```text
 Decision: hold
@@ -58,7 +68,7 @@ Do not let review output replace Human Review Decision.
 
 `Human Review Decision` is authorization evidence, not the operation trigger. Operations are triggered by the issue's canonical state role. Contract Consumers need their own claim/running/retry mechanism to avoid duplicate pickup; the tracker contract does not record these runtime occupancy facts.
 
-After `to-rework` is completed, the issue must return to `in-review` and produce Review Sweep again. If `to-merge` execution fails, return to `human-review`; enter `to-rework` only when a human confirms code changes are required.
+After `to-rework` is completed, the issue must return to `in-review` and produce Review Sweep again. If `to-merge` execution fails, return a `hitl` issue or a human-dependent failure to `human-review`; return objective AFK failures to `to-rework`.
 
 ## Do Not Bypass Manually
 
@@ -66,7 +76,7 @@ After `to-rework` is completed, the issue must return to `in-review` and produce
 - Do not locally merge the default branch.
 - Do not bypass the tracker contract when changing state.
 - Do not treat external runtime sessions or worktree notes as fact sources.
-- Do not ask any runtime environment to merge without Human Review Decision.
+- Do not ask any runtime environment to merge a `hitl` or `human-review` issue without Human Review Decision.
 
 # HUMANS.md - Issue Discovery Orbit
 

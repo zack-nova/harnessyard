@@ -12,13 +12,14 @@ meta:
         ## Non-Negotiable Rules
 
         - Read `docs/issue-tracker-orbit/tracker-contract.md` first. If it is still `pending-bootstrap`, run `BOOTSTRAP.md` first.
-        - Do not assume issues live in GitHub. Use the backend mapping selected in the tracker contract.
+        - Do not assume issues live in GitHub. Use the backend and mappings selected in the tracker contract.
         - Every open issue must have exactly one canonical state role.
-        - Before an issue enters `ready-for-dev`, it must have exactly one issue type and a complete `Dev Brief`.
+        - Before an issue enters `ready-for-dev`, it must have exactly one issue type, a complete `Dev Brief`, and valid delivery mode metadata when present.
         - Before an issue enters `in-progress`, it must already be in canonical state role `ready-for-dev`.
+        - `needs-split`, `blocked`, and `cancelled` are gated states. Record split resolution, blocker/unblock facts, cancellation resolution, duplicate superseding issue, or out-of-scope catalog reference before advancing through those gates.
         - `Dev Workpad` is an issue-scoped execution record, not an external runtime session.
-        - `Review Sweep` records only **Review Sweep Producer** observations; it does not decide `rework` or `merge`.
-        - `to-rework` and `to-merge` must be decided by `Human Review Decision`.
+        - `Review Sweep` records only observations. It can identify objective AFK rework, objective AFK merge eligibility, or the need for `human-review`, but it does not decide human-dependent outcomes.
+        - `hitl` issues and issues in `human-review` require `Human Review Decision` before `to-rework` or `to-merge`.
         - After `to-rework` work is completed, the issue returns to `in-review`; `to-merge` can enter `merged` only after Land succeeds.
         - Do not develop directly on the default branch, and do not locally merge the default branch.
         - If rules, templates, state, or fact sources conflict, stop and ask the human maintainer for a decision.
@@ -56,11 +57,21 @@ meta:
         - acceptance criteria are verifiable,
         - the validation plan is realistically executable,
         - out-of-scope boundaries are explicit,
+        - delivery mode is either absent, `afk`, or `hitl`,
+        - `hitl` has a rationale explaining why human interaction is required,
         - the issue is not in `blocked`.
+
+        ### Needs Split
+
+        When an issue is too large, move it to `needs-split` and record the split reason and intended decomposition. After child issues exist, record their references before moving the parent to `blocked` or another valid state.
 
         ### Blocked
 
         Blocked is a state. It means the current issue is paused by a dependency, external factor, or human decision. Record the concrete blocker and intended resume state in issue text; after the block is resolved, move the issue out of `blocked` only when the target state's gates are satisfied.
+
+        ### Cancelled And Out Of Scope
+
+        `cancelled` is the terminal non-delivery state. Use `resolution:duplicate` only with a superseding issue reference. Use `resolution:wontfix` for ordinary feature requests rejected as out of scope, and reference the matching Out-of-Scope Catalog entry.
 
         ### Debt Notes
 
@@ -68,13 +79,13 @@ meta:
 
         ### Review
 
-        After an issue enters `in-review`, a review artifact exists. It is usually a PR/MR; the local markdown backend uses a local review artifact file to model the review gate. After Review Sweep is written, the issue enters `human-review` and waits for a human maintainer to write Human Review Decision.
+        After an issue enters `in-review`, a review artifact exists. It is usually a PR/MR; the local markdown backend uses a local review artifact file to model the review gate. Review Sweep records observations and may identify objective AFK rework, objective AFK merge eligibility, or the need for `human-review`.
 
         Review Sweep is observation only, not a decision.
 
         ### Human Review Decision
 
-        After review information is sufficient, a human maintainer needs to write Human Review Decision:
+        When an issue is `hitl` or enters `human-review`, a human maintainer needs to write Human Review Decision:
 
         ```text
         Decision: hold
@@ -90,7 +101,7 @@ meta:
 
         `Human Review Decision` is authorization evidence, not the operation trigger. Operations are triggered by the issue's canonical state role. Contract Consumers need their own claim/running/retry mechanism to avoid duplicate pickup; the tracker contract does not record these runtime occupancy facts.
 
-        After `to-rework` is completed, the issue must return to `in-review` and produce Review Sweep again. If `to-merge` execution fails, return to `human-review`; enter `to-rework` only when a human confirms code changes are required.
+        After `to-rework` is completed, the issue must return to `in-review` and produce Review Sweep again. If `to-merge` execution fails, return a `hitl` issue or a human-dependent failure to `human-review`; return objective AFK failures to `to-rework`.
 
         ## Do Not Bypass Manually
 
@@ -98,7 +109,7 @@ meta:
         - Do not locally merge the default branch.
         - Do not bypass the tracker contract when changing state.
         - Do not treat external runtime sessions or worktree notes as fact sources.
-        - Do not ask any runtime environment to merge without Human Review Decision.
+        - Do not ask any runtime environment to merge a `hitl` or `human-review` issue without Human Review Decision.
     bootstrap_template: |
         # BOOTSTRAP.md - Issue Tracker Contract Orbit
 
@@ -154,10 +165,10 @@ meta:
         - Change `status` to `active`.
         - Fill in `backend`.
         - Fill in repository id and default branch.
-        - Fill in backend representations for state, type, and metadata.
+        - Fill in backend representations for state, type, optional delivery mode, optional resolution metadata, and issue URL/path format.
         - Fill in storage and heading for canonical issue sections.
         - Keep `review_artifact.required: true`.
-        - In `backend_mapping`, write the selected backend's rule mappings for issue id/path/URL, review artifact, section storage, template target, and related fields.
+        - Do not add `backend_mapping`; put machine mapping facts directly under `issue`, `sections`, `review_artifact`, and `templates`.
         - Configure validation commands.
         - Configure land/merge policy unless the selected backend has no corresponding policy.
 
@@ -210,20 +221,29 @@ meta:
         ```text
         state:needs-triage
         state:needs-info
+        state:needs-split
+        state:blocked
         state:ready-for-dev
         state:in-progress
-        state:blocked
         state:in-review
         state:human-review
         state:to-rework
         state:to-merge
         state:merged
+        state:cancelled
 
         type:bug
         type:feature
         type:task
         type:docs
         type:chore
+        type:out-of-scope
+
+        delivery-mode:afk
+        delivery-mode:hitl
+
+        resolution:wontfix
+        resolution:duplicate
         ```
 
         The local markdown backend does not need labels, but frontmatter fields must be confirmed to match the tracker contract.

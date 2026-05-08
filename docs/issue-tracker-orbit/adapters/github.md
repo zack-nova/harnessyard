@@ -23,6 +23,9 @@ issue:
     size:
       representation: label
       prefix: "size:"
+    delivery_mode:
+      representation: label
+      prefix: "delivery-mode:"
     resolution:
       representation: label
       prefix: "resolution:"
@@ -36,6 +39,9 @@ sections:
     review-sweep: "## Review Sweep"
     human-review-decision: "## Human Review Decision"
     debt-notes: "## Debt Notes"
+    out-of-scope-catalog: "## Out-of-Scope Catalog"
+  storage_overrides:
+    out-of-scope-catalog: issue_body
 
 review_artifact:
   storage: github_pull_request
@@ -49,8 +55,9 @@ templates:
 ## Rules
 
 - GitHub labels carry canonical state, type, and optional metadata facts.
-- `state:blocked` is the blocking representation. Do not create or use `blocked:*` labels.
-- GitHub issue comments carry canonical issue sections.
+- If delivery mode is used, GitHub labels should be `delivery-mode:afk` or `delivery-mode:hitl`.
+- GitHub issue comments carry delivery issue sections.
+- GitHub issue body carries the Out-of-Scope Catalog section for issues with type `out-of-scope`.
 - GitHub pull requests are the review artifact path for review and land.
 - GitHub branch protection, required checks, and merge settings remain GitHub-side policy.
 - Bootstrap must dry-run label and template changes before applying them.

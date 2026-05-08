@@ -28,7 +28,7 @@ If `tracker-contract.md` is still `pending-bootstrap`, run `BOOTSTRAP.md` first.
 - `adapters/local-markdown.md`
 - `adapters/other.md`
 
-Bootstrap selects one backend adapter and generates the current repository's `tracker-contract.md`.
+Bootstrap automatically resolves the backend adapter according to `BOOTSTRAP.md` and generates the current repository's `tracker-contract.md`.
 
 ## Templates
 

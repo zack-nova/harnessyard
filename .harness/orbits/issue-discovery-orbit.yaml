@@ -23,7 +23,7 @@ meta:
         - `to-prd`
         - `to-issues`
 
-        Before publishing, confirm the target repository's Repository Publishing Rules: issue tracker, templates, labels, state entry points, blocked-state handling, and permissions.
+        Before publishing, confirm the target repository's Repository Publishing Rules: issue tracker, templates, labels, state entry points, and permissions.
         Publish when rules are clear; when rules are missing or conflicting, generate candidates only for confirmation.
     include_in_projection: true
     include_in_write: true
