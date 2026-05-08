@@ -4,8 +4,8 @@ template:
     source_kind: external_git
     source_repo: https://github.com/zack-nova/issue-tracker-orbit.git
     source_ref: orbit-template/issue-tracker-orbit
-    template_commit: c8ace03143d21f340649092449d3aceaa682210b
-applied_at: 2026-05-07T08:12:38Z
+    template_commit: b3fcc54d5c3c78b5c5df50258c2e89e35c6e1497
+applied_at: 2026-05-08T08:32:13Z
 variables:
     declarations: {}
     resolved_at_apply: {}

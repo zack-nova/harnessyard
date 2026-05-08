@@ -29,6 +29,12 @@
 
 -
 
+### AFK / HITL Assessment
+
+- AFK eligible: yes | no | unknown
+- Human review needed: yes | no
+- Reason:
+
 ### Potentially Actionable Items
 
 -
@@ -37,7 +43,7 @@
 
 -
 
-### Required Human Decision
+### Human Decision Gate
 
-A human reviewer or maintainer must add a separate `## Human Review Decision` issue section before the issue can move to `to-rework` or `to-merge`.
+A human reviewer or maintainer must add a separate `## Human Review Decision` issue section before the issue can move from `human-review` to `to-rework` or `to-merge`. AFK review advancement can skip `human-review` only when objective review evidence is sufficient and no human-dependent item remains.
 ````

@@ -1,0 +1,42 @@
+name: Out-of-Scope Catalog
+description: Long-lived catalog for rejected feature concepts
+title: "Out-of-Scope Catalog: Overall"
+labels:
+  - state:cancelled
+  - type:out-of-scope
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Out-of-Scope Catalog
+
+        Use this issue as the durable catalog for rejected feature concepts. Start with the Overall catalog and split into category-specific catalog issues only when maintenance pressure appears.
+  - type: textarea
+    id: entries
+    attributes:
+      label: Catalog entries
+      description: Record rejected concepts in the Out-of-Scope Catalog section format.
+      value: |
+        ## Out-of-Scope Catalog
+
+        ### {Concept Name}
+
+        **Slug:** {concept-slug}
+
+        **Decision:**
+
+        Rejected as out of scope.
+
+        **Why this is out of scope:**
+
+        -
+
+        **Related but allowed:**
+
+        - None recorded.
+
+        **Prior requests:**
+
+        - #{issue-number} — "{issue title}"
+    validations:
+      required: true

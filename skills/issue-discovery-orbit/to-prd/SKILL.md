@@ -5,9 +5,7 @@ description: Turn the current conversation context into a PRD and publish it to 
 
 # To PRD
 
-The process below is the `to-prd` workflow. Issue Discovery Orbit only adds the publishing rules in `docs/issue-discovery-orbit/discovery-rules.md`.
-
-Before running, read `docs/issue-discovery-orbit/discovery-rules.md`.
+This is the `to-prd` workflow. Before running it, read the repository's issue discovery rules, for example `docs/issue-discovery-orbit/discovery-rules.md` when present.
 
 This skill takes the current conversation context and codebase understanding and produces a PRD. Do NOT interview the user - just synthesize what you already know.
 
@@ -23,7 +21,9 @@ A deep module is one which encapsulates a lot of functionality in a simple, test
 
 Check with the user that these modules match their expectations. Check with the user which modules they want tests written for.
 
-3. Write the PRD using the template below, then publish it to the issue tracker if repository publishing rules are clear. Apply the repository's entry label or state so it enters the normal triage flow.
+3. Write the PRD using the template below, then publish it to the issue tracker if repository publishing rules are clear. Apply the repository's state that best matches the next needed step.
+
+If child implementation issues are already known, include them in the PRD issue body under `## Blocked by`, record the intended resume state, and use the repository's blocked state instead of the entry state while those children remain unresolved. Do not publish a PRD with both the blocked state and the entry state. If child issues will be published later, keep the section with the placeholder text and treat updating it as part of the issue-slicing handoff.
 
 If publishing rules are missing or conflicting, do not publish. Present the PRD as a candidate and list the missing or conflicting rules.
 
@@ -78,5 +78,11 @@ A description of the things that are out of scope for this PRD.
 ## Further Notes
 
 Any further notes about the feature.
+
+## Blocked by
+
+References to child issues that must complete before the PRD can advance, if any.
+If child issues have not been published yet, write "None - child issues not published yet".
+When blockers are listed, also record the intended resume state.
 
 </prd-template>

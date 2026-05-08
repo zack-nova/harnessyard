@@ -14,14 +14,16 @@ Diff: {{ diff_command }}
 
 Status: pending | changes-requested | approved
 
+## AFK / HITL Assessment
+
+- AFK eligible: yes | no | unknown
+- Human review needed: yes | no
+- Reason:
+
 ## Review Notes
 
 -
 
 ## Human Decision
 
-Decision: hold | rework | merge
-
-Reason:
-
--
+Required only when the issue is in `human-review` or delivery mode is `hitl`.

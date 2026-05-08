@@ -3,6 +3,7 @@ state: needs-triage
 type: task
 priority:
 size:
+delivery_mode:
 resolution:
 ---
 
@@ -19,6 +20,14 @@ resolution:
 ## Dev Brief
 
 **Type:** task
+
+**Delivery mode:** unspecified
+
+**HITL rationale:**
+
+Required only when delivery mode is `hitl`.
+
+-
 
 **Summary:**
 
@@ -54,12 +63,8 @@ resolution:
 
 ## Review Sweep
 
--
+### AFK / HITL Assessment
 
-## Human Review Decision
-
-Decision: hold | rework | merge
-
-Reason:
-
--
+- AFK eligible: yes | no | unknown
+- Human review needed: yes | no
+- Reason:

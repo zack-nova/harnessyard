@@ -65,13 +65,14 @@ This repository uses the Issue Tracker Contract Orbit to manage issue-driven del
 ## Non-Negotiable Rules
 
 - Read `docs/issue-tracker-orbit/tracker-contract.md` first. If it is still `pending-bootstrap`, run `BOOTSTRAP.md` first.
-- Do not assume issues live in GitHub. Use the backend mapping selected in the tracker contract.
+- Do not assume issues live in GitHub. Use the backend and mappings selected in the tracker contract.
 - Every open issue must have exactly one canonical state role.
-- Before an issue enters `ready-for-dev`, it must have exactly one issue type and a complete `Dev Brief`.
+- Before an issue enters `ready-for-dev`, it must have exactly one issue type, a complete `Dev Brief`, and valid delivery mode metadata when present.
 - Before an issue enters `in-progress`, it must already be in canonical state role `ready-for-dev`.
+- `needs-split`, `blocked`, and `cancelled` are gated states. Record split resolution, blocker/unblock facts, cancellation resolution, duplicate superseding issue, or out-of-scope catalog reference before advancing through those gates.
 - `Dev Workpad` is an issue-scoped execution record, not an external runtime session.
-- `Review Sweep` records only **Review Sweep Producer** observations; it does not decide `rework` or `merge`.
-- `to-rework` and `to-merge` must be decided by `Human Review Decision`.
+- `Review Sweep` records only observations. It can identify objective AFK rework, objective AFK merge eligibility, or the need for `human-review`, but it does not decide human-dependent outcomes.
+- `hitl` issues and issues in `human-review` require `Human Review Decision` before `to-rework` or `to-merge`.
 - After `to-rework` work is completed, the issue returns to `in-review`; `to-merge` can enter `merged` only after Land succeeds.
 - Do not develop directly on the default branch, and do not locally merge the default branch.
 - If rules, templates, state, or fact sources conflict, stop and ask the human maintainer for a decision.

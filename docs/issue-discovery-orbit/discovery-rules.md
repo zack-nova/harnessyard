@@ -1,11 +1,11 @@
 # Discovery Rules
 
-Issue Discovery Orbit turns discussions, PRDs, plans, or repository understanding into issue tracker work items.
+Issue Discovery Orbit organizes discussions, PRDs, plans, or repository understanding into issue tracker work items.
 
 ## Purpose
 
 - `to-prd`: generate a PRD from the current context and repository understanding.
-- `to-issues`: split a plan or PRD into vertical-slice issues.
+- `to-issues`: split a plan or PRD into vertical slice issues.
 - Publish when publishing rules are clear; output candidates only when rules are missing or conflicting.
 
 ## Outputs
@@ -37,7 +37,7 @@ Also read available project memory compatibly; it is not publishing rules and no
 - Repository-declared domain language, context maps, or design decision records.
 - Relevant context already present in the conversation, issue body, or task description.
 
-When publishing, use only the repository-defined issue templates, states, labels, assignees, milestones, and project fields. For `to-issues`, publish slices with no blockers in the repository's normal new-issue state. Publish slices with unresolved `Blocked by` dependencies in `blocked`, replacing any template default state rather than adding a second state label, and record both the blocker and intended resume state in the issue text.
+When publishing, use only the repository-defined issue templates, states, labels, assignees, milestones, and project fields.
 
 ## Candidate Fallback
 

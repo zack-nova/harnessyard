@@ -18,4 +18,11 @@ state:<role>
 type:<type>
 ```
 
-Blocked issues use `state:blocked`. Do not add `blocked:*` labels. If an automation publishes a blocked issue from a template that defaults to `state:needs-triage`, it must replace that default state label rather than add a second `state:*` label.
+If the repository enables delivery mode metadata, use optional labels:
+
+```text
+delivery-mode:afk
+delivery-mode:hitl
+```
+
+`out-of-scope-catalog.yml` is a special catalog issue template. It creates an issue with `state:cancelled` and `type:out-of-scope` and uses the issue body for `## Out-of-Scope Catalog` instead of delivery sections. Install the template during bootstrap, but create the actual catalog issue lazily when the maintainer enables the catalog or the first out-of-scope decision needs to be recorded.
