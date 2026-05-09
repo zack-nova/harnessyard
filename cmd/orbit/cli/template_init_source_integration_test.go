@@ -162,6 +162,23 @@ func TestTemplateInitSourceCreatesSourceManifestFromHostedOnlyOrbitDefinition(t 
 	require.NotContains(t, string(data), "orbit_id: docs")
 }
 
+func TestTemplateInitSourceWithSpecCreatesSpecMemberAndDoc(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.Run(t, "branch", "-m", "main")
+
+	_, stderr, err := executeCLI(t, repo.Root, "template", "init-source", "--orbit", "docs", "--with-spec", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	definitionData, err := os.ReadFile(filepath.Join(repo.Root, ".harness", "orbits", "docs.yaml"))
+	require.NoError(t, err)
+	requireContainsWithSpecScaffold(t, repo.Root, string(definitionData))
+	requireContainsDefaultCapabilityTruth(t, string(definitionData))
+	requireContainsSeedEmptyGuidanceArtifacts(t, repo.Root)
+}
+
 func TestTemplateInitSourceReportsChangedWhenMigratingLegacyDefinitionOnExistingSourceBranch(t *testing.T) {
 	t.Parallel()
 

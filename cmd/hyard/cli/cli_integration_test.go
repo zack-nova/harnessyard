@@ -1480,6 +1480,7 @@ func TestHyardCreateSourceDelegatesToOrbitSourceCreate(t *testing.T) {
 		"Docs Orbit",
 		"--description",
 		"Docs source branch",
+		"--with-spec",
 		"--json",
 	)
 	require.NoError(t, err)
@@ -1520,6 +1521,7 @@ func TestHyardCreateSourceDelegatesToOrbitSourceCreate(t *testing.T) {
 	require.Contains(t, string(specData), "type: orbit\n")
 	require.Contains(t, string(specData), "name: docs\n")
 	require.NotContains(t, string(specData), "id: docs\n")
+	requireHyardWithSpecScaffold(t, targetPath, string(specData))
 
 	textTargetPath := filepath.Join(parentDir, "source-authoring-text")
 	textStdout, textStderr, err := executeHyardCLI(
@@ -1557,6 +1559,7 @@ func TestHyardCreateOrbitTemplateDelegatesToOrbitTemplateCreate(t *testing.T) {
 		"Docs Orbit",
 		"--description",
 		"Docs template branch",
+		"--with-spec",
 		"--json",
 	)
 	require.NoError(t, err)
@@ -1590,6 +1593,10 @@ func TestHyardCreateOrbitTemplateDelegatesToOrbitTemplateCreate(t *testing.T) {
 	require.Contains(t, string(manifestData), "type: orbit\n")
 	require.Contains(t, string(manifestData), "name: docs\n")
 	require.NotContains(t, string(manifestData), "orbit_id: docs\n")
+
+	specData, err := os.ReadFile(filepath.Join(targetPath, ".harness", "orbits", "docs.yaml"))
+	require.NoError(t, err)
+	requireHyardWithSpecScaffold(t, targetPath, string(specData))
 }
 
 func TestHyardInitRuntimeDelegatesToHarnessInit(t *testing.T) {
@@ -1631,6 +1638,7 @@ func TestHyardInitSourceDelegatesToOrbitSourceInit(t *testing.T) {
 		"Docs Orbit",
 		"--description",
 		"Docs source branch",
+		"--with-spec",
 		"--json",
 	)
 	require.NoError(t, err)
@@ -1661,6 +1669,10 @@ func TestHyardInitSourceDelegatesToOrbitSourceInit(t *testing.T) {
 	require.Contains(t, string(manifestData), "type: orbit\n")
 	require.Contains(t, string(manifestData), "name: docs\n")
 	require.NotContains(t, string(manifestData), "orbit_id: docs\n")
+
+	specData, err := os.ReadFile(filepath.Join(repo.Root, ".harness", "orbits", "docs.yaml"))
+	require.NoError(t, err)
+	requireHyardWithSpecScaffold(t, repo.Root, string(specData))
 }
 
 func TestHyardInitSourceDefaultsToOnlyHostedOrbitDefinition(t *testing.T) {
@@ -1763,6 +1775,7 @@ func TestHyardInitOrbitTemplateDelegatesToOrbitTemplateInit(t *testing.T) {
 		"Docs Orbit",
 		"--description",
 		"Docs template branch",
+		"--with-spec",
 		"--json",
 	)
 	require.NoError(t, err)
@@ -1786,6 +1799,10 @@ func TestHyardInitOrbitTemplateDelegatesToOrbitTemplateInit(t *testing.T) {
 	require.Equal(t, "orbit", payload.Package.Type)
 	require.Equal(t, "docs", payload.Package.Name)
 	require.True(t, payload.Changed)
+
+	specData, err := os.ReadFile(filepath.Join(repo.Root, ".harness", "orbits", "docs.yaml"))
+	require.NoError(t, err)
+	requireHyardWithSpecScaffold(t, repo.Root, string(specData))
 }
 
 func TestHyardInitOrbitTemplateDefaultsToOnlyHostedOrbitDefinition(t *testing.T) {
@@ -1812,6 +1829,27 @@ func TestHyardInitOrbitTemplateDefaultsToOnlyHostedOrbitDefinition(t *testing.T)
 	require.Equal(t, "main", payload.CurrentBranch)
 	require.Equal(t, "orbit", payload.Package.Type)
 	require.Equal(t, "docs", payload.Package.Name)
+}
+
+func requireHyardWithSpecScaffold(t *testing.T, repoRoot string, definitionYAML string) {
+	t.Helper()
+
+	const orbitID = "docs"
+
+	require.NotContains(t, definitionYAML, "key:")
+	require.Contains(t, definitionYAML, "name: spec\n")
+	require.Contains(t, definitionYAML, "role: rule\n")
+	require.Contains(t, definitionYAML, "- docs/"+orbitID+".md\n")
+	require.Contains(t, definitionYAML, "- docs/"+orbitID+"/**\n")
+
+	specDocData, err := os.ReadFile(filepath.Join(repoRoot, "docs", orbitID+".md"))
+	require.NoError(t, err)
+	require.Equal(t, "# "+orbitID+" Spec\n", string(specDocData))
+
+	specReadmeData, err := os.ReadFile(filepath.Join(repoRoot, "docs", orbitID, "README.md"))
+	require.NoError(t, err)
+	require.Equal(t, "# "+orbitID+"\n", string(specReadmeData))
+	require.NotContains(t, string(specReadmeData), "orbit_member")
 }
 
 func TestHyardCurrentDelegatesToOrbitCurrent(t *testing.T) {

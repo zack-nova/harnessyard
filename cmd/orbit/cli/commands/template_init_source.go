@@ -88,7 +88,7 @@ func NewTemplateInitSourceCommand() *cobra.Command {
 	cmd.Flags().StringVar(&orbitID, "orbit", "", "Target orbit package name for the source branch")
 	cmd.Flags().StringVar(&orbitName, "name", "", "Create the initial orbit with this display name when needed")
 	cmd.Flags().StringVar(&orbitDescription, "description", "", "Create the initial orbit with this description when needed")
-	cmd.Flags().BoolVar(&withSpec, "with-spec", false, "When creating the initial orbit, also add docs/<orbit-package>.md as a rule member keyed spec")
+	cmd.Flags().BoolVar(&withSpec, "with-spec", false, withSpecAuthoringFlagHelp)
 
 	return cmd
 }

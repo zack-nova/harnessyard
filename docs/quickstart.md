@@ -190,6 +190,11 @@ cd docs-source
 hyard orbit member add --orbit docs --key docs-content --role rule --include 'docs/**'
 ```
 
+Add `--with-spec` to source or orbit-template authoring bootstrap commands when
+the new orbit should start with a maintained rule entry point. It creates both
+`docs/<orbit-id>.md` and `docs/<orbit-id>/README.md`; the generated `spec` rule
+member includes `docs/<orbit-id>.md` and `docs/<orbit-id>/**`.
+
 Rename an authored orbit package when the package identity needs to change:
 
 ```bash

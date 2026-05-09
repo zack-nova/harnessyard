@@ -24,6 +24,15 @@ func TestPhaseTwoCommandHelpIncludesCurrentExamples(t *testing.T) {
 			},
 		},
 		{
+			name: "create",
+			args: []string{"create", "--help"},
+			want: []string{
+				"--with-spec",
+				"docs/<orbit-id>/README.md",
+				"docs/<orbit-id>/**",
+			},
+		},
+		{
 			name: "capability set",
 			args: []string{"capability", "set", "--help"},
 			want: []string{
@@ -123,6 +132,8 @@ func TestPhaseTwoCommandHelpIncludesCurrentExamples(t *testing.T) {
 				"Optional when the current Git repo already contains exactly one hosted orbit definition",
 				"--orbit",
 				"--with-spec",
+				"docs/<orbit-package>/README.md",
+				"docs/<orbit-package>/**",
 				"--json",
 			},
 		},
@@ -134,6 +145,9 @@ func TestPhaseTwoCommandHelpIncludesCurrentExamples(t *testing.T) {
 				"orbit template init-source",
 				"orbit template init-source --json",
 				"Initialize the current branch as a single-orbit source branch",
+				"--with-spec",
+				"docs/<orbit-package>/README.md",
+				"docs/<orbit-package>/**",
 			},
 		},
 		{
@@ -146,6 +160,8 @@ func TestPhaseTwoCommandHelpIncludesCurrentExamples(t *testing.T) {
 				"Create a new source authoring repository",
 				"--orbit",
 				"--with-spec",
+				"docs/<orbit-package>/README.md",
+				"docs/<orbit-package>/**",
 			},
 		},
 		{
@@ -157,6 +173,8 @@ func TestPhaseTwoCommandHelpIncludesCurrentExamples(t *testing.T) {
 				"Optional when the current Git repo already contains exactly one hosted orbit definition",
 				"--orbit",
 				"--with-spec",
+				"docs/<orbit-package>/README.md",
+				"docs/<orbit-package>/**",
 				"--json",
 			},
 		},
@@ -170,6 +188,8 @@ func TestPhaseTwoCommandHelpIncludesCurrentExamples(t *testing.T) {
 				"Create a new orbit template authoring repository",
 				"--orbit",
 				"--with-spec",
+				"docs/<orbit-package>/README.md",
+				"docs/<orbit-package>/**",
 			},
 		},
 		{

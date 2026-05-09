@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"errors"
 	"fmt"
 	"os"
 
@@ -42,7 +41,7 @@ func NewAddCommand() *cobra.Command {
 			}
 			if _, err := os.Stat(filename); err == nil {
 				return fmt.Errorf("orbit definition file %q already exists", filename)
-			} else if !errors.Is(err, os.ErrNotExist) {
+			} else if !os.IsNotExist(err) {
 				return fmt.Errorf("stat orbit definition: %w", err)
 			}
 
@@ -76,14 +75,8 @@ func NewAddCommand() *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("add spec member: %w", err)
 				}
-				specDocPath, err := orbitpkg.SpecDocPath(repo.Root, orbitID)
-				if err != nil {
-					return fmt.Errorf("build spec doc path: %w", err)
-				}
-				if _, err := os.Stat(specDocPath); err == nil {
-					return fmt.Errorf("spec doc file %q already exists", specDocPath)
-				} else if !errors.Is(err, os.ErrNotExist) {
-					return fmt.Errorf("stat spec doc: %w", err)
+				if err := orbitpkg.PreflightSpecScaffold(repo.Root, orbitID); err != nil {
+					return fmt.Errorf("preflight spec scaffold: %w", err)
 				}
 			}
 			spec, err = orbitpkg.SeedDefaultCapabilityTruth(spec)
@@ -96,8 +89,8 @@ func NewAddCommand() *cobra.Command {
 				return fmt.Errorf("write orbit definition: %w", err)
 			}
 			if withSpec {
-				if _, err := orbitpkg.WriteSpecDoc(repo.Root, orbitID); err != nil {
-					return fmt.Errorf("write spec doc: %w", err)
+				if _, err := orbitpkg.WriteSpecScaffold(repo.Root, orbitID); err != nil {
+					return fmt.Errorf("write spec scaffold: %w", err)
 				}
 			}
 
@@ -122,7 +115,7 @@ func NewAddCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&memberSchema, "member-schema", false, "Compatibility no-op: orbit create always creates a member-schema orbit skeleton")
 	cmd.Flags().StringVar(&orbitName, "name", "", "Set the orbit display name when creating a member-schema orbit")
 	cmd.Flags().StringVar(&orbitDescription, "description", "", "Set the orbit description when creating a member-schema orbit")
-	cmd.Flags().BoolVar(&withSpec, "with-spec", false, "Create docs/<orbit-id>.md and add a rule member keyed as spec")
+	cmd.Flags().BoolVar(&withSpec, "with-spec", false, withSpecOrbitCreateFlagHelp)
 
 	return cmd
 }

@@ -78,6 +78,8 @@ func TestSourceCreateBootstrapsMissingDirectory(t *testing.T) {
 	require.Contains(t, string(agentsData), "Docs source branch\n")
 	require.NotContains(t, string(definitionData), "members:\n")
 	require.NotContains(t, string(definitionData), "key:")
+	require.NoFileExists(t, filepath.Join(targetPath, "docs", "docs.md"))
+	require.NoFileExists(t, filepath.Join(targetPath, "docs", "docs", "README.md"))
 }
 
 func TestTemplateCreateBootstrapsExistingNonGitDirectory(t *testing.T) {
@@ -146,6 +148,8 @@ func TestTemplateCreateBootstrapsExistingNonGitDirectory(t *testing.T) {
 	require.Contains(t, string(agentsData), "Docs template branch\n")
 	require.NotContains(t, string(definitionData), "members:\n")
 	require.NotContains(t, string(definitionData), "key:")
+	require.NoFileExists(t, filepath.Join(targetPath, "docs", "docs.md"))
+	require.NoFileExists(t, filepath.Join(targetPath, "docs", "docs", "README.md"))
 }
 
 func TestSourceCreateReusesExistingPlainGitRepo(t *testing.T) {
@@ -201,15 +205,9 @@ func TestSourceCreateWithSpecBootstrapsSpecMemberAndDoc(t *testing.T) {
 
 	definitionData, err := os.ReadFile(filepath.Join(targetPath, ".harness", "orbits", "docs.yaml"))
 	require.NoError(t, err)
-	require.NotContains(t, string(definitionData), "key:")
-	require.Contains(t, string(definitionData), "name: spec\n")
-	require.Contains(t, string(definitionData), "- docs/docs.md\n")
+	requireContainsWithSpecScaffold(t, targetPath, string(definitionData))
 	requireContainsDefaultCapabilityTruth(t, string(definitionData))
 	requireContainsSeedEmptyGuidanceArtifacts(t, targetPath)
-
-	specDocData, err := os.ReadFile(filepath.Join(targetPath, "docs", "docs.md"))
-	require.NoError(t, err)
-	require.Equal(t, "# docs Spec\n", string(specDocData))
 }
 
 func TestTemplateCreateReusesExistingPlainGitRepo(t *testing.T) {
@@ -264,15 +262,9 @@ func TestTemplateCreateWithSpecBootstrapsSpecMemberAndDoc(t *testing.T) {
 
 	definitionData, err := os.ReadFile(filepath.Join(targetPath, ".harness", "orbits", "docs.yaml"))
 	require.NoError(t, err)
-	require.NotContains(t, string(definitionData), "key:")
-	require.Contains(t, string(definitionData), "name: spec\n")
-	require.Contains(t, string(definitionData), "- docs/docs.md\n")
+	requireContainsWithSpecScaffold(t, targetPath, string(definitionData))
 	requireContainsDefaultCapabilityTruth(t, string(definitionData))
 	requireContainsSeedEmptyGuidanceArtifacts(t, targetPath)
-
-	specDocData, err := os.ReadFile(filepath.Join(targetPath, "docs", "docs.md"))
-	require.NoError(t, err)
-	require.Equal(t, "# docs Spec\n", string(specDocData))
 }
 
 func TestAuthoringCreateWithoutOrbitRequiresExplicitIdentityForFirstOrbit(t *testing.T) {
