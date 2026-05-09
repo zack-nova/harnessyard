@@ -2,12 +2,7 @@
 
 This quickstart shows the current public path for Harness Yard CLI (hyard).
 
-`hyard` is the canonical public binary. The legacy `orbit` and `harness` command trees remain available through:
-
-```bash
-hyard plumbing orbit
-hyard plumbing harness
-```
+`hyard` is the public command surface.
 
 ## Install
 
@@ -133,100 +128,17 @@ git commit -m "Optimize frontend lab harness"
 hyard publish harness workspace
 ```
 
-### Lower-Level Agent Handoff
+## Authoring Next Steps
 
-When you need to explain what the high-level handoff composes, select Codex and
-apply only project-local agent assets before using the generated Start Prompt:
+This quickstart is the Runtime User path. If the next job is to author reusable
+work, use the role-specific guides:
 
-```bash
-hyard agent use codex
-hyard agent apply --project-only --yes
-hyard bootstrap setup codex
-hyard start --print-prompt
-```
-
-## Author Path
-
-Use this path when you are editing authored truth, guide blocks, or package content
-intended to become an Orbit Package. Author View makes authored scaffolds explicit;
-Orbit Package publication remains available for authoring and compatibility, but it
-is not the recommended runtime-user publication path.
-
-When you are authoring inside a Harness Runtime, select Author View before
-materializing editable guide artifacts:
-
-```bash
-hyard view author
-```
-
-Render editable guide artifacts, save edited guidance back into authored truth, or
-use the writeback alias when following older authoring instructions:
-
-```bash
-hyard guide render --orbit docs --target all
-hyard guide save --orbit docs --target all
-hyard guide writeback --orbit docs --target all
-```
-
-Apply tracked content hints before publishing:
-
-```bash
-hyard orbit content apply docs --check --json
-hyard orbit content apply docs
-```
-
-Publish the authored orbit as an Orbit Package:
-
-```bash
-hyard publish orbit docs --json
-```
-
-Create a source authoring repository when you need a standalone starting point for
-one orbit package:
-
-```bash
-hyard create source docs-source --orbit docs --name "Docs Orbit" --description "Docs authoring repo"
-cd docs-source
-hyard orbit member add --orbit docs --key docs-content --role rule --include 'docs/**'
-```
-
-Add `--with-spec` to source or orbit-template authoring bootstrap commands when
-the new orbit should start with a maintained rule entry point. It creates both
-`docs/<orbit-id>.md` and `docs/<orbit-id>/README.md`; the generated `spec` rule
-member includes `docs/<orbit-id>.md` and `docs/<orbit-id>/**`.
-
-Rename an authored orbit package when the package identity needs to change:
-
-```bash
-hyard orbit rename docs api
-```
-
-When you need the lower-level compatibility surface:
-
-```bash
-hyard plumbing orbit template save docs --to orbit-template/docs
-hyard plumbing orbit branch list --json
-hyard plumbing orbit branch inspect HEAD --json
-```
-
-Authoring a reusable Harness Package follows the runtime publication path after the
-runtime content is reviewed:
-
-```bash
-hyard create runtime demo-repo
-cd demo-repo
-hyard install <template-source>
-hyard plumbing harness inspect
-hyard check --json
-hyard view status
-hyard publish harness workspace
-```
-
-The local raw export primitive remains available through plumbing:
-
-```bash
-hyard plumbing harness template save --to harness-template/workspace
-```
+- [Harness Authoring](./guides/harness-authoring.md): compose multiple Orbit
+  Workflows into a reusable Harness Package.
+- [Orbit Authoring](./guides/orbit-authoring.md): author and publish one Orbit
+  Package.
+- [Content And Workflows](./guides/content-and-workflows.md): decide what each
+  maintained content file should contain.
 
 ## Bootstrap Completion
 
@@ -256,9 +168,6 @@ hyard bootstrap reopen
 hyard bootstrap reopen --restore-surface
 ```
 
-The lower-level per-orbit compatibility commands remain available under
-`hyard plumbing harness bootstrap` when maintainers need targeted recovery.
-
 ## Acceptance Smoke Contract
 
 The release-facing documentation surface is currently protected by:
@@ -267,7 +176,9 @@ The release-facing documentation surface is currently protected by:
 sh ./scripts/test_release_surface_hyard.sh
 ```
 
-The release-surface script validates `hyard` as the only public binary, compatibility plumbing through `hyard plumbing orbit|harness`, release asset naming, install documentation, and the separation between public release contract and maintainer release procedure.
+The release-surface script validates `hyard` as the public command surface,
+release asset naming, install documentation, and the separation between public
+release contract and maintainer release procedure.
 
 When runtime fixtures are added to this repository, add a dedicated quickstart acceptance smoke that executes the end-to-end runtime path.
 

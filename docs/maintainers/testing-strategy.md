@@ -2,12 +2,9 @@
 
 This document defines the testing strategy for the Harness Yard CLI mainline.
 
-The product is released as `hyard`. The legacy `orbit` and `harness` command surfaces remain available through:
-
-```bash
-hyard plumbing orbit
-hyard plumbing harness
-```
+The product is released as `hyard`. Public product documentation should teach
+the top-level `hyard` command surface rather than lower-level maintainer or
+compatibility commands.
 
 ## 1. Goals
 
@@ -70,7 +67,6 @@ It must cover:
 
 - building `hyard`
 - using `hyard` as the only public binary
-- using `hyard plumbing orbit|harness` for compatibility flows
 - creating runtime, source, orbit-template, and harness-template branches
 - installing a harness
 - checking branch identity
@@ -105,8 +101,8 @@ Current mainline coverage should include:
 - Status, diff, and log: current-orbit failure modes, in-scope/out-of-scope classification, path-limited reads, `--outside`, and stable JSON output.
 - Commit and restore: scoped pathspec boundaries, preservation of out-of-scope changes, commit trailers, fail-closed restore rules, normal Git commits, and best-effort auxiliary refs.
 - State and locking: atomic writes, lock behavior, warnings snapshots, status snapshots, and damaged-state diagnostics.
-- Quickstart smoke: doc-derived happy path, `hyard`-only build, compatibility plumbing, branch identity, and clean/migrated runtime writeback.
-- Release surface: `hyard` as canonical binary, release archive contents, archive naming, version metadata, install docs, Homebrew docs, and compatibility plumbing.
+- Quickstart smoke: doc-derived happy path, `hyard`-only build, branch identity, and clean/migrated runtime writeback.
+- Release surface: `hyard` as canonical binary, release archive contents, archive naming, version metadata, install docs, Homebrew docs, and public-doc avoidance of lower-level compatibility commands.
 
 ## 4. Test Harness Rules
 
@@ -127,6 +123,11 @@ These files are treated as contract-bearing documentation:
 
 ```text
 docs/quickstart.md
+docs/concepts.md
+docs/reference/configuration.md
+docs/guides/content-and-workflows.md
+docs/guides/harness-authoring.md
+docs/guides/orbit-authoring.md
 docs/reference/release-surface.md
 docs/contributing/testing.md
 docs/maintainers/release.md

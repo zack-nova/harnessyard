@@ -148,5 +148,3 @@ esac
 
 echo
 echo "Run: hyard --help"
-echo "Run: hyard plumbing orbit --help"
-echo "Run: hyard plumbing harness --help"

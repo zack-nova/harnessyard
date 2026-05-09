@@ -1,16 +1,9 @@
 # Installation
 
-Harness Yard is released as a single public CLI binary:
+Harness Yard installs one public CLI binary:
 
 ```text
 hyard
-```
-
-The legacy `orbit` and `harness` command surfaces remain available through:
-
-```bash
-hyard plumbing orbit
-hyard plumbing harness
 ```
 
 ## Homebrew
@@ -47,6 +40,4 @@ curl -fsSL https://raw.githubusercontent.com/zack-nova/harnessyard/main/install.
 ```bash
 hyard --version
 hyard --help
-hyard plumbing orbit --help
-hyard plumbing harness --help
 ```

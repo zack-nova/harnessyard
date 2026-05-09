@@ -4,7 +4,7 @@ This document defines the public release contract for Harness Yard CLI.
 
 ## Public Product Name
 
-The official release headline is:
+The current release headline is:
 
 ```text
 Harness Yard CLI (hyard)
@@ -18,16 +18,9 @@ The canonical public binary is:
 hyard
 ```
 
-Formal release assets must distribute `hyard` only.
+Formal release assets distribute `hyard` only.
 
-The legacy `orbit` and `harness` command surfaces remain available through the compatibility plumbing interface:
-
-```bash
-hyard plumbing orbit
-hyard plumbing harness
-```
-
-They are compatibility surfaces, not separately distributed release binaries.
+Public product documentation should teach the top-level `hyard` command surface.
 
 ## Installation Channels
 
@@ -50,7 +43,8 @@ The repository install script is also supported:
 curl -fsSL https://raw.githubusercontent.com/zack-nova/harnessyard/main/install.sh | bash
 ```
 
-The install script installs `hyard` from the latest release and points users to the compatibility plumbing interface when they need legacy `orbit` or `harness` behavior.
+The install script installs `hyard` from the latest release and points users to
+`hyard --help`.
 
 ## Package Lifecycle Surface
 
@@ -97,16 +91,6 @@ hyard uninstall orbit docs
 Run View Package Installation outputs package guidance incrementally so each
 newly installed package can be used immediately.
 
-The lower-level explanatory path for `hyard start --with codex` is repo-local Agent
-Framework selection plus project-only Framework Activation:
-
-```bash
-hyard agent use codex
-hyard agent apply --project-only --yes
-hyard bootstrap setup codex
-hyard start --print-prompt
-```
-
 Publish demos should make a normal Git checkpoint before publishing the current
 runtime as a Harness Package:
 
@@ -129,13 +113,13 @@ Run View examples and next actions should not recommend Orbit Package publicatio
 as the default way to share runtime work.
 
 Author View is the authored-truth view. Author documentation should explain
-`hyard view author`, `hyard guide render`, `hyard guide save`, the `hyard guide
-writeback` compatibility alias, `hyard orbit content apply`, and Orbit Package
-publication through `hyard publish orbit <orbit-package>`.
+`hyard view author`, `hyard guide render`, `hyard guide save`,
+`hyard orbit content apply`, and Orbit Package publication through
+`hyard publish orbit <orbit-package>`.
 
-Orbit Package publication remains available for authoring and compatibility. It
-should be documented as an authoring surface or compatibility surface, not as the
-recommended runtime-user publication path.
+Orbit Package publication remains available for authoring. It should be
+documented as an authoring surface, not as the recommended runtime-user
+publication path.
 
 Main `hyard --help` output must stay stable across Runtime View Selection. Runtime
 View Selection may affect command behavior and status/next-action output for a
