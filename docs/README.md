@@ -1,22 +1,35 @@
 # Documentation
 
-This directory contains the product, contributor, reference, and maintainer documentation for Harness Yard.
+This directory contains the product, contributor, reference, and maintainer
+documentation for Harness Yard.
 
-## User Docs
+## Start Using Harness Yard
 
-- [Quickstart](./quickstart.md)
-- [Installation](./installation.md)
+- [Installation](./installation.md): install `hyard` and verify the CLI.
+- [Quickstart](./quickstart.md): initialize or clone a Harness Runtime, install
+  packages, check readiness, and start an agent.
+- [Concepts](./concepts.md): learn the product model before reading reference or
+  authoring material.
 
-## Reference Docs
+## Author Reusable Work
 
-- [Release Surface](./reference/release-surface.md)
+- [Harness Authoring](./guides/harness-authoring.md): compose multiple Orbit
+  Workflows into a reusable Harness Package.
+- [Orbit Authoring](./guides/orbit-authoring.md): author and publish one Orbit
+  Package.
+- [Content And Workflows](./guides/content-and-workflows.md): organize guidance,
+  subject, process, skill, command, and bootstrap content.
 
-## Contributor Docs
+## Reference
+
+- [Configuration Reference](./reference/configuration.md): understand
+  program-readable truth, editing policy, conformance, and validation.
+- [Release Surface](./reference/release-surface.md): public release contract for
+  `hyard`.
+
+## Contribute And Maintain
 
 - [Testing for Contributors](./contributing/testing.md)
-
-## Maintainer Docs
-
 - [Current Architecture](./maintainers/current-architecture.md)
 - [Unresolved Work](./maintainers/unresolved-work.md)
 - [Release Guide](./maintainers/release.md)
@@ -32,4 +45,6 @@ Testing rules belong in [Testing for Contributors](./contributing/testing.md).
 Maintainer testing strategy belongs in
 [Testing Strategy](./maintainers/testing-strategy.md).
 
-Design and implementation specs live alongside these pages while they are active references. Older or lower-frequency background documents can move into a dedicated background directory when needed.
+Design and implementation specs live alongside these pages while they are active
+references. Older or lower-frequency background documents can move into a
+dedicated background directory when needed.

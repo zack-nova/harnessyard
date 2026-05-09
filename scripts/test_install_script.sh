@@ -23,6 +23,17 @@ assert_contains() {
   fi
 }
 
+assert_not_contains() {
+  file=$1
+  unexpected=$2
+
+  if grep -Fq "$unexpected" "$file"; then
+    echo "expected $file to not contain: $unexpected" >&2
+    cat "$file" >&2
+    exit 1
+  fi
+}
+
 assert_executable() {
   path=$1
 
@@ -176,7 +187,6 @@ assert_contains "$output_file" "Installed:"
 assert_contains "$output_file" "  ${install_dir}/hyard"
 assert_contains "$output_file" "Note: ${install_dir} is not on your PATH."
 assert_contains "$output_file" "Run: hyard --help"
-assert_contains "$output_file" "Run: hyard plumbing orbit --help"
-assert_contains "$output_file" "Run: hyard plumbing harness --help"
+assert_not_contains "$output_file" "Run: hyard plumbing"
 
 echo "install.sh tests passed"

@@ -78,6 +78,11 @@ assert_occurs_before() {
 
 quickstart_doc="$repo_root/docs/quickstart.md"
 installation_doc="$repo_root/docs/installation.md"
+concepts_doc="$repo_root/docs/concepts.md"
+configuration_doc="$repo_root/docs/reference/configuration.md"
+content_workflows_doc="$repo_root/docs/guides/content-and-workflows.md"
+harness_authoring_doc="$repo_root/docs/guides/harness-authoring.md"
+orbit_authoring_doc="$repo_root/docs/guides/orbit-authoring.md"
 release_surface_doc="$repo_root/docs/reference/release-surface.md"
 maintainer_release_doc="$repo_root/docs/maintainers/release.md"
 contributor_testing_doc="$repo_root/docs/contributing/testing.md"
@@ -88,6 +93,11 @@ goreleaser_config="$repo_root/.goreleaser.yaml"
 for doc in \
   "$quickstart_doc" \
   "$installation_doc" \
+  "$concepts_doc" \
+  "$configuration_doc" \
+  "$content_workflows_doc" \
+  "$harness_authoring_doc" \
+  "$orbit_authoring_doc" \
   "$release_surface_doc" \
   "$maintainer_release_doc" \
   "$contributor_testing_doc" \
@@ -109,9 +119,6 @@ assert_contains "$quickstart_doc" "hyard --version"
 assert_contains "$quickstart_doc" "## Runtime User Path"
 assert_contains "$quickstart_doc" "hyard clone https://github.com/acme/harness-templates.git demo-runtime --ref harness-template/frontend-lab"
 assert_contains "$quickstart_doc" "hyard start --with codex"
-assert_contains "$quickstart_doc" "### Lower-Level Agent Handoff"
-assert_contains "$quickstart_doc" "hyard agent use codex"
-assert_contains "$quickstart_doc" "hyard agent apply --project-only --yes"
 assert_contains "$quickstart_doc" "Run View is the default runtime-user presentation"
 assert_contains "$quickstart_doc" "hyard view status"
 assert_contains "$quickstart_doc" "hyard view run --check"
@@ -137,14 +144,6 @@ assert_contains "$quickstart_doc" "hyard install <template-source>"
 assert_contains "$quickstart_doc" "hyard uninstall orbit <orbit-package>"
 assert_contains "$quickstart_doc" "hyard uninstall harness frontend-lab"
 assert_contains "$quickstart_doc" "hyard uninstall orbit docs"
-assert_contains "$quickstart_doc" "## Author Path"
-assert_contains "$quickstart_doc" "hyard view author"
-assert_contains "$quickstart_doc" "hyard guide render --orbit docs --target all"
-assert_contains "$quickstart_doc" "hyard guide save --orbit docs --target all"
-assert_contains "$quickstart_doc" "hyard guide writeback --orbit docs --target all"
-assert_contains "$quickstart_doc" "hyard orbit content apply docs --check --json"
-assert_contains "$quickstart_doc" "hyard publish orbit docs --json"
-assert_contains "$quickstart_doc" "hyard plumbing orbit branch list --json"
 assert_contains_line "$quickstart_doc" "hyard bootstrap complete --check --json"
 assert_contains_line "$quickstart_doc" "hyard bootstrap complete --yes"
 assert_contains_line "$quickstart_doc" "hyard bootstrap setup"
@@ -153,10 +152,16 @@ assert_contains_line "$quickstart_doc" "hyard bootstrap setup --remove"
 assert_contains_line "$quickstart_doc" "hyard bootstrap reopen"
 assert_contains_line "$quickstart_doc" "hyard bootstrap reopen --restore-surface"
 assert_occurs_before "$quickstart_doc" 'git commit -m "Optimize frontend lab harness"' "hyard publish harness workspace"
+assert_contains "$quickstart_doc" "## Authoring Next Steps"
+assert_contains "$quickstart_doc" "[Harness Authoring](./guides/harness-authoring.md)"
+assert_contains "$quickstart_doc" "[Orbit Authoring](./guides/orbit-authoring.md)"
 assert_not_contains "$quickstart_doc" "hyard assign orbit <orbit-id> --harness <harness-id>"
 assert_not_contains "$quickstart_doc" "hyard plumbing orbit list"
 assert_not_contains "$quickstart_doc" "hyard plumbing harness template publish"
+assert_not_contains "$quickstart_doc" "hyard plumbing"
+assert_not_contains "$quickstart_doc" "Lower-Level Agent Handoff"
 assert_not_contains "$quickstart_doc" "hyard remove "
+assert_not_contains "$quickstart_doc" "## Author Path"
 assert_not_contains "$quickstart_doc" "# Orbit / Harness Quickstart"
 assert_not_contains "$quickstart_doc" "## Worker Path"
 assert_not_contains "$quickstart_doc" "## Runtime Author Path"
@@ -170,15 +175,50 @@ assert_not_contains "$quickstart_doc" 'export HARNESS_BIN="$ORBIT_BIN_DIR/harnes
 assert_not_contains "$quickstart_doc" '"$ORBIT_BIN" branch list --json'
 assert_not_contains "$quickstart_doc" '"$HARNESS_BIN" install "$TEMPLATE_REPO"'
 
-assert_contains "$installation_doc" "Harness Yard is released as a single public CLI binary"
+assert_contains "$concepts_doc" "# Harness Yard Concepts"
+assert_contains "$concepts_doc" "A Harness Yard revision is a Git worktree revision with exactly one revision"
+assert_contains "$concepts_doc" "Run View is the default runtime-user presentation"
+assert_contains "$concepts_doc" "Author View is for Harness authors and Orbit authors"
+assert_not_contains "$concepts_doc" "hyard plumbing"
+
+assert_contains "$configuration_doc" "# Configuration Reference"
+assert_contains "$configuration_doc" ".harness/manifest.yaml"
+assert_contains "$configuration_doc" ".harness/orbits/*.yaml"
+assert_contains "$configuration_doc" 'Supported fields are `name`, `description`, `role`, and `lane`'
+assert_contains "$configuration_doc" "hyard orbit content apply <package> --check --json"
+
+assert_contains "$content_workflows_doc" "# Content And Workflows"
+assert_contains "$content_workflows_doc" "objective"
+assert_contains "$content_workflows_doc" "scope boundary"
+assert_contains "$content_workflows_doc" "record minimum"
+assert_contains "$content_workflows_doc" "Split an Orbit Workflow only when the authored contract has split"
+
+assert_contains "$harness_authoring_doc" "# Harness Authoring"
+assert_contains "$harness_authoring_doc" "hyard publish harness workspace"
+assert_contains "$harness_authoring_doc" "hyard assign orbit <orbit-package>"
+assert_contains "$harness_authoring_doc" "hyard view author"
+assert_contains "$harness_authoring_doc" "hyard guide save --orbit docs --target all"
+assert_not_contains "$harness_authoring_doc" "hyard guide writeback"
+assert_not_contains "$harness_authoring_doc" "hyard plumbing"
+
+assert_contains "$orbit_authoring_doc" "# Orbit Authoring"
+assert_contains "$orbit_authoring_doc" "hyard view author"
+assert_contains "$orbit_authoring_doc" "hyard guide render --orbit docs --target all"
+assert_contains "$orbit_authoring_doc" "hyard guide save --orbit docs --target all"
+assert_contains "$orbit_authoring_doc" "hyard orbit content apply docs --check --json"
+assert_contains "$orbit_authoring_doc" "hyard publish orbit docs --json"
+assert_not_contains "$orbit_authoring_doc" "hyard guide writeback"
+assert_not_contains "$orbit_authoring_doc" "hyard plumbing"
+
+assert_contains "$installation_doc" "Harness Yard installs one public CLI binary"
 assert_contains "$installation_doc" "brew install hyard"
 assert_contains "$installation_doc" "raw.githubusercontent.com/zack-nova/harnessyard/main/install.sh"
-assert_contains "$installation_doc" "hyard plumbing orbit --help"
-assert_contains "$installation_doc" "hyard plumbing harness --help"
+assert_not_contains "$installation_doc" "hyard plumbing"
 assert_not_contains "$installation_doc" "harness-yard"
 
 assert_contains "$release_surface_doc" "Harness Yard CLI (hyard)"
-assert_contains "$release_surface_doc" 'Formal release assets must distribute `hyard` only.'
+assert_contains "$release_surface_doc" 'Formal release assets distribute `hyard` only.'
+assert_contains "$release_surface_doc" 'Public product documentation should teach the top-level `hyard` command surface.'
 assert_contains "$release_surface_doc" "brew tap zack-nova/tap"
 assert_contains "$release_surface_doc" "raw.githubusercontent.com/zack-nova/harnessyard/main/install.sh"
 assert_contains "$release_surface_doc" "hyard install <template-source>"
@@ -190,20 +230,21 @@ assert_contains "$release_surface_doc" "hyard clone https://github.com/acme/harn
 assert_contains "$release_surface_doc" "hyard start --with codex"
 assert_contains "$release_surface_doc" "hyard init runtime"
 assert_contains "$release_surface_doc" "hyard install https://github.com/acme/harness-templates.git --ref harness-template/frontend-lab"
+assert_not_contains "$release_surface_doc" "hyard plumbing"
+assert_not_contains "$release_surface_doc" "compatibility"
+assert_not_contains "$release_surface_doc" "writeback"
 assert_contains "$release_surface_doc" "hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/docs --bindings .harness/vars.yaml"
 assert_contains "$release_surface_doc" "hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/api --bindings .harness/vars.yaml"
 assert_contains "$release_surface_doc" "hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/ui --bindings .harness/vars.yaml"
 assert_contains "$release_surface_doc" "hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/ops --bindings .harness/vars.yaml"
 assert_contains "$release_surface_doc" "Run View Package Installation outputs package guidance incrementally"
-assert_contains "$release_surface_doc" "hyard agent use codex"
-assert_contains "$release_surface_doc" "hyard agent apply --project-only --yes"
 assert_contains "$release_surface_doc" 'git commit -m "Optimize frontend lab harness"'
 assert_contains "$release_surface_doc" "hyard publish harness workspace"
 assert_occurs_before "$release_surface_doc" 'git commit -m "Optimize frontend lab harness"' "hyard publish harness workspace"
 assert_contains "$release_surface_doc" "Run View is the recommended runtime-user view"
 assert_contains "$release_surface_doc" 'Run View publication should use `hyard publish harness <harness-package>`'
 assert_contains "$release_surface_doc" "Author View is the authored-truth view"
-assert_contains "$release_surface_doc" "Orbit Package publication remains available for authoring and compatibility"
+assert_contains "$release_surface_doc" "Orbit Package publication remains available for authoring"
 assert_contains "$release_surface_doc" 'Main `hyard --help` output must stay stable across Runtime View Selection'
 assert_contains "$release_surface_doc" "<!-- orbit:begin workflow=\"docs\" -->"
 assert_contains "$release_surface_doc" "<!-- orbit:end workflow=\"docs\" -->"
@@ -241,8 +282,7 @@ assert_contains "$install_script" "PROJECT=\"hyard\""
 assert_contains "$install_script" "REPO=\"\${REPO:-harnessyard}\""
 assert_contains "$install_script" "asset_version=\"\${tag#v}\""
 assert_contains "$install_script" "Run: hyard --help"
-assert_contains "$install_script" "Run: hyard plumbing orbit --help"
-assert_contains "$install_script" "Run: hyard plumbing harness --help"
+assert_not_contains "$install_script" "Run: hyard plumbing"
 assert_not_contains "$install_script" "BINS=(hyard orbit harness)"
 assert_not_contains "$install_script" "Run: orbit --help"
 assert_not_contains "$install_script" "Run: harness --help"

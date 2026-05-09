@@ -25,7 +25,6 @@ When the dedicated quickstart acceptance smoke is added, run it when a change to
 - install behavior
 - release packaging
 - branch identity behavior
-- `hyard plumbing orbit|harness`
 - single-control-plane routing
 - user-visible command flows
 
@@ -42,7 +41,6 @@ Run the release-surface test when a change affects:
 - public binary naming
 - release archive naming
 - `hyard --version`
-- `hyard plumbing orbit|harness`
 
 Command:
 

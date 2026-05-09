@@ -8,6 +8,18 @@ Harness Yard turns ordinary Git repositories and authored package truth into reu
 A Git repository that has Harness Yard control-plane truth and can install, activate, check, and publish harness content.
 _Avoid_: workspace, plain repo
 
+**Control-Plane Truth**:
+Versioned Harness Yard files that identify revisions, packages, installs, ownership, templates, or runtime configuration.
+_Avoid_: runtime cache, presentation content
+
+**Authored Package Truth**:
+Versioned Harness Yard truth that defines reusable package content, metadata, capabilities, or behavior before installation or publication.
+_Avoid_: generated runtime output, presentation guidance
+
+**Harness Yard Revision**:
+A Git worktree revision recognized by Harness Yard as runtime, source, orbit-template, or harness-template truth.
+_Avoid_: state, mode, view
+
 **Runtime View**:
 A repository-local presentation intent that distinguishes runtime consumption from package authoring.
 _Avoid_: projection mode, global mode
@@ -35,6 +47,10 @@ _Avoid_: adoption, package install
 **Source Adoption**:
 A conversion of an existing Git repository or branch with prewritten authoring content into a source authoring revision for one Orbit Package.
 _Avoid_: runtime adoption, create source first
+
+**Source Revision**:
+An authoring Harness Yard Revision that owns editable truth for one Orbit Package before publication.
+_Avoid_: runtime source, template branch
 
 **Adopted Orbit**:
 The default single orbit created during Adoption to own the adopted repository's agent-facing truth and selected content.
@@ -68,6 +84,10 @@ _Avoid_: audit, package authoring reconciliation
 A reusable branch-form package exported from a Harness Runtime for installation into another repository.
 _Avoid_: scaffold, snapshot
 
+**Orbit Template Revision**:
+An installable Harness Yard Revision exported from Orbit Package authoring truth for installation into a Harness Runtime.
+_Avoid_: source revision, harness template
+
 **Orbit Package**:
 A reusable or installed package whose boundary is one orbit's authored truth and projected agent assets.
 _Avoid_: member, folder
@@ -88,13 +108,81 @@ _Avoid_: template repo, git remote, package manager
 A registry-facing short name that users pass to package lifecycle commands.
 _Avoid_: branch ref, local folder, display title
 
+**Package Identity**:
+The stable user-facing identity of an Orbit Package or Harness Package, made from package type, package name, and optional version when present.
+_Avoid_: display name, branch ref, workflow id
+
+**User Convention**:
+A user-facing Harness Yard rule for how people name, organize, edit, configure, publish, or recover Harness Yard Revisions.
+_Avoid_: internal schema, generated implementation detail
+
+**Public Product Documentation**:
+The user-facing documentation path that helps Runtime Users, Harness Authors, and Orbit Authors understand, configure, use, and author Harness Yard.
+_Avoid_: maintainer documentation, release notes
+
+**Configuration Reference**:
+A public reference document that explains program-readable Harness Yard files, editing policies, conformance requirements, and validation commands.
+_Avoid_: content writing guide, YAML schema dump
+
+**Content And Workflow Guide**:
+A public guide that explains maintained content responsibilities, file sizing, file purpose, and Orbit Workflow organization.
+_Avoid_: control-plane schema, package lifecycle tutorial
+
+**Concepts Guide**:
+A short public guide that explains Harness Yard's product object model and mental model before command tutorials or reference details.
+_Avoid_: command tutorial, configuration reference
+
+**Maintained Content File**:
+A file that a human or agent intentionally authors, reviews, or edits as package content, guidance, or user-facing convention.
+_Avoid_: control-plane schema, repo-local cache
+
+**Guidance File**:
+A Maintained Content File that gives agents or humans rules, boundaries, workflow instructions, or handoff guidance.
+_Avoid_: control-plane truth, cache
+
+**Subject File**:
+A Maintained Content File that contains the target product, domain, repository, or documentation content an Orbit Workflow operates on or interprets.
+_Avoid_: process log, package metadata
+
+**Process File**:
+A Maintained Content File that records or templates workflow execution steps, checklists, workpads, review notes, or other process material.
+_Avoid_: subject content, runtime cache
+
+**Local Skill Asset**:
+A package-owned Maintained Content File or directory that provides a local agent skill and its supporting resources.
+_Avoid_: remote skill dependency, ordinary rule document
+
+**Prompt Command Asset**:
+A package-owned Maintained Content File that provides a prompt command template for an agent or user command surface.
+_Avoid_: shell script, package lifecycle command
+
+**Bootstrap Content**:
+Initialization-only maintained content used to bring a Harness Runtime or Orbit Workflow into first usable state.
+_Avoid_: steady-state rules, member role
+
+**Runtime User**:
+A person using an installed Harness Runtime to consume guidance, start an agent handoff, or publish the composed runtime.
+_Avoid_: package author
+
+**Harness Author**:
+A person optimizing a Harness Runtime or Harness Package while using the runtime as a working environment.
+_Avoid_: plain runtime user
+
+**Orbit Author**:
+A person maintaining Source Revisions, Orbit Template Revisions, or Orbit Package authored truth.
+_Avoid_: runtime consumer
+
+**Maintainer**:
+A person responsible for plumbing, compatibility, release, or recovery behavior beyond ordinary package use.
+_Avoid_: ordinary user
+
 **Harness Workflow Block**:
 A root guidance block owned by a Harness Package and written with public workflow marker language.
 _Avoid_: orbit block, generic workflow
 
 **Workflow ID**:
-The public marker identity field that names either an Orbit Package owner or a Harness Package owner.
-_Avoid_: display alias, renamed orbit id
+The root guidance marker field whose value equals the owning package name for its owner kind.
+_Avoid_: display alias, package identity, renamed orbit id
 
 **Workflow Owner Kind**:
 The public marker owner category that says whether a root guidance block is owned by an Orbit Package or a Harness Package.
@@ -169,6 +257,10 @@ _Avoid_: printed next command, detached task
 A repository artifact intended to shape agent behavior, such as root guidance, local skills, hooks, commands, or agent configuration.
 _Avoid_: config file, AI stuff
 
+**Root Guidance Artifact**:
+A repository-root maintained guidance file that presents agent-facing, bootstrap, or human-facing entry information for a Harness Runtime or reusable template.
+_Avoid_: canonical authored truth, orbit-local document
+
 **Run View Root Guidance**:
 Root guidance presented for runtime consumption after authoring markers have been removed or ignored.
 _Avoid_: authored truth, backfill lane
@@ -211,6 +303,7 @@ _Avoid_: rule
 
 ## Relationships
 
+- A **Harness Yard Revision** has exactly one revision kind: **Harness Runtime**, **Source Revision**, **Orbit Template Revision**, or **Harness Template**.
 - An **Adoption** converts exactly one **Ordinary Repository** into exactly one **Harness Runtime**.
 - **Adoption** is exposed as the top-level `hyard adopt` command because it is heavier than ordinary runtime initialization.
 - Write-mode **Adoption** requires a clean worktree; `--check` may inspect a dirty worktree without mutating it.
@@ -227,15 +320,75 @@ _Avoid_: rule
 - **Source Adoption** uses **Member Hint Frontmatter** and **Directory Member Marker** as temporary input, then consumes those hints into OrbitSpec member truth.
 - Existing root guidance files discovered during **Source Adoption** may become Orbit Package meta templates instead of runtime guidance blocks.
 - **Source Adoption** reports publishing the Orbit Package as the next handoff action after writing source truth.
+- A **Source Revision** and an **Orbit Template Revision** each describe exactly one **Orbit Package**.
+- A **Source Revision** may publish an **Orbit Template Revision**.
+- Multi-orbit composition belongs to a **Harness Runtime** or **Harness Package**, not a **Source Revision** or **Orbit Template Revision**.
 - A **Harness Runtime** may publish one or more **Harness Templates** over time.
 - A **Harness Template** is exported from a **Harness Runtime**, not directly from an **Ordinary Repository**.
+- A **Runtime User** or **Harness Author** sharing a composed runtime should publish a **Harness Package**.
+- An **Orbit Author** sharing reusable orbit authored truth should publish an **Orbit Package**.
+- Template save commands are lower-level export primitives rather than the main user publication path.
 - Cloning a **Harness Template** should suggest **Harness Start** as the next handoff action but should not start an agent automatically.
 - Early harness optimization demos may use manual Git checkpoints before publishing a Harness Template.
+- A **Package Identity** uses package type to distinguish Orbit Packages from Harness Packages, and package name as the stable user-facing package name.
+- Display `name` and `description` metadata do not replace **Package Identity**.
 - A **Package Registry** lets public commands resolve **Package Handles** without exposing Git branch locators in ordinary demos.
 - Early demos may use explicit GitHub package locators before **Package Registry** resolution is ready.
+- A **User Convention** may point to visible configuration files, modifying commands, defaults, and recommended settings, but it does not define internal Harness Yard schema or generated implementation behavior.
+- User convention documentation is organized by convention type and marks which **Harness Yard Revisions** each convention applies to.
+- User convention documentation interprets `MUST`, `MUST NOT`, `REQUIRED`, `SHOULD`, `SHOULD NOT`, `RECOMMENDED`, `MAY`, and `OPTIONAL` according to RFC 2119.
+- User convention documentation describes currently supported behavior; future work may appear only as non-normative notes or open questions.
+- **Public Product Documentation** primarily serves **Runtime Users**, **Harness Authors**, and **Orbit Authors**; maintainer-focused plumbing, release, architecture, and recovery material belongs in maintainer documentation.
+- **Public Product Documentation** should teach the top-level `hyard` command surface and omit lower-level compatibility or plumbing commands before those surfaces become intentional user-facing product paths.
+- The target **Public Product Documentation** set is `README.md`, `docs/installation.md`, `docs/quickstart.md`, `docs/concepts.md`, `docs/reference/configuration.md`, `docs/guides/content-and-workflows.md`, `docs/guides/harness-authoring.md`, and `docs/guides/orbit-authoring.md`.
+- Public `README.md` should stay a short product introduction and reader-routing entry point rather than a complete documentation index.
+- `docs/README.md` should be the complete documentation index, ordered by reader path before lower-level reference and maintainer material.
+- A **Concepts Guide** should explain the core Harness Yard product model once so tutorial, configuration, and authoring documents do not duplicate revision, package, workflow, and view terminology.
+- The public Quickstart should serve the **Runtime User** first-success path; **Harness Author** and **Orbit Author** first-success paths belong in their separate authoring guides.
+- A **Configuration Reference** defines the program-readable files, editing policies, conformance requirements, and validation commands users need to keep Harness Yard truth valid.
+- A **Configuration Reference** documents the user-maintainable configuration contract, not every internal YAML field or a generated schema dump.
+- A **Configuration Reference** may identify maintained content files as readable or editable surfaces, but detailed file purpose, sizing, and writing guidance belongs to the **Content And Workflow Guide**.
+- A **Content And Workflow Guide** defines how maintained content files should be written, sized, split, and organized into Orbit Workflows without becoming a YAML schema reference.
+- A **Content And Workflow Guide** includes Orbit Workflow sizing, authored-contract questions, file responsibilities, runtime surface boundaries, and source-only content boundaries, but it does not own package publication tutorials.
+- Existing user convention and content responsibility material should be reorganized under **Configuration Reference** and **Content And Workflow Guide** responsibilities instead of remaining parallel primary documentation entry points; the old `docs/reference/user-conventions.md` and `docs/reference/content-responsibilities.md` paths should be deleted after their current decisions are migrated.
+- Historical orbit authoring manuals may inform public orbit authoring guidance, but they are not active product documentation unless their current decisions are extracted into **Public Product Documentation**.
+- Public orbit authoring guidance should extract a current Orbit Author first-success path from historical authoring manuals rather than migrating the old manual structure wholesale.
+- Public harness authoring guidance should explain the Harness Author path for composing multiple Orbit Workflows into a reusable Harness Package, including package composition, variables, root guidance, readiness checks, and `hyard publish harness`.
+- Harness authoring guidance and orbit authoring guidance are separate public authoring paths because **Harness Authors** compose multiple **Orbit Workflows** into a reusable **Harness Package**, while **Orbit Authors** maintain one **Orbit Package**.
+- User-visible files are documented with one editing policy: tool-owned **Control-Plane Truth**, hand-editable but validated **Authored Package Truth**, or directly editable content and presentation.
+- Tool-owned **Control-Plane Truth** may be inspected and committed, but user convention documentation should direct changes through `hyard` commands.
+- Hand-edited **Authored Package Truth** must be validated with the relevant `hyard` audit, check, or orbit validation command before publication or runtime use.
+- User convention documentation treats normal Git commits as the sharing and evidence mechanism for versioned Harness Yard truth.
+- User convention documentation may recommend `hyard` scoped worktree commands as helpers while preserving normal Git commands when users respect package and path ownership.
+- User convention documentation omits non-user-visible runtime cache and local state details unless a user-facing command requires them.
+- User convention configuration tables stay user-facing: applicable revisions, visible files, modifying commands, defaults, recommendations, and validation commands, not full YAML schema.
+- User convention documentation uses lightweight role labels such as **Runtime User**, **Harness Author**, **Orbit Author**, and **Maintainer** only where the role changes the convention.
+- User convention documentation may include a short prohibited-actions section for common user-facing mistakes, but should not restate internal architecture bans.
+- User convention documentation for harness and orbit content responsibilities covers **Maintained Content Files**, not internal control-plane schemas or repo-local cache files.
+- Harness and orbit content responsibility documentation may include a short "not maintained content" boundary table for control-plane and cache files, but it must not expand their YAML schema or make hand-editing them the normal path.
+- Harness and orbit content responsibility documentation is organized around **Harness Runtime**, **Harness Template**, **Orbit Template Revision**, and **Source Revision**; **Run View** and **Author View** are view-specific notes within those revisions, not additional revision kinds.
+- Harness and orbit content responsibility documentation belongs under the **Content And Workflow Guide** rather than the old `docs/reference/content-responsibilities.md` path.
+- Harness and orbit content responsibility documentation marks file responsibilities as Required, Conditional, or Optional per revision kind, rather than requiring every revision to carry the same files.
+- Harness and orbit content responsibility tables use recommendations for content shape; those recommendations are not independent validation constraints.
+- Harness and orbit content responsibility documentation covers the **Root Guidance Artifacts** `AGENTS.md`, `BOOTSTRAP.md`, and `HUMANS.md`.
+- `AGENTS.md` is the agent work entry point and should stay under 200 lines by linking to deeper maintained content instead of carrying full package documentation.
+- `AGENTS.md` and its linked steady-state guidance should assume normal runtime operation and generally describe only run-state rules.
+- Steady-state guidance should remind users to initialize only when missing initialization blocks or makes unsafe the current run-state work; it should not carry the detailed initialization workflow.
+- `BOOTSTRAP.md` is the bootstrap entry point for pending initialization guidance and should not become a steady-state rule index.
+- Detailed initialization rules belong in **Bootstrap Content** such as `BOOTSTRAP.md` or a bootstrap-oriented skill, and that initialization content may be removed after setup is complete.
+- `HUMANS.md` is an optional human-facing orientation surface and must not replace agent-facing rules in `AGENTS.md`.
+- An **Orbit Workflow** contributes a root guidance block to `AGENTS.md` rather than requiring a separate root `AGENTS.md` per orbit.
+- An **Orbit Workflow** root guidance block should stay under 30 lines and link to deeper maintained content when it needs more detail.
+- Source-side orbit content responsibility documentation classifies maintained content by responsibility: **Guidance File**, **Subject File**, **Process File**, **Local Skill Asset**, **Prompt Command Asset**, and **Bootstrap Content**.
+- Common paths such as `skills/<orbit-id>/*` and `commands/<orbit-id>/**/*.md` are examples of **Recommended Positions**, not the definition of the content categories.
+- **Bootstrap Content** may use `lane: bootstrap`, but bootstrap is lifecycle metadata rather than a fifth orbit member role.
 - A **Harness Runtime** may install and uninstall **Orbit Packages** and **Harness Packages** through package lifecycle commands.
+- A composed harness is described concretely as either a **Harness Runtime** when running inside a Git repository or a **Harness Package** when published for reuse; avoid using standalone "harness" as a storage, runtime, or package identity when one of those precise terms applies.
+- A **Harness Runtime** or **Harness Package** may combine multiple **Orbit Workflows** into one agent work system.
 - A **Package Installation** may declare zero **Package Variables**; zero variables is a complete variable contract, not a missing one.
 - A **Package Installation** records its complete **Package Variables** contract, including the explicit zero-variable case.
+- Users provide **Package Variables** through bindings, usually with `.harness/vars.yaml` or an explicit `--bindings` file.
+- User convention documentation locates bindings files and commands without defining the complete bindings schema.
 - **Package Installation** in **Run View** may automatically compose root guidance and apply **Run View Cleanup** after package truth is written.
 - **Package Installation** in **Run View** outputs guidance incrementally for the newly installed package rather than recomposing existing markerless presentation guidance.
 - **Package Installation** appends incremental **Run View Root Guidance** to the end of the relevant root guidance file with stable separation.
@@ -271,6 +424,8 @@ _Avoid_: rule
 - Bootstrap closeout runs only after an existing `BOOTSTRAP.md` has been read and
   executed, and a retained plain `BOOTSTRAP.md` is not a closeout failure.
 - A **Harness Start** defaults to project-only **Framework Activation** and must not write the user's global agent environment unless the user explicitly chooses a global route.
+- User convention documentation describes Agent Framework selection and activation at the user-command level, not adapter-native schema level.
+- User convention documentation must not present unresolved remote skill pinning or materialization behavior as a supported user contract.
 - A **Harness Start** does not require a globally clean worktree, but must fail closed on conflicting local edits to paths it would write.
 - A **Harness Start** does not create Git commits; checkpointing belongs to authoring and publishing flows.
 - A **Harness Start** succeeds only when it can launch an **Interactive Agent Session** for the selected **Agent Framework**.
@@ -294,6 +449,7 @@ _Avoid_: rule
 - An **Orbit Workflow** marker uses the `orbit:` namespace and its **Workflow ID** is the same stable identity as the internal orbit id; it is not a separate display alias.
 - A **Harness Workflow Block** marker uses the `harness:` namespace and its **Workflow ID** is the same stable identity as the owning harness package id; it is not a separate display alias.
 - Orbit ids and harness ids remain valid concrete identities; **Workflow ID** is their public root-guidance marker umbrella.
+- **Workflow ID** is explained as root guidance marker syntax, not as a separately configurable user identity.
 - A root guidance block's generic identity is **Workflow Owner Kind** plus **Workflow ID**.
 - **Workflow Owner Kind** values are limited to `orbit` and `harness`, matching the public marker namespaces.
 - Public workflow marker syntax applies to root guidance blocks, not authored member hints, manifest schema, branch locators, or storage paths.
@@ -342,6 +498,11 @@ _Avoid_: rule
 - Package uninstallation error guidance should prefer `uninstall` commands, including when reached through the compatibility `remove` surface.
 - The `uninstall` and compatibility `remove` command surfaces should share one package-uninstallation implementation so lifecycle semantics do not drift.
 - **Runtime View** selection changes presentation and publication defaults, not package identity or canonical authored truth.
+- **Run View** is the default runtime-user presentation, but it is not a universal recommendation for every role.
+- **Run View** serves Harness Runtime users who consume installed guidance and publish the composed runtime.
+- **Author View** serves developers and authors who are using a Harness Runtime while optimizing harness or orbit authored truth.
+- Root guidance artifacts are user-visible guidance containers, not canonical package schema.
+- User convention documentation describes root guidance markers only to the extent needed for user editing, save, cleanup, and recovery.
 - **Run View Root Guidance** is a materialized presentation artifact, not an authored backfill lane.
 - Markerless **Run View Root Guidance** must not create authored-truth drift by differing from Orbit Package guidance templates.
 - Existing markerless **Run View Root Guidance** is presentation text and should not be recomposed from package truth during later **Package Installation**.
@@ -361,6 +522,18 @@ _Avoid_: rule
 - **Runtime Check** should report root guidance diagnostics according to **Runtime View**: Run View checks presentation usability, while **Author View** checks authored reconciliation risk.
 - **Runtime Check** should still fail closed on malformed or duplicate root guidance markers because those make owner identity ambiguous.
 - **Author View** is the correct view for `guide render`, `guide save`, content hint reconciliation, and Orbit Package publication.
+- `--with-spec` authoring bootstrap creates maintained rule content under `docs/<orbit-id>/` rather than declaring an empty directory pattern only.
+- `--with-spec` authoring bootstrap includes the rule directory in the existing spec rule member instead of creating a separate rule member.
+- `--with-spec` authoring bootstrap keeps the existing `spec` member name when extending that member to include the initial rule directory.
+- `--with-spec` authoring bootstrap writes a minimal `docs/<orbit-id>/README.md` rule entry point and does not add member hint metadata to that file.
+- `--with-spec` authoring bootstrap applies the same spec member and rule directory behavior across orbit create, source authoring, and orbit-template authoring creation paths.
+- `--with-spec` authoring bootstrap fails closed when the generated rule directory README already exists, rather than silently adopting existing README content.
+- `--with-spec` authoring bootstrap fails closed when `docs/<orbit-id>/` already exists, because including `docs/<orbit-id>/**` would otherwise silently adopt existing directory content as rule content.
+- `--with-spec` authoring bootstrap keeps creating `docs/<orbit-id>.md` and adds `docs/<orbit-id>/README.md`; the existing `spec` member includes both the spec document and `docs/<orbit-id>/**`.
+- `--with-spec` authoring bootstrap keeps the existing minimal `docs/<orbit-id>.md` content unchanged while using `docs/<orbit-id>/README.md` as the rule directory entry point.
+- Public help and user documentation for `--with-spec` authoring bootstrap must describe both generated files and the expanded spec rule member scope.
+- Authoring bootstrap without `--with-spec` keeps the existing no-content side effect behavior and does not create `docs/<orbit-id>/`.
+- Generated `--with-spec` rule directory README titles use the stable orbit id rather than optional display name metadata.
 - A **Referenced Guidance Document** discovered during **Adoption** is a candidate for rule content, but its final member role requires user confirmation.
 - **Guidance Discovery** follows references from root guidance one hop by default; recursive discovery requires an explicit user choice.
 - A directory reference found during **Guidance Discovery** stays a directory member rather than expanding into separate file members.
@@ -378,6 +551,7 @@ _Avoid_: rule
 - A malformed **Member Hint Frontmatter** fails closed instead of being treated as ordinary Markdown metadata.
 - Member Hint parsing may normalize CRLF to LF before enforcing the strict YAML frontmatter delimiter shape.
 - A **Member Hint Frontmatter** accepts only `name`, `description`, `role`, and `lane` inside `orbit_member`.
+- User convention documentation may list **Member Hint Frontmatter** and **Directory Member Marker** fields because they are user-authored input.
 - Applying content hints consumes a **Member Hint Frontmatter** by writing Orbit member truth and removing only the `orbit_member` mapping.
 - Applying content hints preserves ordinary Markdown frontmatter metadata and deletes the whole frontmatter block only when removing `orbit_member` leaves it empty.
 - A **Directory Member Marker** remains the canonical way to hint that a whole directory is one member, and it must use a nested `orbit_member` mapping.
@@ -435,6 +609,8 @@ _Avoid_: rule
 - "source" in Adoption output could be confused with source branches and source authoring; resolved: adoption diagnostics should use terms like `derived_from` or `reason` instead.
 - Adoption JSON avoids `source`; it uses `derived_from` for identity derivation and `evidence` for detection support.
 - `hyard adopt source` could be confused with **Adoption**; resolved: **Source Adoption** is an authoring-revision conversion and does not create a Harness Runtime.
+- "state" or "mode" could mean a **Harness Yard Revision** kind or a **Runtime View** presentation choice; resolved: use **Harness Yard Revision** for runtime/source/orbit-template/harness-template truth and reserve view language for Run View and Author View.
+- "recommended Run View" could imply Run View is better for all roles; resolved: Run View is the default runtime-user presentation, while Author View is the expected mode for developers optimizing harness authored truth.
 - "orbit name" could mean a display title or a stable package identity; resolved: **Source Adoption** defaults the Orbit Package id from the Git repository root directory name, while display naming stays optional or explicit.
 - "add/remove" was considered for top-level package lifecycle, but it conflicts with scoped membership editing; resolved: top-level package lifecycle uses install/uninstall.
 - "start" could be confused with installing packages or starting an application server; resolved: **Harness Start** is the agent handoff flow after a runtime already exists.
@@ -471,7 +647,14 @@ _Avoid_: rule
 - Process-role files could be preserved because they are projection-only in older scoped operations; resolved: process-role files are deleted during **Package Uninstallation** when they are target-owned **Package-Owned Runtime Files**.
 - "scope" could mean projection, write, export, orchestration, or ownership; resolved: uninstall deletion uses **Package Ownership Scope**, a package-derived ownership set distinct from behavior scopes.
 - "workflow" could imply a generic CI workflow, arbitrary task graph, or a full Harness Runtime; resolved: public language may call an atomic closed-loop orbit package an **Orbit Workflow**, while internal and compatibility contracts remain orbit-based.
+- "harness" alone could imply a runtime repository, reusable package, template revision, or compatibility command tree; resolved: use **Harness Runtime** or **Harness Package** for concrete product states, and use lowercase descriptive "harness" only as an umbrella for a composed agent work system.
+- "content file" could include generated control-plane truth or runtime cache files; resolved: **Maintained Content File** means a human- or agent-maintained content or guidance file, not internal schema or repo-local cache.
+- Orbit/source content could be documented only by current repository paths, but that would make layout decisions look semantic; resolved: document maintained content by responsibility first and list paths as recommended positions or examples.
+- Bootstrap content could be mistaken for a normal member role; resolved: bootstrap is lifecycle metadata for initialization-only content, not a fifth member role.
+- Content responsibility table "constraints" could be mistaken for hard validation requirements; resolved: these tables describe recommended content shape, while file presence is marked separately as Required, Conditional, or Optional.
+- Root `AGENTS.md` could grow into a bootstrap procedure; resolved: steady-state root guidance assumes normal runtime operation, mentions initialization only when missing initialization blocks safe runtime work, and leaves detailed initialization to removable **Bootstrap Content** or bootstrap-oriented skills.
 - `workflow="docs"` in public marker syntax could be misread as a display name distinct from the owner package id; resolved: marker `workflow` is a **Workflow ID** that must equal the underlying orbit id for `orbit:` blocks and the harness package id for `harness:` blocks.
+- **Package Identity** could be split into separate user-facing orbit id and harness id concepts; resolved: the user-facing identity shape is package type plus package name, while root guidance markers use owner kind plus **Workflow ID** for block ownership.
 - **Workflow ID** could be misread as a replacement for concrete orbit and harness identities; resolved: it is only their public root-guidance marker umbrella.
 - `OwnerKind + WorkflowID` could be misread as replacing package identity throughout the repository; resolved: it is the generic identity for root guidance blocks only.
 - The workflow naming change could sprawl into `.orbit-member.yaml`, `orbit_member:`, `.harness/orbits/*`, or `orbit-template/*`; resolved: the first compatibility design only changes root guidance marker syntax.
@@ -492,6 +675,7 @@ _Avoid_: rule
 - `meta` is a valid OrbitSpec member role, but allowing it in **Member Hint Frontmatter** would let ordinary Markdown content declare control-plane truth; resolved: Member Hint roles are limited to ordinary content roles.
 - Member lanes could become an open-ended lifecycle taxonomy; resolved: **Member Hint Frontmatter** only accepts the existing `bootstrap` lane.
 - "rule" could mean the `rule` member role or the orbit-level behavior that decides scopes; resolved: use **Behavior Scope Defaults** for role-to-scope decisions.
+- "`--with-spec` rule directory" could be confused with **Directory Member Marker** role defaults; resolved: it changes the OrbitSpec members created by `--with-spec` and does not change the default role for directory member markers.
 - Scope overrides in **Member Hint Frontmatter** could make temporary hints carry durable behavior policy; resolved: the canonical Member Hint contract does not include `scopes`.
 - Directory-level hints could be removed while tightening Markdown frontmatter, but that would lose the whole-directory member authoring path; resolved: keep **Directory Member Marker** and apply the same nested `orbit_member` shape.
 - **Flat Member Hint** compatibility would preserve old authoring examples but keep document metadata ambiguous; resolved: do not support the old flat hint shape, and treat flat-looking frontmatter as ordinary Markdown metadata unless nested `orbit_member` is present.
