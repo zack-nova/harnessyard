@@ -46,6 +46,8 @@ func TestCreateWithNameAndDescriptionWritesMemberSchema(t *testing.T) {
 	requireContainsDefaultCapabilityTruth(t, string(definitionData))
 	require.NotContains(t, string(definitionData), "members:\n")
 	require.NotContains(t, string(definitionData), "key:")
+	require.NoFileExists(t, filepath.Join(repo.Root, "docs", "docs.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "docs", "docs", "README.md"))
 }
 
 func TestSetUpgradesLegacyHostedDefinitionAndUpdatesTopLevelFields(t *testing.T) {
@@ -338,15 +340,49 @@ func TestCreateWithSpecAddsSpecMemberAndDocFile(t *testing.T) {
 
 	definitionData, err := os.ReadFile(filepath.Join(repo.Root, ".harness", "orbits", "docs.yaml"))
 	require.NoError(t, err)
-	require.NotContains(t, string(definitionData), "key:")
-	require.Contains(t, string(definitionData), "name: spec\n")
-	require.Contains(t, string(definitionData), "role: rule\n")
-	require.Contains(t, string(definitionData), "- docs/docs.md\n")
+	requireContainsWithSpecScaffold(t, repo.Root, string(definitionData))
 	requireContainsDefaultCapabilityTruth(t, string(definitionData))
+}
 
-	specDocData, err := os.ReadFile(filepath.Join(repo.Root, "docs", "docs.md"))
+func TestCreateWithSpecFailsClosedWhenSpecDirectoryExists(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, "docs/docs/README.md", "# existing docs\n")
+
+	stdout, stderr, err := executeCLI(t, repo.Root, "create", "docs", "--with-spec", "--json")
+	require.Error(t, err)
+	require.Empty(t, stdout)
+	require.Empty(t, stderr)
+	require.ErrorContains(t, err, "spec doc directory")
+	require.ErrorContains(t, err, "already exists")
+	require.NoFileExists(t, filepath.Join(repo.Root, ".harness", "orbits", "docs.yaml"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "docs", "docs.md"))
+
+	existingData, readErr := os.ReadFile(filepath.Join(repo.Root, "docs", "docs", "README.md"))
+	require.NoError(t, readErr)
+	require.Equal(t, "# existing docs\n", string(existingData))
+}
+
+func requireContainsWithSpecScaffold(t *testing.T, repoRoot string, definitionYAML string) {
+	t.Helper()
+
+	const orbitID = "docs"
+
+	require.NotContains(t, definitionYAML, "key:")
+	require.Contains(t, definitionYAML, "name: spec\n")
+	require.Contains(t, definitionYAML, "role: rule\n")
+	require.Contains(t, definitionYAML, "- docs/"+orbitID+".md\n")
+	require.Contains(t, definitionYAML, "- docs/"+orbitID+"/**\n")
+
+	specDocData, err := os.ReadFile(filepath.Join(repoRoot, "docs", orbitID+".md"))
 	require.NoError(t, err)
-	require.Equal(t, "# docs Spec\n", string(specDocData))
+	require.Equal(t, "# "+orbitID+" Spec\n", string(specDocData))
+
+	specReadmeData, err := os.ReadFile(filepath.Join(repoRoot, "docs", orbitID, "README.md"))
+	require.NoError(t, err)
+	require.Equal(t, "# "+orbitID+"\n", string(specReadmeData))
+	require.NotContains(t, string(specReadmeData), "orbit_member")
 }
 
 func TestCapabilityAddSetListAndRemoveMutateHostedOrbitSpec(t *testing.T) {

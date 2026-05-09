@@ -165,14 +165,8 @@ func resolveAuthoringOrbitSelection(
 		if err != nil {
 			return authoringOrbitSelection{}, fmt.Errorf("add spec member: %w", err)
 		}
-		specDocPath, err := orbitpkg.SpecDocPath(repoRoot, orbitID)
-		if err != nil {
-			return authoringOrbitSelection{}, fmt.Errorf("build spec doc path: %w", err)
-		}
-		if _, err := os.Stat(specDocPath); err == nil {
-			return authoringOrbitSelection{}, fmt.Errorf("spec doc file %q already exists", specDocPath)
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return authoringOrbitSelection{}, fmt.Errorf("stat spec doc: %w", err)
+		if err := orbitpkg.PreflightSpecScaffold(repoRoot, orbitID); err != nil {
+			return authoringOrbitSelection{}, fmt.Errorf("preflight spec scaffold: %w", err)
 		}
 	}
 	spec, err = orbitpkg.SeedDefaultCapabilityTruth(spec)
@@ -202,8 +196,8 @@ func writeInitialSpecDocIfRequested(repoRoot string, orbitID string, requested b
 	if !created {
 		return fmt.Errorf("--with-spec requires creating a new hosted orbit definition; orbit %q already exists", orbitID)
 	}
-	if _, err := orbitpkg.WriteSpecDoc(repoRoot, orbitID); err != nil {
-		return fmt.Errorf("write spec doc: %w", err)
+	if _, err := orbitpkg.WriteSpecScaffold(repoRoot, orbitID); err != nil {
+		return fmt.Errorf("write spec scaffold: %w", err)
 	}
 
 	return nil

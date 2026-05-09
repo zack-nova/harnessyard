@@ -266,15 +266,9 @@ func TestSourceInitWithSpecCreatesSpecMemberAndDoc(t *testing.T) {
 
 	definitionData, err := os.ReadFile(filepath.Join(repo.Root, ".harness", "orbits", "docs.yaml"))
 	require.NoError(t, err)
-	require.NotContains(t, string(definitionData), "key:")
-	require.Contains(t, string(definitionData), "name: spec\n")
-	require.Contains(t, string(definitionData), "- docs/docs.md\n")
+	requireContainsWithSpecScaffold(t, repo.Root, string(definitionData))
 	requireContainsDefaultCapabilityTruth(t, string(definitionData))
 	requireContainsSeedEmptyGuidanceArtifacts(t, repo.Root)
-
-	specDocData, err := os.ReadFile(filepath.Join(repo.Root, "docs", "docs.md"))
-	require.NoError(t, err)
-	require.Equal(t, "# docs Spec\n", string(specDocData))
 }
 
 func TestTemplateInitWithSpecCreatesSpecMemberAndDoc(t *testing.T) {
@@ -289,15 +283,9 @@ func TestTemplateInitWithSpecCreatesSpecMemberAndDoc(t *testing.T) {
 
 	definitionData, err := os.ReadFile(filepath.Join(repo.Root, ".harness", "orbits", "docs.yaml"))
 	require.NoError(t, err)
-	require.NotContains(t, string(definitionData), "key:")
-	require.Contains(t, string(definitionData), "name: spec\n")
-	require.Contains(t, string(definitionData), "- docs/docs.md\n")
+	requireContainsWithSpecScaffold(t, repo.Root, string(definitionData))
 	requireContainsDefaultCapabilityTruth(t, string(definitionData))
 	requireContainsSeedEmptyGuidanceArtifacts(t, repo.Root)
-
-	specDocData, err := os.ReadFile(filepath.Join(repo.Root, "docs", "docs.md"))
-	require.NoError(t, err)
-	require.Equal(t, "# docs Spec\n", string(specDocData))
 }
 
 func TestSourceInitDoesNotRewriteExistingHostedOrbitToAddDefaultCapabilities(t *testing.T) {
