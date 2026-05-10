@@ -104,9 +104,33 @@ _Avoid_: workspace, bundle
 A catalog that resolves public package handles into installable Harness Package and Orbit Package locators.
 _Avoid_: template repo, git remote, package manager
 
+**Official Catalog**:
+The default public Package Registry catalog owned outside the Harness Yard CLI source repository.
+_Avoid_: product source tree, hosted registration service
+
+**Package Namespace**:
+A registry ownership prefix used to group public Package Handles before they resolve to concrete Package Identities.
+_Avoid_: package type, GitHub remote, folder
+
 **Package Handle**:
 A registry-facing short name that users pass to package lifecycle commands.
 _Avoid_: branch ref, local folder, display title
+
+**Curated Handle**:
+A bare Package Handle reviewed by the Official Catalog and mapped to a namespaced Package Handle.
+_Avoid_: author-owned global package name, mutable default branch
+
+**Package Handle Coordinate**:
+A registry-facing install selector made from a Package Handle and optional version or dist-tag.
+_Avoid_: Package Identity, Git locator, npm scoped package
+
+**Registry Entry**:
+A Package Registry record that maps a Package Handle to package metadata, status, and commit-pinned install locator data.
+_Avoid_: source package manifest, local install record
+
+**Registry Entry Candidate**:
+A generated YAML proposal for adding or updating a Registry Entry in the Official Catalog.
+_Avoid_: publish artifact, trusted registry fact
 
 **Package Identity**:
 The stable user-facing identity of an Orbit Package or Harness Package, made from package type, package name, and optional version when present.
@@ -333,6 +357,20 @@ _Avoid_: rule
 - A **Package Identity** uses package type to distinguish Orbit Packages from Harness Packages, and package name as the stable user-facing package name.
 - Display `name` and `description` metadata do not replace **Package Identity**.
 - A **Package Registry** lets public commands resolve **Package Handles** without exposing Git branch locators in ordinary demos.
+- A **Package Registry** registers **Orbit Packages** and **Harness Packages** only; it does not register arbitrary tools, services, agent frameworks, or non-Harness Yard package shapes.
+- The Harness Yard CLI source repository owns **Package Registry** schema, resolver behavior, product documentation, `hyard registry entry` candidate generation, and package installation semantics; the **Official Catalog** repository owns catalog entries, namespace ownership records, curated handles, and registry review policy.
+- The **Official Catalog** source is `zack-nova/hyard-registry`; Package Registry resolution also supports other Git remotes as registry sources.
+- Public registration uses catalog-as-code through reviewed **Registry Entry Candidates**. The first version does not provide a hosted registration service, account system, OAuth flow, automatic registration API, or automatic pull request creation.
+- Registry-backed **Package Installation** resolves **Package Handle Coordinates** to versioned, commit-pinned **Orbit Package** or **Harness Package** locators.
+- Bare **Package Handle** installation is limited to **Curated Handles**, which point at namespaced **Package Handles** and resolve through an explicit registry `latest` dist-tag before selecting a versioned commit-pinned locator.
+- Registry-backed **Package Installation** uses a user-level global cache whose location can be overridden with `HYARD_CACHE_DIR`. Exact versions may be cached; bare and `latest` resolutions refresh from the registry when available and may use a previously verified cached resolution with a warning when the registry is unavailable.
+- Package Registry status is package-level: deprecated packages warn, yanked packages require explicit override, and blocked packages cannot be installed.
+- The first registry entry candidate generator is a separate `hyard registry entry` command, not an option folded into `hyard publish`.
+- A submittable **Registry Entry Candidate** is YAML and requires target path, package type, package identity, source repository, ref, commit reachability, commit SHA, package status, validation evidence, and installability validation; local-only publication results may produce preview output but not a submittable entry.
+- A **Package Handle** is not necessarily the same string as **Package Identity**; the registry resolves a handle to a package type, package name, version, and locator.
+- Public **Package Handle Coordinates** are case-insensitive and use `namespace/name[@version-or-tag]` or curated `name[@version-or-tag]` syntax, not npm-style `@namespace/name`.
+- `latest` is an explicit registry dist-tag; it is not inferred from Git branches, newest registry merges, or highest SemVer versions.
+- Registry version entries resolve to commit SHAs. Branches and tags may be provenance inputs, but Package Installation uses the resolved commit.
 - Early demos may use explicit GitHub package locators before **Package Registry** resolution is ready.
 - A **User Convention** may point to visible configuration files, modifying commands, defaults, and recommended settings, but it does not define internal Harness Yard schema or generated implementation behavior.
 - User convention documentation is organized by convention type and marks which **Harness Yard Revisions** each convention applies to.
@@ -669,6 +707,15 @@ _Avoid_: rule
 - "remove" remains valid for compatibility, but is no longer the preferred top-level package lifecycle term; resolved: docs and examples should guide users to `uninstall`.
 - "uninstall" JSON could rename remove-shaped fields, but that would break machine consumers; resolved: keep existing result field names and optionally add an action field.
 - Versioned package coordinates during uninstall could imply version matching; resolved: uninstall targets the installed package name only.
+- "tool" in public registration discussions could imply arbitrary CLIs, plugins, services, or agent frameworks; resolved: public registry entries are **Orbit Package** or **Harness Package** entries exposed through **Package Handles**.
+- A bare **Package Handle** such as `docs` could imply installing a mutable default branch or letting any author claim a global name; resolved: bare names are **Curated Handles** that point at namespaced handles, and default registry resolution selects a versioned, commit-pinned package locator.
+- `latest` could mean highest SemVer, newest merged registry version, or source default branch; resolved: first-version registry resolution treats `latest` as an explicit dist-tag pointer.
+- Registry resolution failures could fall back to guessed GitHub locators or mutable branches; resolved: registry-backed installation never guesses locators, exact-version cache use may not infer `latest`, stale cached bare or `latest` resolutions require a warning when the registry is unavailable, yanked packages require explicit override, and blocked packages cannot be installed.
+- Public registration could mean hand-authoring complete registry records or using hosted account flows; resolved: the first product-side registration UX is generated registry entry candidates.
+- Registry entry generation could be folded into `hyard publish`, but that would couple publication, remote verification, registry candidate output, and PR submission recovery; resolved: first-version candidate generation uses a separate `hyard registry entry` command.
+- Registry candidates could be generated from local-only unpublished package results; resolved: submittable entries require remote reachability and package validation, while local-only output is preview-only.
+- Hosting registry catalog data in the CLI source repository could mix third-party package submissions with product development; resolved: catalog data and registry review policy live in the official catalog repository, while this repository owns schema, resolver, product documentation, and package installation semantics.
+- `@namespace/name` syntax could mirror npm scoped packages, but it conflicts with `@` as the version separator in Harness Yard coordinates; resolved: Package Handle Coordinates use `namespace/name[@version-or-tag]`.
 - Top-level Markdown `name` frontmatter was used as a short content hint in older authoring docs, but it conflicts with ordinary document metadata; resolved: canonical **Member Hint Frontmatter** uses nested `orbit_member`, and **Flat Member Hint** is legacy.
 - Strict Member Hint parsing could be misread as requiring frontmatter on every content Markdown file; resolved: only Markdown that declares **Member Hint Frontmatter** needs strict YAML frontmatter.
 - Allowing `paths` in **Member Hint Frontmatter** would make a hint describe content somewhere else; resolved: member paths are derived from the hint location, and arbitrary paths stay in OrbitSpec member truth.
