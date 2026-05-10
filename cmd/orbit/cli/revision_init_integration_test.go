@@ -103,7 +103,7 @@ func TestTemplateInitCreatesOrbitTemplateManifestInPlainRepo(t *testing.T) {
 	require.Contains(t, string(manifestData), "package:\n")
 	require.Contains(t, string(manifestData), "type: orbit\n")
 	require.Contains(t, string(manifestData), "name: docs\n")
-	require.NotContains(t, string(manifestData), "orbit_id: docs\n")
+	require.Contains(t, string(manifestData), "orbit_id: docs\n")
 	require.Contains(t, string(manifestData), "created_from_branch: main\n")
 	require.Contains(t, string(manifestData), "created_from_commit:")
 
@@ -195,7 +195,7 @@ func TestTemplateInitDefaultsToOnlyHostedOrbitDefinition(t *testing.T) {
 	require.Contains(t, string(manifestData), "kind: orbit_template\n")
 	require.Contains(t, string(manifestData), "package:\n")
 	require.Contains(t, string(manifestData), "name: docs\n")
-	require.NotContains(t, string(manifestData), "orbit_id: docs\n")
+	require.Contains(t, string(manifestData), "orbit_id: docs\n")
 }
 
 func TestAuthoringInitWithoutHostedOrbitStillRequiresExplicitOrbit(t *testing.T) {

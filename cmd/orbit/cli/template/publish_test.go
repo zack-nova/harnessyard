@@ -67,6 +67,25 @@ func TestResolvePublishOrbitIDRejectsStrayLegacyDefinitionsAlongsideHostedSource
 	require.ErrorContains(t, err, "source init")
 }
 
+func TestParseOrbitTemplateBranchManifestAcceptsPackageIdentity(t *testing.T) {
+	t.Parallel()
+
+	manifest, err := parseOrbitTemplateBranchManifestData([]byte("" +
+		"schema_version: 1\n" +
+		"kind: orbit_template\n" +
+		"template:\n" +
+		"  package:\n" +
+		"    type: orbit\n" +
+		"    name: docs\n" +
+		"  default_template: false\n" +
+		"  created_from_branch: main\n" +
+		"  created_from_commit: abc123\n" +
+		"  created_at: 2026-05-10T00:00:00Z\n" +
+		"variables: {}\n"))
+	require.NoError(t, err)
+	require.Equal(t, "docs", manifest.Template.OrbitID)
+}
+
 func TestEnsureBriefExportSyncRejectsDriftedOrbitTemplateBriefUsingPlaceholderContract(t *testing.T) {
 	t.Parallel()
 

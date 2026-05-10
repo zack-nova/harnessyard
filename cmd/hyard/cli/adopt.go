@@ -545,6 +545,7 @@ func buildAdoptWriteOutputWithOptions(
 	if err != nil {
 		return adoptWriteOutput{}, fmt.Errorf("wrap adopted root guidance: %w", err)
 	}
+	// #nosec G703 -- The root guidance path is fixed under the discovered repository root.
 	if err := os.WriteFile(agentsPath, wrappedAgents, 0o600); err != nil {
 		return adoptWriteOutput{}, fmt.Errorf("write root agent guidance marker block: %w", err)
 	}

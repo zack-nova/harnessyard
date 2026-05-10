@@ -12,6 +12,7 @@ import (
 	"time"
 
 	gitpkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/git"
+	"github.com/zack-nova/harnessyard/cmd/orbit/cli/ids"
 	orbitpkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/orbit"
 	"gopkg.in/yaml.v3"
 )
@@ -32,11 +33,12 @@ type orbitTemplateBranchManifest struct {
 }
 
 type orbitTemplateBranchManifestSource struct {
-	OrbitID           string    `yaml:"orbit_id"`
-	DefaultTemplate   *bool     `yaml:"default_template,omitempty"`
-	CreatedFromBranch string    `yaml:"created_from_branch"`
-	CreatedFromCommit string    `yaml:"created_from_commit"`
-	CreatedAt         time.Time `yaml:"created_at"`
+	Package           *ids.PackageIdentity `yaml:"package,omitempty"`
+	OrbitID           string               `yaml:"orbit_id"`
+	DefaultTemplate   *bool                `yaml:"default_template,omitempty"`
+	CreatedFromBranch string               `yaml:"created_from_branch"`
+	CreatedFromCommit string               `yaml:"created_from_commit"`
+	CreatedAt         time.Time            `yaml:"created_at"`
 }
 
 // TemplatePublishInput is the high-level author workflow input for local orbit template publish.
@@ -786,6 +788,16 @@ func parseOrbitTemplateBranchManifestData(data []byte) (orbitTemplateBranchManif
 	var manifest orbitTemplateBranchManifest
 	if err := yaml.Unmarshal(data, &manifest); err != nil {
 		return orbitTemplateBranchManifest{}, fmt.Errorf("decode branch manifest: %w", err)
+	}
+	if manifest.Template.Package != nil {
+		if err := ids.ValidatePackageIdentity(*manifest.Template.Package, ids.PackageTypeOrbit, "template.package"); err != nil {
+			return orbitTemplateBranchManifest{}, fmt.Errorf("validate template.package: %w", err)
+		}
+		if strings.TrimSpace(manifest.Template.OrbitID) == "" {
+			manifest.Template.OrbitID = manifest.Template.Package.Name
+		} else if manifest.Template.Package.Name != manifest.Template.OrbitID {
+			return orbitTemplateBranchManifest{}, fmt.Errorf("template.package.name %q must match template.orbit_id %q", manifest.Template.Package.Name, manifest.Template.OrbitID)
+		}
 	}
 
 	return manifest, nil

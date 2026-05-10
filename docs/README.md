@@ -20,6 +20,19 @@ documentation for Harness Yard.
 - [Content And Workflows](./guides/content-and-workflows.md): organize guidance,
   subject, process, skill, command, and bootstrap content.
 
+## Demos
+
+- [Runtime User Fast Start](./demos/runtime-user-fast-start.md): clone a
+  Harness Template and start Codex.
+- [Codebase Developer Composes A Runtime](./demos/codebase-developer-compose-runtime.md):
+  initialize an existing repository, install Orbit Workflows, switch Agent
+  Frameworks, and publish a Harness Package from Run View.
+- [Harness Developer Authors Orbits In One Runtime](./demos/harness-developer-author-orbits.md):
+  use Author View to create Orbit authored truth and publish both Orbit and
+  Harness Packages.
+- [Develop An Orbit Template Branch](./demos/orbit-template-branch-development.md):
+  maintain one Orbit Package repository and publish `orbit-template/<package>`.
+
 ## Reference
 
 - [Configuration Reference](./reference/configuration.md): understand

@@ -346,11 +346,13 @@ _Avoid_: rule
 - **Source Adoption** reports publishing the Orbit Package as the next handoff action after writing source truth.
 - A **Source Revision** and an **Orbit Template Revision** each describe exactly one **Orbit Package**.
 - A **Source Revision** may publish an **Orbit Template Revision**.
+- Public demo documentation may show an **Orbit Template Revision** authoring repository as a dedicated single-orbit development path: create or initialize an orbit-template repository, develop exactly one Orbit Workflow, and publish/update the corresponding `orbit-template/<package>` branch.
 - Multi-orbit composition belongs to a **Harness Runtime** or **Harness Package**, not a **Source Revision** or **Orbit Template Revision**.
 - A **Harness Runtime** may publish one or more **Harness Templates** over time.
 - A **Harness Template** is exported from a **Harness Runtime**, not directly from an **Ordinary Repository**.
 - A **Runtime User** or **Harness Author** sharing a composed runtime should publish a **Harness Package**.
 - An **Orbit Author** sharing reusable orbit authored truth should publish an **Orbit Package**.
+- A single person may use one **Harness Runtime** in **Author View** as both a **Harness Author** and an **Orbit Author**, creating hosted Orbit Workflow authored truth, publishing Orbit Packages, and publishing the composed Harness Package from the same repository when that is the intended authoring scenario.
 - Template save commands are lower-level export primitives rather than the main user publication path.
 - Cloning a **Harness Template** should suggest **Harness Start** as the next handoff action but should not start an agent automatically.
 - Early harness optimization demos may use manual Git checkpoints before publishing a Harness Template.
@@ -381,6 +383,10 @@ _Avoid_: rule
 - The target **Public Product Documentation** set is `README.md`, `docs/installation.md`, `docs/quickstart.md`, `docs/concepts.md`, `docs/reference/configuration.md`, `docs/guides/content-and-workflows.md`, `docs/guides/harness-authoring.md`, and `docs/guides/orbit-authoring.md`.
 - Public `README.md` should stay a short product introduction and reader-routing entry point rather than a complete documentation index.
 - `docs/README.md` should be the complete documentation index, ordered by reader path before lower-level reference and maintainer material.
+- Public end-to-end demo documentation belongs under `docs/demos/` and should be linked from `docs/README.md`; Quickstart and authoring guides remain shorter reader-path guides instead of carrying full terminal transcript demos.
+- Public end-to-end demo documentation may use dedicated lightweight demo fixture repositories when existing real Orbit Packages or Harness Packages would force readers to understand unrelated workflow domains before they can understand Harness Yard.
+- Dedicated demo fixture repositories should have narrow, obvious Orbit Workflow boundaries and a composed Harness Package whose package composition demonstrates the Harness Yard object model without becoming a heavyweight product workflow.
+- The initial public demo fixture set is `zack-nova/hyard-demo-docs-orbit` publishing package `docs` on `orbit-template/docs`, `zack-nova/hyard-demo-review-orbit` publishing package `review` on `orbit-template/review`, `zack-nova/hyard-demo-release-orbit` publishing package `release` on `orbit-template/release`, and `zack-nova/hyard-demo-product-lab` publishing package `product-lab` on `harness-template/product-lab` composed from `docs`, `review`, and `release`.
 - A **Concepts Guide** should explain the core Harness Yard product model once so tutorial, configuration, and authoring documents do not duplicate revision, package, workflow, and view terminology.
 - The public Quickstart should serve the **Runtime User** first-success path; **Harness Author** and **Orbit Author** first-success paths belong in their separate authoring guides.
 - A **Configuration Reference** defines the program-readable files, editing policies, conformance requirements, and validation commands users need to keep Harness Yard truth valid.
@@ -393,6 +399,7 @@ _Avoid_: rule
 - Public orbit authoring guidance should extract a current Orbit Author first-success path from historical authoring manuals rather than migrating the old manual structure wholesale.
 - Public harness authoring guidance should explain the Harness Author path for composing multiple Orbit Workflows into a reusable Harness Package, including package composition, variables, root guidance, readiness checks, and `hyard publish harness`.
 - Harness authoring guidance and orbit authoring guidance are separate public authoring paths because **Harness Authors** compose multiple **Orbit Workflows** into a reusable **Harness Package**, while **Orbit Authors** maintain one **Orbit Package**.
+- Public demo documentation may present code repository developers as an independent **Harness Author** scenario when they initialize an existing repository, assemble packages, select Agent Frameworks, tune Run View presentation, and publish the composed **Harness Package**; this should not introduce a separate durable product role.
 - User-visible files are documented with one editing policy: tool-owned **Control-Plane Truth**, hand-editable but validated **Authored Package Truth**, or directly editable content and presentation.
 - Tool-owned **Control-Plane Truth** may be inspected and committed, but user convention documentation should direct changes through `hyard` commands.
 - Hand-edited **Authored Package Truth** must be validated with the relevant `hyard` audit, check, or orbit validation command before publication or runtime use.

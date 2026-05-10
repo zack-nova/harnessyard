@@ -349,6 +349,7 @@ func orbitTemplateBranchManifestNode(manifest orbitTemplateBranchManifest) *yaml
 
 	templateNode := contractutil.MappingNode()
 	contractutil.AppendMapping(templateNode, "package", templatePackageNode(ids.PackageTypeOrbit, manifest.Template.OrbitID))
+	contractutil.AppendMapping(templateNode, "orbit_id", contractutil.StringNode(manifest.Template.OrbitID))
 	if manifest.Template.DefaultTemplate != nil {
 		contractutil.AppendMapping(templateNode, "default_template", contractutil.BoolNode(*manifest.Template.DefaultTemplate))
 	}
