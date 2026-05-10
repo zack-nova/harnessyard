@@ -680,6 +680,7 @@ func applyLayoutOptimizeGuidanceLinks(repoRoot string, plan layoutOptimizePlan) 
 		if !changed {
 			continue
 		}
+		//nolint:gosec // filename is built from the repo root and fixed root guidance paths.
 		if err := os.WriteFile(filename, []byte(updated), info.Mode().Perm()); err != nil {
 			return fmt.Errorf("write guidance links in %s: %w", guidancePath, err)
 		}
