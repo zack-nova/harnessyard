@@ -31,6 +31,7 @@ documentation for Harness Yard.
 
 - [Testing for Contributors](./contributing/testing.md)
 - [Current Architecture](./maintainers/current-architecture.md)
+- [Package Registry Source Contract](./maintainers/package-registry-source-contract.md)
 - [Unresolved Work](./maintainers/unresolved-work.md)
 - [Release Guide](./maintainers/release.md)
 - [Root Guidance Workflow Marker Plan](./maintainers/root-guidance-workflow-marker-plan.md)
