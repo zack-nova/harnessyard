@@ -3,6 +3,8 @@ package cli_test
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -161,4 +163,195 @@ func TestHyardInstallExactPackageHandleCoordinateFromGitRegistry(t *testing.T) {
 	require.Equal(t, gitpkg.ComparablePath(sourceRemote), gitpkg.ComparablePath(record.Template.SourceRepo))
 	require.Equal(t, sourceCommit, record.Template.SourceRef)
 	require.Equal(t, sourceCommit, record.Template.TemplateCommit)
+}
+
+func TestHyardInstallYankedPackageHandleCoordinateRequiresOverride(t *testing.T) {
+	lockHyardProcessEnv(t)
+	t.Setenv("HYARD_CACHE_DIR", t.TempDir())
+
+	fixture := seedPackageHandleInstallFixture(t, "yanked")
+
+	stdout, stderr, err := executeHyardCLIUnlocked(
+		t,
+		fixture.RuntimeRepo.Root,
+		"install",
+		"acme/docs@0.1.0",
+		"--registry-source",
+		fixture.RegistryRemote,
+		"--json",
+	)
+	require.Error(t, err)
+	require.Empty(t, stdout)
+	require.Empty(t, stderr)
+	require.ErrorContains(t, err, "yanked")
+	require.ErrorContains(t, err, "--allow-yanked")
+	_, loadErr := harnesspkg.LoadInstallRecord(fixture.RuntimeRepo.Root, "docs")
+	require.ErrorIs(t, loadErr, os.ErrNotExist)
+	require.NoFileExists(t, filepath.Join(fixture.RuntimeRepo.Root, ".harness", "orbits", "docs.yaml"))
+	require.NoFileExists(t, filepath.Join(fixture.RuntimeRepo.Root, "docs", "guide.md"))
+}
+
+func TestHyardInstallYankedPackageHandleCoordinateWithOverride(t *testing.T) {
+	lockHyardProcessEnv(t)
+	t.Setenv("HYARD_CACHE_DIR", t.TempDir())
+
+	fixture := seedPackageHandleInstallFixture(t, "yanked")
+
+	stdout, stderr, err := executeHyardCLIUnlocked(
+		t,
+		fixture.RuntimeRepo.Root,
+		"install",
+		"acme/docs@0.1.0",
+		"--registry-source",
+		fixture.RegistryRemote,
+		"--allow-yanked",
+		"--json",
+	)
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var result struct {
+		OrbitID string `json:"orbit_id"`
+		Source  struct {
+			Repo   string `json:"repo"`
+			Ref    string `json:"ref"`
+			Commit string `json:"commit"`
+		} `json:"source"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &result))
+	require.Equal(t, "docs", result.OrbitID)
+	require.Equal(t, gitpkg.ComparablePath(fixture.SourceRemote), gitpkg.ComparablePath(result.Source.Repo))
+	require.Equal(t, fixture.SourceCommit, result.Source.Ref)
+	require.Equal(t, fixture.SourceCommit, result.Source.Commit)
+
+	record, err := harnesspkg.LoadInstallRecord(fixture.RuntimeRepo.Root, "docs")
+	require.NoError(t, err)
+	require.Equal(t, fixture.SourceCommit, record.Template.TemplateCommit)
+}
+
+func TestHyardInstallBlockedPackageHandleCoordinateHasNoOverride(t *testing.T) {
+	lockHyardProcessEnv(t)
+	t.Setenv("HYARD_CACHE_DIR", t.TempDir())
+
+	fixture := seedPackageHandleInstallFixture(t, "blocked")
+
+	stdout, stderr, err := executeHyardCLIUnlocked(
+		t,
+		fixture.RuntimeRepo.Root,
+		"install",
+		"acme/docs@0.1.0",
+		"--registry-source",
+		fixture.RegistryRemote,
+		"--allow-yanked",
+		"--json",
+	)
+	require.Error(t, err)
+	require.Empty(t, stdout)
+	require.Empty(t, stderr)
+	require.ErrorContains(t, err, "blocked")
+	require.ErrorContains(t, err, "no override")
+	_, loadErr := harnesspkg.LoadInstallRecord(fixture.RuntimeRepo.Root, "docs")
+	require.ErrorIs(t, loadErr, os.ErrNotExist)
+	require.NoFileExists(t, filepath.Join(fixture.RuntimeRepo.Root, ".harness", "orbits", "docs.yaml"))
+	require.NoFileExists(t, filepath.Join(fixture.RuntimeRepo.Root, "docs", "guide.md"))
+}
+
+func TestHyardInstallDeprecatedPackageHandleCoordinateWarnsInJSONAndText(t *testing.T) {
+	lockHyardProcessEnv(t)
+	t.Setenv("HYARD_CACHE_DIR", t.TempDir())
+
+	fixture := seedPackageHandleInstallFixture(t, "deprecated")
+
+	stdout, stderr, err := executeHyardCLIUnlocked(
+		t,
+		fixture.RuntimeRepo.Root,
+		"install",
+		"acme/docs@0.1.0",
+		"--registry-source",
+		fixture.RegistryRemote,
+		"--dry-run",
+		"--json",
+	)
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+	var preview struct {
+		Warnings []string `json:"warnings"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &preview))
+	require.Len(t, preview.Warnings, 1)
+	require.Contains(t, preview.Warnings[0], "deprecated")
+
+	stdout, stderr, err = executeHyardCLIUnlocked(
+		t,
+		fixture.RuntimeRepo.Root,
+		"install",
+		"acme/docs@0.1.0",
+		"--registry-source",
+		fixture.RegistryRemote,
+		"--dry-run",
+	)
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+	require.Contains(t, stdout, "warnings:")
+	require.Contains(t, stdout, "deprecated")
+}
+
+func TestHyardInstallHelpShowsYankedOverride(t *testing.T) {
+	t.Parallel()
+
+	stdout, stderr, err := executeHyardCLI(t, t.TempDir(), "install", "--help")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+	require.Contains(t, stdout, "--allow-yanked")
+	require.Contains(t, stdout, "yanked")
+}
+
+type packageHandleInstallFixture struct {
+	SourceRemote   string
+	SourceCommit   string
+	RegistryRemote string
+	RuntimeRepo    *testutil.Repo
+}
+
+func seedPackageHandleInstallFixture(t *testing.T, packageStatus string) packageHandleInstallFixture {
+	t.Helper()
+
+	sourceRepo := seedCommittedHyardSourceRepo(t)
+	_, stderr, err := executeHyardCLIUnlocked(t, sourceRepo.Root, "publish", "orbit", "docs", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+	sourceRemote := testutil.NewBareRemoteFromRepo(t, sourceRepo)
+	sourceCommit := sourceRepo.RevParse(t, "orbit-template/docs")
+
+	registryRepo := testutil.NewRepo(t)
+	registryRepo.Run(t, "branch", "-m", "main")
+	registryRepo.WriteFile(t, "packages/acme/index.yaml", fmt.Sprintf(""+
+		"schema_version: 1\n"+
+		"namespace: acme\n"+
+		"packages:\n"+
+		"  docs:\n"+
+		"    status: %s\n"+
+		"    versions:\n"+
+		"      0.1.0:\n"+
+		"        package_type: orbit\n"+
+		"        package_identity: docs\n"+
+		"        source:\n"+
+		"          remote: %q\n"+
+		"          ref: orbit-template/docs\n"+
+		"          commit: %s\n", packageStatus, sourceRemote, sourceCommit))
+	registryRepo.AddAndCommit(t, "seed package registry")
+	registryRemote := testutil.NewBareRemoteFromRepo(t, registryRepo)
+
+	runtimeRepo := testutil.NewRepo(t)
+	runtimeRepo.Run(t, "branch", "-m", "main")
+	_, err = harnesspkg.BootstrapRuntimeControlPlane(runtimeRepo.Root, time.Date(2026, time.May, 11, 9, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	runtimeRepo.AddAndCommit(t, "seed empty runtime")
+
+	return packageHandleInstallFixture{
+		SourceRemote:   sourceRemote,
+		SourceCommit:   sourceCommit,
+		RegistryRemote: registryRemote,
+		RuntimeRepo:    runtimeRepo,
+	}
 }

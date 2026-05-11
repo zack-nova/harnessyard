@@ -17,12 +17,29 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+var (
+	// ErrYankedPackageRequiresOverride identifies a yanked package refused without explicit override.
+	ErrYankedPackageRequiresOverride = errors.New("registry package is yanked and requires explicit override")
+	// ErrBlockedPackageInstallRefused identifies a blocked package refused by the registry status gate.
+	ErrBlockedPackageInstallRefused = errors.New("registry package is blocked and cannot be installed")
+)
+
 const (
 	DefaultRegistryRemote = "https://github.com/zack-nova/hyard-registry.git"
 	DefaultRegistryRef    = "HEAD"
 
 	resolutionCacheSchemaVersion = 1
 	namespaceIndexSchemaVersion  = 1
+)
+
+// PackageStatus is the package-level install status recorded by the registry.
+type PackageStatus string
+
+const (
+	PackageStatusActive     PackageStatus = "active"
+	PackageStatusDeprecated PackageStatus = "deprecated"
+	PackageStatusYanked     PackageStatus = "yanked"
+	PackageStatusBlocked    PackageStatus = "blocked"
 )
 
 // Source identifies a Git-backed package registry source.
@@ -38,6 +55,7 @@ type Resolution struct {
 	RegistryRef     string
 	PackageType     string
 	PackageIdentity string
+	PackageStatus   PackageStatus
 	SourceRemote    string
 	SourceRef       string
 	SourceCommit    string
@@ -52,6 +70,38 @@ type ResolveInput struct {
 	RegistrySource Source
 	CacheRoot      string
 	Loader         NamespaceIndexLoader
+}
+
+// InstallGateOptions controls package-status install gating.
+type InstallGateOptions struct {
+	AllowYanked bool
+}
+
+// RequireInstallableResolution enforces registry package-status gates before
+// a resolved locator enters the package install bridge.
+func RequireInstallableResolution(resolution Resolution, options InstallGateOptions) error {
+	switch resolution.EffectivePackageStatus() {
+	case PackageStatusActive, PackageStatusDeprecated:
+		return nil
+	case PackageStatusYanked:
+		if options.AllowYanked {
+			return nil
+		}
+		return fmt.Errorf("%w: package handle %s is yanked; pass --allow-yanked to install it anyway", ErrYankedPackageRequiresOverride, resolution.Coordinate.Handle())
+	case PackageStatusBlocked:
+		return fmt.Errorf("%w: package handle %s is blocked by the registry and has no override", ErrBlockedPackageInstallRefused, resolution.Coordinate.Handle())
+	default:
+		return fmt.Errorf("package handle %s has unsupported registry status %q", resolution.Coordinate.Handle(), resolution.PackageStatus)
+	}
+}
+
+// EffectivePackageStatus returns active for older status-less resolution data.
+func (resolution Resolution) EffectivePackageStatus() PackageStatus {
+	if resolution.PackageStatus == "" {
+		return PackageStatusActive
+	}
+
+	return resolution.PackageStatus
 }
 
 // NamespaceIndexLoader loads one namespace index from a registry source.
@@ -167,18 +217,10 @@ func ResolveExactVersionFromNamespaceIndex(coordinate PackageHandleCoordinate, d
 	if !ok {
 		return Resolution{}, fmt.Errorf("package handle %q is not registered", coordinate.Handle())
 	}
-	status := strings.ToLower(strings.TrimSpace(entry.Status))
-	switch status {
-	case "", "active":
-	case "deprecated":
-	case "yanked":
-		return Resolution{}, fmt.Errorf("package handle %q is yanked and cannot be installed by this resolver", coordinate.Handle())
-	case "blocked":
-		return Resolution{}, fmt.Errorf("package handle %q is blocked and cannot be installed", coordinate.Handle())
-	default:
-		return Resolution{}, fmt.Errorf("package handle %q has unsupported registry status %q", coordinate.Handle(), entry.Status)
+	status, err := normalizePackageStatus(entry.Status)
+	if err != nil {
+		return Resolution{}, fmt.Errorf("package handle %q: %w", coordinate.Handle(), err)
 	}
-
 	version, ok := versionEntryForExactVersion(entry.Versions, coordinate.Version)
 	if !ok {
 		return Resolution{}, fmt.Errorf("package handle %q is not registered", coordinate.String())
@@ -188,11 +230,24 @@ func ResolveExactVersionFromNamespaceIndex(coordinate PackageHandleCoordinate, d
 	if err != nil {
 		return Resolution{}, err
 	}
-	if status == "deprecated" {
+	resolution.PackageStatus = status
+	if status == PackageStatusDeprecated {
 		resolution.Warnings = append(resolution.Warnings, fmt.Sprintf("package handle %s is deprecated", coordinate.Handle()))
 	}
 
 	return resolution, nil
+}
+
+func normalizePackageStatus(raw string) (PackageStatus, error) {
+	status := PackageStatus(strings.ToLower(strings.TrimSpace(raw)))
+	switch status {
+	case "":
+		return PackageStatusActive, nil
+	case PackageStatusActive, PackageStatusDeprecated, PackageStatusYanked, PackageStatusBlocked:
+		return status, nil
+	default:
+		return "", fmt.Errorf("unsupported registry status %q", raw)
+	}
 }
 
 type namespaceIndexFile struct {
@@ -378,6 +433,7 @@ func WriteVerifiedResolutionCache(cacheRoot string, registryRemote string, resol
 		Version:         resolution.Coordinate.Version,
 		PackageType:     resolution.PackageType,
 		PackageIdentity: resolution.PackageIdentity,
+		PackageStatus:   string(resolution.EffectivePackageStatus()),
 		SourceRemote:    resolution.SourceRemote,
 		SourceRef:       resolution.SourceRef,
 		SourceCommit:    resolution.SourceCommit,
@@ -418,12 +474,17 @@ func ReadVerifiedResolutionCache(cacheRoot string, registryRemote string, coordi
 		entry.Version != coordinate.Version {
 		return Resolution{}, errors.New("registry resolution cache entry does not match requested coordinate")
 	}
+	status, err := normalizePackageStatus(entry.PackageStatus)
+	if err != nil {
+		return Resolution{}, fmt.Errorf("cached registry resolution status: %w", err)
+	}
 
 	resolution := Resolution{
 		Coordinate:      coordinate,
 		RegistryRemote:  canonicalRegistryRemote(registryRemote),
 		PackageType:     strings.ToLower(strings.TrimSpace(entry.PackageType)),
 		PackageIdentity: strings.ToLower(strings.TrimSpace(entry.PackageIdentity)),
+		PackageStatus:   status,
 		SourceRemote:    strings.TrimSpace(entry.SourceRemote),
 		SourceRef:       strings.TrimSpace(entry.SourceRef),
 		SourceCommit:    strings.ToLower(strings.TrimSpace(entry.SourceCommit)),
@@ -443,6 +504,7 @@ type resolutionCacheEntry struct {
 	Version         string `yaml:"version"`
 	PackageType     string `yaml:"package_type"`
 	PackageIdentity string `yaml:"package_identity"`
+	PackageStatus   string `yaml:"package_status"`
 	SourceRemote    string `yaml:"source_remote"`
 	SourceRef       string `yaml:"source_ref"`
 	SourceCommit    string `yaml:"source_commit"`

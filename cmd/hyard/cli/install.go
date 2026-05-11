@@ -26,6 +26,7 @@ func newInstallCommand() *cobra.Command {
 		"  hyard install orbit-template/docs --overwrite-existing --bindings .harness/vars.yaml --json\n"
 	cmd.Flags().String("registry-source", "", "Git remote or local path for Package Handle Coordinate registry source")
 	cmd.Flags().String("registry-ref", registry.DefaultRegistryRef, "Git ref to read from the Package Handle Coordinate registry source")
+	cmd.Flags().Bool("allow-yanked", false, "Allow installing a yanked Package Handle Coordinate from the registry")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if len(args) == 1 && registry.LooksPackageHandleCoordinate(args[0]) {
 			resolution, err := resolvePackageHandleInstallCoordinate(cmd, args[0])
@@ -103,6 +104,13 @@ func resolvePackageHandleInstallCoordinate(cmd *cobra.Command, raw string) (regi
 	})
 	if err != nil {
 		return registry.Resolution{}, fmt.Errorf("resolve package handle coordinate: %w", err)
+	}
+	allowYanked, err := cmd.Flags().GetBool("allow-yanked")
+	if err != nil {
+		return registry.Resolution{}, fmt.Errorf("read --allow-yanked flag: %w", err)
+	}
+	if err := registry.RequireInstallableResolution(resolution, registry.InstallGateOptions{AllowYanked: allowYanked}); err != nil {
+		return registry.Resolution{}, fmt.Errorf("check registry package status: %w", err)
 	}
 
 	return resolution, nil
