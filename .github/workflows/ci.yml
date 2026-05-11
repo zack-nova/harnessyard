@@ -115,6 +115,14 @@ jobs:
       - name: Run Go test shard
         run: sh ./scripts/run_go_test_shard.sh "${{ matrix.shard }}"
 
+      - name: Upload Go test timing
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-test-timing-${{ matrix.shard }}
+          path: tmp/go-test-timing/${{ matrix.shard }}/
+          if-no-files-found: error
+
   govulncheck:
     name: govulncheck
     runs-on: ubuntu-24.04
