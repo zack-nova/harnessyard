@@ -20,9 +20,9 @@ func NewFrameworkPlanCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "plan",
-		Short: "Preview project and global framework activation outputs",
-		Long: "Preview the current runtime's framework activation plan, including desired truth,\n" +
-			"project materialization plan, and global registration plan.",
+		Short: "Preview Framework Activation outputs for the current runtime",
+		Long: "Preview the current runtime's Framework Activation plan, including desired\n" +
+			"root guidance truth and apply-managed Agent Framework project/global side effects.",
 		Example: "" +
 			"  harness framework plan\n" +
 			"  harness framework plan --json\n",

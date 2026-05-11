@@ -14,7 +14,7 @@ import (
 	"github.com/zack-nova/harnessyard/cmd/orbit/cli/testutil"
 )
 
-func TestHarnessFrameworkPlanIncludesBootstrapOutputForPendingBootstrapOnly(t *testing.T) {
+func TestHarnessFrameworkPlanSeparatesPendingBootstrapGuidanceFromApplyOutputs(t *testing.T) {
 	t.Parallel()
 
 	repo := seedHarnessFrameworkBootstrapRepo(t, frameworkBootstrapSeedOptions{
@@ -27,19 +27,27 @@ func TestHarnessFrameworkPlanIncludesBootstrapOutputForPendingBootstrapOnly(t *t
 	require.Empty(t, stderr)
 
 	var payload struct {
+		DesiredTruth struct {
+			HasPendingBootstrap bool `json:"has_pending_bootstrap_guidance"`
+		} `json:"desired_truth"`
 		ProjectOutputs []struct {
 			Path string `json:"path"`
 			Kind string `json:"kind"`
 		} `json:"project_outputs"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
-	require.Contains(t, payload.ProjectOutputs, struct {
+	require.True(t, payload.DesiredTruth.HasPendingBootstrap)
+	require.NotContains(t, payload.ProjectOutputs, struct {
 		Path string `json:"path"`
 		Kind string `json:"kind"`
 	}{
 		Path: "BOOTSTRAP.md",
 		Kind: "guidance",
 	})
+	for _, output := range payload.ProjectOutputs {
+		require.NotEqual(t, "BOOTSTRAP.md", output.Path)
+		require.NotEqual(t, "guidance", output.Kind)
+	}
 }
 
 func TestHarnessFrameworkApplyDoesNotMaterializePendingBootstrapGuidance(t *testing.T) {

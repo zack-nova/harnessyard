@@ -133,6 +133,12 @@ assert_contains "$quickstart_doc" "hyard install https://github.com/acme/orbit-p
 assert_contains "$quickstart_doc" "hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/ui --bindings .harness/vars.yaml"
 assert_contains "$quickstart_doc" "hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/ops --bindings .harness/vars.yaml"
 assert_contains "$quickstart_doc" "Each Run View Orbit Package install outputs its package guidance incrementally"
+assert_contains "$quickstart_doc" "Framework Activation is the separate Agent Framework side-effect step"
+assert_contains "$quickstart_doc" "hyard agent plan"
+assert_contains "$quickstart_doc" "hyard agent apply --yes"
+assert_contains "$quickstart_doc" "hyard agent check --json"
+assert_contains "$quickstart_doc" 'It does not compose root `AGENTS.md`, `HUMANS.md`, or'
+assert_contains "$quickstart_doc" "Run View Root Guidance output remains owned by package"
 assert_contains "$quickstart_doc" "hyard orbit list"
 assert_contains "$quickstart_doc" "hyard publish harness workspace"
 assert_contains "$quickstart_doc" "hyard assign orbit <orbit-package>"
@@ -238,6 +244,12 @@ assert_contains "$release_surface_doc" "hyard install https://github.com/acme/or
 assert_contains "$release_surface_doc" "hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/ui --bindings .harness/vars.yaml"
 assert_contains "$release_surface_doc" "hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/ops --bindings .harness/vars.yaml"
 assert_contains "$release_surface_doc" "Run View Package Installation outputs package guidance incrementally"
+assert_contains "$release_surface_doc" 'Framework Activation is the public `hyard agent plan`, `hyard agent apply`, and'
+assert_contains "$release_surface_doc" '`hyard agent apply`'
+assert_contains "$release_surface_doc" "project/global Agent Framework assets"
+assert_contains "$release_surface_doc" "It must not be documented as composing root"
+assert_contains "$release_surface_doc" "Run View Root Guidance output remains owned by Package"
+assert_contains "$release_surface_doc" "Bootstrap Guide output is a"
 assert_contains "$release_surface_doc" 'git commit -m "Optimize frontend lab harness"'
 assert_contains "$release_surface_doc" "hyard publish harness workspace"
 assert_occurs_before "$release_surface_doc" 'git commit -m "Optimize frontend lab harness"' "hyard publish harness workspace"

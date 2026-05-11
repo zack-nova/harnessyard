@@ -3,8 +3,6 @@ package harness
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sort"
 )
 
@@ -179,7 +177,7 @@ func BuildFrameworkPlan(ctx context.Context, repoRoot string, gitDir string, har
 		return FrameworkPlan{}, err
 	}
 
-	return buildFrameworkPlan(repoRoot, harnessID, state)
+	return buildFrameworkPlan(harnessID, state)
 }
 
 // BuildFrameworkPlanForFramework builds one framework activation preview with an explicit framework override.
@@ -189,10 +187,10 @@ func BuildFrameworkPlanForFramework(ctx context.Context, repoRoot string, gitDir
 		return FrameworkPlan{}, err
 	}
 
-	return buildFrameworkPlan(repoRoot, harnessID, state)
+	return buildFrameworkPlan(harnessID, state)
 }
 
-func buildFrameworkPlan(repoRoot string, harnessID string, state frameworkDesiredState) (FrameworkPlan, error) {
+func buildFrameworkPlan(harnessID string, state frameworkDesiredState) (FrameworkPlan, error) {
 	summary := state.Summary
 
 	plan := FrameworkPlan{
@@ -228,31 +226,6 @@ func buildFrameworkPlan(repoRoot string, harnessID string, state frameworkDesire
 	}
 	if err := blockingFrameworkCapabilityError("framework plan", state.CapabilityFindings); err != nil {
 		return FrameworkPlan{}, err
-	}
-
-	if summary.HasAgentGuidance {
-		plan.ProjectOutputs = append(plan.ProjectOutputs, FrameworkPlanOutput{
-			Path:   "AGENTS.md",
-			Action: projectOutputAction(repoRoot, "AGENTS.md"),
-			Kind:   "guidance",
-		})
-	}
-	if summary.HasHumanGuidance {
-		plan.ProjectOutputs = append(plan.ProjectOutputs, FrameworkPlanOutput{
-			Path:   "HUMANS.md",
-			Action: projectOutputAction(repoRoot, "HUMANS.md"),
-			Kind:   "guidance",
-		})
-	}
-	if summary.HasPendingBootstrapGuidance {
-		plan.ProjectOutputs = append(plan.ProjectOutputs, FrameworkPlanOutput{
-			Path:   rootBootstrapPath,
-			Action: projectOutputAction(repoRoot, rootBootstrapPath),
-			Kind:   "guidance",
-		})
-	}
-	if summary.ResolvedFramework == "" {
-		return plan, nil
 	}
 
 	adapter, ok := LookupFrameworkAdapter(summary.ResolvedFramework)
@@ -547,13 +520,4 @@ func sortFrameworkRoutePlanOutputs(outputs []FrameworkRoutePlanOutput) {
 		}
 		return outputs[left].Artifact < outputs[right].Artifact
 	})
-}
-
-func projectOutputAction(repoRoot string, repoPath string) string {
-	filename := filepath.Join(repoRoot, filepath.FromSlash(repoPath))
-	if _, err := os.Stat(filename); err == nil {
-		return "update"
-	}
-
-	return "create"
 }
