@@ -20,9 +20,10 @@ env:
   GOVULNCHECK_VERSION: "v1.3.0"
 
 jobs:
-  test:
+  lint:
+    name: Lint
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
@@ -60,19 +61,6 @@ jobs:
           go mod tidy -diff
           go mod verify
 
-      - name: Run Go tests
-        run: go test -count=1 ./...
-
-      - name: Install govulncheck
-        run: |
-          set -euo pipefail
-
-          go install golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-
-      - name: Run govulncheck
-        run: govulncheck ./...
-
       - name: Resolve golangci-lint version
         id: golangci_lint_version
         run: |
@@ -90,5 +78,98 @@ jobs:
       - name: Run golangci-lint
         run: ./scripts/run_golangci_lint.sh
 
-      - name: Run shell validation tests
+  go-tests:
+    name: Go tests (${{ matrix.shard }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+      matrix:
+        shard:
+          - hyard-cli
+          - harness-cli
+          - orbit-cli
+          - orbit-template
+          - orbit-harness
+          - orbit-libraries
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: |
+            go.mod
+            go.sum
+
+      - name: Download modules
+        run: go mod download
+
+      - name: Run Go test shard
+        run: sh ./scripts/run_go_test_shard.sh "${{ matrix.shard }}"
+
+  govulncheck:
+    name: govulncheck
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: |
+            go.mod
+            go.sum
+
+      - name: Download modules
+        run: go mod download
+
+      - name: Install govulncheck
+        run: |
+          set -euo pipefail
+
+          go install golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Run govulncheck
+        run: govulncheck ./...
+
+  shell-validation:
+    name: Shell validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: |
+            go.mod
+            go.sum
+
+      - name: Download modules
+        run: go mod download
+
+      - name: Run shell validation
         run: sh ./scripts/test_shell_validation.sh
