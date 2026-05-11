@@ -91,6 +91,16 @@ hyard uninstall orbit docs
 Run View Package Installation outputs package guidance incrementally so each
 newly installed package can be used immediately.
 
+Framework Activation is the public `hyard agent plan`, `hyard agent apply`, and
+`hyard agent check` surface for Agent Framework side effects. `hyard agent apply`
+materializes project/global Agent Framework assets such as skills, commands,
+config, hooks, and aliases, then records ownership in the activation ledger.
+It must not be documented as composing root `AGENTS.md`, `HUMANS.md`, or
+`BOOTSTRAP.md`. Run View Root Guidance output remains owned by Package
+Installation and explicit guidance output commands. Bootstrap Guide output is a
+guidance/bootstrap surface; Harness Start only discovers and executes an
+existing Bootstrap Guide before bootstrap closeout.
+
 Publish demos should make a normal Git checkpoint before publishing the current
 runtime as a Harness Package:
 

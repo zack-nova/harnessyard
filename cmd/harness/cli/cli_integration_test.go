@@ -834,7 +834,7 @@ func TestHarnessFrameworkInspectSummarizesRemoteSkillCapabilities(t *testing.T) 
 	})
 }
 
-func TestHarnessFrameworkPlanSeparatesDesiredProjectAndGlobalOutputs(t *testing.T) {
+func TestHarnessFrameworkPlanSeparatesDesiredTruthFromApplyManagedOutputs(t *testing.T) {
 	t.Parallel()
 
 	repo := seedHarnessFrameworkRepo(t)
@@ -879,16 +879,20 @@ func TestHarnessFrameworkPlanSeparatesDesiredProjectAndGlobalOutputs(t *testing.
 	require.Equal(t, 1, payload.DesiredTruth.SkillCount)
 	require.True(t, payload.DesiredTruth.HasAgentGuidance)
 	require.True(t, payload.DesiredTruth.HasHumanGuidance)
-	require.Contains(t, payload.ProjectOutputs, struct {
+	require.NotContains(t, payload.ProjectOutputs, struct {
 		Path   string `json:"path"`
 		Action string `json:"action"`
 		Kind   string `json:"kind"`
 	}{Path: "AGENTS.md", Action: "create", Kind: "guidance"})
-	require.Contains(t, payload.ProjectOutputs, struct {
+	require.NotContains(t, payload.ProjectOutputs, struct {
 		Path   string `json:"path"`
 		Action string `json:"action"`
 		Kind   string `json:"kind"`
 	}{Path: "HUMANS.md", Action: "create", Kind: "guidance"})
+	for _, output := range payload.ProjectOutputs {
+		require.NotContains(t, []string{"AGENTS.md", "HUMANS.md", "BOOTSTRAP.md"}, output.Path)
+		require.NotEqual(t, "guidance", output.Kind)
+	}
 	require.Contains(t, payload.ProjectOutputs, struct {
 		Path   string `json:"path"`
 		Action string `json:"action"`
@@ -1207,7 +1211,19 @@ func TestHarnessFrameworkApplyYesUsesProjectRoutesWithoutGlobalWrites(t *testing
 			Status         string   `json:"status"`
 			Invocation     []string `json:"invocation"`
 		} `json:"artifact_results"`
-		Warnings []string `json:"warnings"`
+		Warnings  []string `json:"warnings"`
+		Readiness struct {
+			Agent struct {
+				Status           string `json:"status"`
+				ActivationStatus string `json:"activation_status"`
+				Reasons          []struct {
+					Code string `json:"code"`
+				} `json:"reasons"`
+			} `json:"agent"`
+			RuntimeReasons []struct {
+				Code string `json:"code"`
+			} `json:"runtime_reasons"`
+		} `json:"readiness"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
 	require.Equal(t, repo.Root, payload.HarnessRoot)
@@ -1257,10 +1273,33 @@ func TestHarnessFrameworkApplyYesUsesProjectRoutesWithoutGlobalWrites(t *testing
 		Invocation:     []string{"/docs-style"},
 	})
 	require.Empty(t, payload.Warnings)
+	require.Equal(t, "ready", payload.Readiness.Agent.Status)
+	require.Equal(t, "current", payload.Readiness.Agent.ActivationStatus)
+	require.NotContains(t, readinessCodesFromPayload(payload.Readiness.Agent.Reasons), "agent_activation_missing")
+	require.NotContains(t, readinessCodesFromPayload(payload.Readiness.RuntimeReasons), "agent_activation_missing")
 
 	require.NoFileExists(t, filepath.Join(repo.Root, "AGENTS.md"))
 	require.NoFileExists(t, filepath.Join(repo.Root, "HUMANS.md"))
 	require.NoFileExists(t, filepath.Join(repo.Root, "BOOTSTRAP.md"))
+
+	checkStdout, checkStderr, checkErr := executeHarnessCLI(t, repo.Root, "agent", "check", "--json")
+	require.NoError(t, checkErr)
+	require.Empty(t, checkStderr)
+	var checkPayload struct {
+		Configured bool `json:"configured"`
+		Stale      bool `json:"stale"`
+		Findings   []struct {
+			Kind string `json:"kind"`
+			Path string `json:"path"`
+		} `json:"findings"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(checkStdout), &checkPayload))
+	require.True(t, checkPayload.Configured)
+	require.False(t, checkPayload.Stale)
+	for _, finding := range checkPayload.Findings {
+		require.NotContains(t, []string{"activation_missing", "missing_output"}, finding.Kind)
+		require.NotContains(t, []string{"AGENTS.md", "HUMANS.md", "BOOTSTRAP.md"}, finding.Path)
+	}
 
 	claudeAliasPath := filepath.Join(repo.Root, "CLAUDE.md")
 	aliasTarget, err := os.Readlink(claudeAliasPath)

@@ -39,9 +39,10 @@ func NewFrameworkApplyCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "apply",
-		Short: "Apply framework-managed project and global side effects for the current runtime",
-		Long: "Apply framework-managed project/global side effects for the current runtime and record\n" +
-			"their ownership in the repo-local activation ledger.",
+		Short: "Apply Framework Activation side effects for the current runtime",
+		Long: "Apply Framework Activation by materializing project/global Agent Framework side effects\n" +
+			"for the current runtime and recording their ownership in the repo-local activation ledger.\n" +
+			"This command does not compose root guidance artifacts.",
 		Example: "" +
 			"  harness framework apply\n" +
 			"  harness framework apply --yes\n" +

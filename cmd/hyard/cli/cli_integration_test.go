@@ -538,6 +538,21 @@ func TestHyardHelpShowsUserLayerHeadlineAndPlumbingEntry(t *testing.T) {
 	require.NotContains(t, stdout, "framework")
 }
 
+func TestHyardAgentApplyHelpDescribesActivationWithoutGuidanceComposition(t *testing.T) {
+	t.Parallel()
+
+	stdout, stderr, err := executeHyardCLI(t, t.TempDir(), "agent", "apply", "--help")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+	require.Contains(t, stdout, "Framework Activation")
+	require.Contains(t, stdout, "project/global Agent Framework side effects")
+	require.Contains(t, stdout, "activation ledger")
+	require.Contains(t, stdout, "does not compose")
+	require.NotContains(t, stdout, "AGENTS.md")
+	require.NotContains(t, stdout, "HUMANS.md")
+	require.NotContains(t, stdout, "BOOTSTRAP.md")
+}
+
 func TestHyardAgentDetectReportsFakeCodexCLI(t *testing.T) {
 	lockHyardProcessEnv(t)
 

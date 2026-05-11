@@ -235,8 +235,8 @@ func TestHarnessFrameworkPlanHelpIncludesExamples(t *testing.T) {
 	require.Contains(t, stdout, "Examples:")
 	require.Contains(t, stdout, "harness framework plan")
 	require.Contains(t, stdout, "harness framework plan --json")
-	require.Contains(t, stdout, "project materialization plan")
-	require.Contains(t, stdout, "global registration plan")
+	require.Contains(t, stdout, "desired")
+	require.Contains(t, stdout, "apply-managed Agent Framework project/global side effects")
 }
 
 func TestHarnessFrameworkApplyHelpIncludesExamples(t *testing.T) {
@@ -249,6 +249,8 @@ func TestHarnessFrameworkApplyHelpIncludesExamples(t *testing.T) {
 	require.Contains(t, stdout, "harness framework apply")
 	require.Contains(t, stdout, "harness framework apply --json")
 	require.Contains(t, stdout, "activation ledger")
+	require.Contains(t, stdout, "project/global Agent Framework side effects")
+	require.Contains(t, stdout, "does not compose")
 }
 
 func TestHarnessFrameworkCheckHelpIncludesExamples(t *testing.T) {

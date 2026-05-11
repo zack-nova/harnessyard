@@ -168,6 +168,12 @@ Use:
 - `hyard guide save` to write edited blocks back to hosted truth
 - `hyard guide sync --output` to explicitly output runtime-wide root guidance artifacts
 
+A Bootstrap Guide is the `BOOTSTRAP.md` root guidance presentation used for
+bootstrap initialization. Harness Start may discover and hand an existing
+Bootstrap Guide to an Agent Framework, but Harness Start and Framework
+Activation do not render or compose Run View Root Guidance or Bootstrap Guide
+files.
+
 ## Readiness
 
 Runtime readiness is derived, not separately persisted. Current status values:
@@ -177,10 +183,12 @@ Runtime readiness is derived, not separately persisted. Current status values:
 - `ready`
 
 Readiness combines runtime structure, orbit/member checks, bindings, guidance
-composition, and agent activation state. Agent-related readiness reasons include
-missing/stale activation, pending hooks, required remote dependencies,
+composition, and Framework Activation state. Agent-related readiness reasons
+include missing/stale activation, pending hooks, required remote dependencies,
 unsupported required events, cleanup blockers, invalid agent truth, invalid
-activation ledgers, and ownership conflicts.
+activation ledgers, and ownership conflicts. Missing Run View Root Guidance or
+malformed root guidance remains a guidance/readiness diagnostic, not a missing
+Agent Framework activation diagnostic.
 
 ## Agent And Capability Model
 
@@ -193,10 +201,13 @@ Orbit capabilities are framework-agnostic authored truth:
 Local commands and skills are package assets. Remote skill dependencies are
 links; activation remains a runtime agent operation.
 
-Agent activation is project-first. Global writes or hybrid hook activation must
-remain explicit and visible. Current supported framework adapters include Codex,
-Claude Code, and OpenClaw through the shared `agent` command surface and the
-lower-level framework implementation package.
+Framework Activation is project-first. It materializes project/global Agent
+Framework side effects such as skills, commands, config, hooks, and aliases, and
+records repo-local ownership in activation ledgers. It does not compose Run View
+Root Guidance or Bootstrap Guide files. Global writes or hybrid hook activation
+must remain explicit and visible. Current supported Agent Framework adapters
+include Codex, Claude Code, and OpenClaw through the shared `agent` command
+surface and the lower-level framework implementation package.
 
 Package-scoped agent add-ons currently include hook declarations under
 OrbitSpec `agent_addons`.

@@ -72,6 +72,24 @@ You can start using the newly installed guidance immediately; standalone
 runtime-wide guidance output remains an explicit `hyard guide sync --output`
 operation.
 
+Framework Activation is the separate Agent Framework side-effect step. Preview
+it before agent handoff:
+
+```bash
+hyard agent plan
+hyard agent apply --yes
+hyard agent check --json
+```
+
+`hyard agent apply` materializes project/global Agent Framework side effects such
+as skills, commands, config, hooks, and aliases, then records ownership in the
+activation ledger. It does not compose root `AGENTS.md`, `HUMANS.md`, or
+`BOOTSTRAP.md`; Run View Root Guidance output remains owned by package
+installation and explicit `hyard guide sync --output` guidance commands.
+Harness Start runs project-local Framework Activation before handing control to
+the selected Agent Framework, while Bootstrap Guide output remains a separate
+guidance/bootstrap concern.
+
 Uninstall package content with the typed package lifecycle commands:
 
 ```bash

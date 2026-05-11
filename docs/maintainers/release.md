@@ -48,6 +48,11 @@ When release-surface behavior, help output, quickstart commands, or release docu
 sh ./scripts/test_release_surface_hyard.sh
 ```
 
+When reviewing agent help or docs, preserve the glossary boundary: Framework
+Activation materializes Agent Framework side effects; Run View Root Guidance and
+Bootstrap Guide output belong to package installation, explicit guidance output,
+and Harness Start bootstrap discovery.
+
 ## GoReleaser Validation
 
 Validate the GoReleaser configuration:
