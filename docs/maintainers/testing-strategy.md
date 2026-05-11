@@ -6,6 +6,15 @@ The product is released as `hyard`. Public product documentation should teach
 the top-level `hyard` command surface rather than lower-level maintainer or
 compatibility commands.
 
+## Repository Validation
+
+Before review handoff, run the standard repository validation commands:
+
+```bash
+mise run fix
+mise run ci
+```
+
 ## 1. Goals
 
 The test suite must protect these invariants:

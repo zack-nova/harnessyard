@@ -18,7 +18,6 @@ concurrency:
 
 env:
   GOVULNCHECK_VERSION: "v1.3.0"
-  GOLANGCI_LINT_VERSION: "v2.10.1"
 
 jobs:
   test:
@@ -74,20 +73,22 @@ jobs:
       - name: Run govulncheck
         run: govulncheck ./...
 
+      - name: Resolve golangci-lint version
+        id: golangci_lint_version
+        run: |
+          set -euo pipefail
+
+          version="$(sh ./scripts/read_mise_tool_version.sh golangci-lint)"
+          echo "version=v${version}" >> "$GITHUB_OUTPUT"
+
       - name: Install golangci-lint
         uses: golangci/golangci-lint-action@v9.2.0
         with:
-          version: ${{ env.GOLANGCI_LINT_VERSION }}
+          version: ${{ steps.golangci_lint_version.outputs.version }}
           install-only: true
 
       - name: Run golangci-lint
         run: ./scripts/run_golangci_lint.sh
 
       - name: Run shell validation tests
-        run: |
-          set -euo pipefail
-
-          sh ./scripts/test_run_golangci_lint.sh
-          sh ./scripts/test_build_binaries.sh
-          sh ./scripts/test_install_script.sh
-          sh ./scripts/test_release_surface_hyard.sh
+        run: sh ./scripts/test_shell_validation.sh
