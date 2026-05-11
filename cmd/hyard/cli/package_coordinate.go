@@ -16,6 +16,7 @@ const (
 	packagePublishKindFlag = "package-publish-kind"
 	packageLocatorKindFlag = "package-locator-kind"
 	packageLocatorFlag     = "package-locator"
+	packageWarningFlag     = "package-resolution-warning"
 
 	packageVersionNone    = "none"
 	packageKindRelease    = "release"
@@ -108,6 +109,16 @@ func bindPackageMetadata(cmd *cobra.Command, metadata packageMetadata) error {
 	} {
 		if err := setFlagString(cmd, flagName, value); err != nil {
 			return err
+		}
+	}
+
+	return nil
+}
+
+func bindPackageResolutionWarnings(cmd *cobra.Command, warnings []string) error {
+	for _, warning := range warnings {
+		if err := cmd.Flags().Set(packageWarningFlag, warning); err != nil {
+			return fmt.Errorf("set --%s flag: %w", packageWarningFlag, err)
 		}
 	}
 

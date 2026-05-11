@@ -746,6 +746,7 @@ type installPackageMetadata struct {
 	Coordinate  string
 	LocatorKind string
 	Locator     string
+	Warnings    []string
 }
 
 func addInstallPackageMetadataFlags(cmd *cobra.Command) {
@@ -755,7 +756,8 @@ func addInstallPackageMetadataFlags(cmd *cobra.Command) {
 	cmd.Flags().String("package-coordinate", "", "User-facing package coordinate for install output")
 	cmd.Flags().String("package-locator-kind", "", "User-facing package locator kind for install output")
 	cmd.Flags().String("package-locator", "", "User-facing package locator for install output")
-	for _, flagName := range []string{"package-name", "package-version", "package-publish-kind", "package-coordinate", "package-locator-kind", "package-locator"} {
+	cmd.Flags().StringArray("package-resolution-warning", nil, "User-facing package resolution warnings for install output")
+	for _, flagName := range []string{"package-name", "package-version", "package-publish-kind", "package-coordinate", "package-locator-kind", "package-locator", "package-resolution-warning"} {
 		if err := cmd.Flags().MarkHidden(flagName); err != nil {
 			panic(err)
 		}
@@ -779,12 +781,17 @@ func readInstallPackageMetadata(cmd *cobra.Command) (installPackageMetadata, err
 	if err != nil {
 		return installPackageMetadata{}, fmt.Errorf("read --package-locator flag: %w", err)
 	}
+	warnings, err := cmd.Flags().GetStringArray("package-resolution-warning")
+	if err != nil {
+		return installPackageMetadata{}, fmt.Errorf("read --package-resolution-warning flag: %w", err)
+	}
 
 	return installPackageMetadata{
 		Name:        name,
 		Coordinate:  coordinate,
 		LocatorKind: locatorKind,
 		Locator:     locator,
+		Warnings:    append([]string(nil), warnings...),
 	}, nil
 }
 
@@ -1121,6 +1128,10 @@ func emitInstallPreview(cmd *cobra.Command, harnessRoot string, preview orbittem
 	if err != nil {
 		return err
 	}
+	warnings, err := installWarningsFromCommand(cmd, preview.Warnings)
+	if err != nil {
+		return err
+	}
 	if jsonOutput {
 		return emitJSON(cmd.OutOrStdout(), installPreviewJSON{
 			DryRun:            true,
@@ -1132,7 +1143,7 @@ func emitInstallPreview(cmd *cobra.Command, harnessRoot string, preview orbittem
 			Bindings:          installBindingsPayload(preview.ResolvedBindings),
 			AgentAddons:       installAgentAddonsPayload(preview.InstallRecord.AgentAddons),
 			Files:             installPreviewPaths(harnessRoot, preview),
-			Warnings:          append([]string(nil), preview.Warnings...),
+			Warnings:          warnings,
 			Conflicts:         preview.Conflicts,
 		})
 	}
@@ -1170,7 +1181,7 @@ func emitInstallPreview(cmd *cobra.Command, harnessRoot string, preview orbittem
 	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "orbit_id: %s\n", preview.Source.Manifest.Template.OrbitID); err != nil {
 		return fmt.Errorf("write command output: %w", err)
 	}
-	if err := emitInstallWarnings(cmd, preview.Warnings); err != nil {
+	if err := emitInstallWarnings(cmd, warnings); err != nil {
 		return err
 	}
 	if err := emitInstallAgentAddons(cmd, installAgentAddonsPayload(preview.InstallRecord.AgentAddons)); err != nil {
@@ -1237,6 +1248,10 @@ func emitHarnessTemplateInstallPreview(
 	if err != nil {
 		return err
 	}
+	warnings, err := installWarningsFromCommand(cmd, preview.Warnings)
+	if err != nil {
+		return err
+	}
 
 	if jsonOutput {
 		return emitJSON(cmd.OutOrStdout(), installPreviewJSON{
@@ -1249,7 +1264,7 @@ func emitHarnessTemplateInstallPreview(
 			Bindings:     installBindingsPayload(preview.ResolvedBindings),
 			AgentAddons:  installAgentAddonsPayload(preview.BundleRecord.AgentAddons),
 			Files:        files,
-			Warnings:     append([]string(nil), preview.Warnings...),
+			Warnings:     warnings,
 			Conflicts:    append([]orbittemplate.ApplyConflict(nil), preview.Conflicts...),
 		})
 	}
@@ -1325,7 +1340,7 @@ func emitHarnessTemplateInstallPreview(
 			}
 		}
 	}
-	if err := emitInstallWarnings(cmd, preview.Warnings); err != nil {
+	if err := emitInstallWarnings(cmd, warnings); err != nil {
 		return err
 	}
 	if err := emitInstallAgentAddons(cmd, installAgentAddonsPayload(preview.BundleRecord.AgentAddons)); err != nil {
@@ -1384,6 +1399,10 @@ func emitHarnessTemplateInstallResult(
 	if err != nil {
 		return err
 	}
+	warnings, err := installWarningsFromCommand(cmd, result.Preview.Warnings)
+	if err != nil {
+		return err
+	}
 
 	if jsonOutput {
 		return emitJSON(cmd.OutOrStdout(), harnessTemplateInstallResultJSON{
@@ -1394,7 +1413,7 @@ func emitHarnessTemplateInstallResult(
 			HarnessID:    result.Preview.Source.Manifest.Template.HarnessID,
 			MemberIDs:    memberIDs,
 			WrittenPaths: append([]string(nil), result.WrittenPaths...),
-			Warnings:     append([]string(nil), result.Preview.Warnings...),
+			Warnings:     warnings,
 			AgentAddons:  installAgentAddonsPayload(result.Preview.BundleRecord.AgentAddons),
 			MemberCount:  len(result.Runtime.Members),
 			BundleCount:  bundleCount,
@@ -1417,7 +1436,7 @@ func emitHarnessTemplateInstallResult(
 	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "files: %d\n", len(result.WrittenPaths)); err != nil {
 		return fmt.Errorf("write command output: %w", err)
 	}
-	if err := emitInstallWarnings(cmd, result.Preview.Warnings); err != nil {
+	if err := emitInstallWarnings(cmd, warnings); err != nil {
 		return err
 	}
 	if err := emitInstallAgentAddons(cmd, installAgentAddonsPayload(result.Preview.BundleRecord.AgentAddons)); err != nil {
@@ -1440,6 +1459,10 @@ func emitInstallResult(cmd *cobra.Command, harnessRoot string, result orbittempl
 	if err != nil {
 		return err
 	}
+	warnings, err := installWarningsFromCommand(cmd, result.Preview.Warnings)
+	if err != nil {
+		return err
+	}
 
 	if jsonOutput {
 		return emitJSON(cmd.OutOrStdout(), installResultJSON{
@@ -1448,7 +1471,7 @@ func emitInstallResult(cmd *cobra.Command, harnessRoot string, result orbittempl
 			Source:       sourcePayload,
 			OrbitID:      result.Preview.Source.Manifest.Template.OrbitID,
 			WrittenPaths: writtenPaths,
-			Warnings:     append([]string(nil), result.Preview.Warnings...),
+			Warnings:     warnings,
 			AgentAddons:  installAgentAddonsPayload(result.Preview.InstallRecord.AgentAddons),
 			MemberCount:  len(runtimeFile.Members),
 			Readiness:    readiness,
@@ -1480,7 +1503,7 @@ func emitInstallResult(cmd *cobra.Command, harnessRoot string, result orbittempl
 	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "files: %d\n", len(writtenPaths)); err != nil {
 		return fmt.Errorf("write command output: %w", err)
 	}
-	if err := emitInstallWarnings(cmd, result.Preview.Warnings); err != nil {
+	if err := emitInstallWarnings(cmd, warnings); err != nil {
 		return err
 	}
 	if err := emitInstallAgentAddons(cmd, installAgentAddonsPayload(result.Preview.InstallRecord.AgentAddons)); err != nil {
@@ -1491,6 +1514,17 @@ func emitInstallResult(cmd *cobra.Command, harnessRoot string, result orbittempl
 	}
 
 	return nil
+}
+
+func installWarningsFromCommand(cmd *cobra.Command, warnings []string) ([]string, error) {
+	metadata, err := readInstallPackageMetadata(cmd)
+	if err != nil {
+		return nil, err
+	}
+	combined := append([]string(nil), warnings...)
+	combined = append(combined, metadata.Warnings...)
+
+	return combined, nil
 }
 
 func emitInstallWarnings(cmd *cobra.Command, warnings []string) error {
