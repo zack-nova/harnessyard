@@ -137,6 +137,7 @@ func TestRemoveRuntimeHarnessPackageUninstallsIncludedOrbitsGuidanceAndRecords(t
 	require.Contains(t, plan.RemovedPaths, "BOOTSTRAP.md")
 	require.True(t, plan.RemoveRootAgents)
 	require.True(t, plan.DeleteBundleRecord)
+	require.True(t, plan.ConfirmationRequired)
 
 	result, err := ApplyRemoveRuntimeHarnessPackagePlanWithOptions(
 		context.Background(),

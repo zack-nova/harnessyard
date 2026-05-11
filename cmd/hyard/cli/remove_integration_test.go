@@ -560,6 +560,51 @@ func TestHyardRemoveOrbitRecompilesLedgerOwnedPackageHookOutputs(t *testing.T) {
 	require.Zero(t, checkPayload.FindingCount)
 }
 
+func TestHyardRemoveOrbitAgentCleanupRequiresConfirmationAndDefaultNoCancels(t *testing.T) {
+	repo := seedHyardInstallBackedRuntimeWithAgentAddonHook(t)
+	repo.AddAndCommit(t, "seed docs package hook")
+	selectHyardAgentAddonFramework(t, repo)
+	makeHyardAgentAddonHandlerExecutable(t, repo)
+	repo.AddAndCommit(t, "make docs package hook executable")
+
+	lockHyardProcessEnv(t)
+	t.Setenv("HOME", t.TempDir())
+
+	stdout, stderr, err := executeHyardCLIUnlocked(t, repo.Root, "agent", "apply", "--hooks", "--yes", "--json")
+	require.NoError(t, err)
+	require.Contains(t, stderr, "Apply hook activation? accepted by --yes")
+
+	var applyPayload struct {
+		Status string `json:"status"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &applyPayload))
+	require.Equal(t, "ok", applyPayload.Status)
+	require.FileExists(t, filepath.Join(repo.Root, ".codex", "hooks.json"))
+
+	activation, err := harnesspkg.LoadFrameworkActivation(filepath.Join(repo.Root, ".git"), "codex")
+	require.NoError(t, err)
+	for index := range activation.ProjectOutputs {
+		activation.ProjectOutputs[index].EffectiveScope = "global"
+	}
+	_, err = harnesspkg.WriteFrameworkActivation(filepath.Join(repo.Root, ".git"), activation)
+	require.NoError(t, err)
+
+	stdout, stderr, err = executeHyardCLIWithInputUnlocked(t, repo.Root, "\n", "remove", "orbit", "docs")
+	require.Error(t, err)
+	require.Contains(t, stdout, "Remove orbit package docs?")
+	require.Contains(t, stdout, "agent_cleanup: confirmation_required")
+	require.Contains(t, stdout, "user_level_output: .codex/config.toml")
+	require.Contains(t, stdout, "user_level_output: .codex/hooks.json")
+	require.Contains(t, stderr, "Continue? [y/N]")
+	require.ErrorContains(t, err, `remove canceled for orbit package "docs"`)
+
+	require.FileExists(t, filepath.Join(repo.Root, ".codex", "hooks.json"))
+	runtimeFile, err := harnesspkg.LoadRuntimeFile(repo.Root)
+	require.NoError(t, err)
+	require.Len(t, runtimeFile.Members, 1)
+	require.Equal(t, "docs", runtimeFile.Members[0].OrbitID)
+}
+
 func TestHyardRemoveOrbitRemovesLedgerOwnedPackageHookOutputsWhenLastAddonIsRemoved(t *testing.T) {
 	repo := seedHyardInstallBackedRuntimeWithAgentAddonHook(t)
 	repo.AddAndCommit(t, "seed docs package hook")
@@ -928,6 +973,7 @@ func TestHyardRemoveHarnessDryRunJSONListsOwnedOrbits(t *testing.T) {
 		DeleteBundleRecord   bool     `json:"delete_bundle_record"`
 		RemovedPaths         []string `json:"removed_paths"`
 		RemovedPathCount     int      `json:"removed_path_count"`
+		ConfirmationRequired bool     `json:"confirmation_required"`
 		RemainingMemberCount int      `json:"remaining_member_count"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
@@ -941,6 +987,7 @@ func TestHyardRemoveHarnessDryRunJSONListsOwnedOrbits(t *testing.T) {
 	require.Contains(t, payload.RemovedPaths, ".harness/orbits/docs.yaml")
 	require.Contains(t, payload.RemovedPaths, "docs/guide.md")
 	require.Equal(t, len(payload.RemovedPaths), payload.RemovedPathCount)
+	require.True(t, payload.ConfirmationRequired)
 	require.Equal(t, 0, payload.RemainingMemberCount)
 
 	runtimeFile, err := harnesspkg.LoadRuntimeFile(runtimeRoot)
