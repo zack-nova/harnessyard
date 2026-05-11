@@ -111,6 +111,75 @@ func TestUninstallRuntimeOrbitPackageDeletesInstallOwnedRuntimeFilesAndGuidance(
 	require.FileExists(t, filepath.Join(repo.Root, "docs", "local-note.md"))
 }
 
+func TestRemoveRuntimeHarnessPackageUninstallsIncludedOrbitsGuidanceAndRecords(t *testing.T) {
+	t.Parallel()
+
+	repo := seedRuntimeHarnessPackageUninstallRepo(t)
+	discovered, err := gitpkg.DiscoverRepo(context.Background(), repo.Root)
+	require.NoError(t, err)
+
+	plan, err := BuildRemoveRuntimeHarnessPackagePlanWithOptions(
+		context.Background(),
+		discovered,
+		"workspace",
+		RemoveRuntimeHarnessPackageOptions{},
+	)
+	require.NoError(t, err)
+	require.Equal(t, []string{"api", "docs"}, plan.OrbitIDs)
+	require.Contains(t, plan.RemovedPaths, ".harness/bundles/workspace.yaml")
+	require.Contains(t, plan.RemovedPaths, ".harness/installs/docs.yaml")
+	require.Contains(t, plan.RemovedPaths, ".harness/orbits/api.yaml")
+	require.Contains(t, plan.RemovedPaths, ".harness/orbits/docs.yaml")
+	require.Contains(t, plan.RemovedPaths, "api/guide.md")
+	require.Contains(t, plan.RemovedPaths, "docs/guide.md")
+	require.Contains(t, plan.RemovedPaths, "AGENTS.md")
+	require.Contains(t, plan.RemovedPaths, "HUMANS.md")
+	require.Contains(t, plan.RemovedPaths, "BOOTSTRAP.md")
+	require.True(t, plan.RemoveRootAgents)
+	require.True(t, plan.DeleteBundleRecord)
+
+	result, err := ApplyRemoveRuntimeHarnessPackagePlanWithOptions(
+		context.Background(),
+		discovered,
+		plan,
+		time.Date(2026, time.May, 11, 12, 0, 0, 0, time.UTC),
+		RemoveRuntimeHarnessPackageOptions{},
+	)
+	require.NoError(t, err)
+	require.Equal(t, []string{"api", "docs"}, result.OrbitIDs)
+	require.True(t, result.RemovedAgentsBlock)
+	require.True(t, result.DeletedBundleRecord)
+	require.Contains(t, result.RemovedPaths, ".harness/bundles/workspace.yaml")
+	require.Contains(t, result.RemovedPaths, ".harness/installs/docs.yaml")
+	require.Contains(t, result.RemovedPaths, "api/guide.md")
+	require.Contains(t, result.RemovedPaths, "docs/guide.md")
+
+	runtimeFile, err := LoadRuntimeFile(repo.Root)
+	require.NoError(t, err)
+	require.Empty(t, runtimeFile.Members)
+
+	_, err = LoadBundleRecord(repo.Root, "workspace")
+	require.ErrorIs(t, err, os.ErrNotExist)
+	_, err = LoadInstallRecord(repo.Root, "docs")
+	require.ErrorIs(t, err, os.ErrNotExist)
+	require.NoFileExists(t, filepath.Join(repo.Root, ".harness", "orbits", "api.yaml"))
+	require.NoFileExists(t, filepath.Join(repo.Root, ".harness", "orbits", "docs.yaml"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "api", "guide.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "docs", "guide.md"))
+	require.NoDirExists(t, filepath.Join(repo.Root, "api"))
+	require.NoDirExists(t, filepath.Join(repo.Root, "docs"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "HUMANS.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "BOOTSTRAP.md"))
+
+	agentsData, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
+	require.NoError(t, err)
+	require.Equal(t, ""+
+		"Markerless run view guidance.\n\n"+
+		"<!-- orbit:begin workflow=\"external\" -->\n"+
+		"External orbit guidance\n"+
+		"<!-- orbit:end workflow=\"external\" -->\n", string(agentsData))
+}
+
 func TestUninstallRuntimeOrbitPackagePreservesUnrelatedMarkedAndMarkerlessRootGuidance(t *testing.T) {
 	t.Parallel()
 
@@ -684,6 +753,117 @@ func addUnresolvableActiveInstallMember(t *testing.T, repo *testutil.Repo, orbit
 	require.NoError(t, err)
 
 	repo.AddAndCommit(t, "add unresolvable active install member")
+}
+
+func seedRuntimeHarnessPackageUninstallRepo(t *testing.T) *testutil.Repo {
+	t.Helper()
+
+	repo := testutil.NewRepo(t)
+	now := time.Date(2026, time.May, 11, 11, 0, 0, 0, time.UTC)
+	_, err := BootstrapRuntimeControlPlane(repo.Root, now)
+	require.NoError(t, err)
+
+	writeHarnessPackageUninstallOrbit(t, repo, "docs", "docs/guide.md", "Docs guide\n")
+	writeHarnessPackageUninstallOrbit(t, repo, "api", "api/guide.md", "API guide\n")
+
+	harnessAgentsBlock, err := orbittemplate.WrapRuntimeAgentsOwnerBlock(orbittemplate.OwnerKindHarness, "workspace", []byte("Workspace runtime guidance\n"))
+	require.NoError(t, err)
+	externalBlock, err := orbittemplate.WrapRuntimeAgentsOwnerBlock(orbittemplate.OwnerKindOrbit, "external", []byte("External orbit guidance\n"))
+	require.NoError(t, err)
+	repo.WriteFile(t, "AGENTS.md", ""+
+		"Markerless run view guidance.\n\n"+
+		string(harnessAgentsBlock)+
+		string(externalBlock))
+	harnessHumansBlock, err := orbittemplate.WrapRuntimeAgentsOwnerBlock(orbittemplate.OwnerKindHarness, "workspace", []byte("Workspace human guidance\n"))
+	require.NoError(t, err)
+	repo.WriteFile(t, "HUMANS.md", string(harnessHumansBlock))
+	harnessBootstrapBlock, err := orbittemplate.WrapRuntimeAgentsOwnerBlock(orbittemplate.OwnerKindHarness, "workspace", []byte("Workspace bootstrap guidance\n"))
+	require.NoError(t, err)
+	repo.WriteFile(t, "BOOTSTRAP.md", string(harnessBootstrapBlock))
+
+	runtimeFile, err := LoadRuntimeFile(repo.Root)
+	require.NoError(t, err)
+	runtimeFile.Members = []RuntimeMember{
+		{
+			OrbitID:        "docs",
+			Source:         MemberSourceInstallBundle,
+			OwnerHarnessID: "workspace",
+			AddedAt:        now,
+		},
+		{
+			OrbitID:        "api",
+			Source:         MemberSourceInstallBundle,
+			OwnerHarnessID: "workspace",
+			AddedAt:        now,
+		},
+	}
+	runtimeFile.Harness.UpdatedAt = now
+	_, err = WriteManifestFile(repo.Root, ManifestFileFromRuntimeFile(runtimeFile))
+	require.NoError(t, err)
+
+	_, err = WriteBundleRecord(repo.Root, BundleRecord{
+		SchemaVersion: 1,
+		HarnessID:     "workspace",
+		Template: orbittemplate.Source{
+			SourceKind:     orbittemplate.InstallSourceKindLocalBranch,
+			SourceRef:      "harness-template/workspace",
+			TemplateCommit: "abc123",
+		},
+		MemberIDs:          []string{"docs", "api"},
+		AppliedAt:          now,
+		IncludesRootAgents: true,
+		OwnedPaths: []string{
+			".harness/orbits/api.yaml",
+			".harness/orbits/docs.yaml",
+			"AGENTS.md",
+			"BOOTSTRAP.md",
+			"HUMANS.md",
+			"api/guide.md",
+			"docs/guide.md",
+		},
+	})
+	require.NoError(t, err)
+
+	_, err = WriteInstallRecord(repo.Root, orbittemplate.InstallRecord{
+		SchemaVersion: 1,
+		OrbitID:       "docs",
+		Template: orbittemplate.Source{
+			SourceKind:     orbittemplate.InstallSourceKindLocalBranch,
+			SourceRef:      "orbit-template/docs",
+			TemplateCommit: "abc123",
+		},
+		AppliedAt: now,
+	})
+	require.NoError(t, err)
+
+	repo.AddAndCommit(t, "seed harness package uninstall repo")
+
+	return repo
+}
+
+func writeHarnessPackageUninstallOrbit(t *testing.T, repo *testutil.Repo, orbitID string, repoPath string, content string) {
+	t.Helper()
+
+	spec, err := orbitpkg.DefaultHostedMemberSchemaSpec(orbitID)
+	require.NoError(t, err)
+	spec.Description = orbitID + " orbit"
+	spec.Members = []orbitpkg.OrbitMember{
+		{
+			Key:  orbitID + "-content",
+			Role: orbitpkg.OrbitMemberSubject,
+			Paths: orbitpkg.OrbitMemberPaths{
+				Include: []string{repoPath},
+			},
+		},
+	}
+	require.NotNil(t, spec.Behavior)
+	spec.Behavior.Scope.ExportRoles = []orbitpkg.OrbitMemberRole{
+		orbitpkg.OrbitMemberMeta,
+		orbitpkg.OrbitMemberSubject,
+	}
+	_, err = orbitpkg.WriteHostedOrbitSpec(repo.Root, spec)
+	require.NoError(t, err)
+	repo.WriteFile(t, repoPath, content)
 }
 
 func seedRuntimeRemoveSharedPathRepo(t *testing.T) *testutil.Repo {
