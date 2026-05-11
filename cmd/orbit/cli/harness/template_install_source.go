@@ -12,6 +12,7 @@ import (
 	"time"
 
 	gitpkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/git"
+	"github.com/zack-nova/harnessyard/cmd/orbit/cli/ids"
 	"github.com/zack-nova/harnessyard/cmd/orbit/cli/orbit"
 	orbittemplate "github.com/zack-nova/harnessyard/cmd/orbit/cli/template"
 	"gopkg.in/yaml.v3"
@@ -28,6 +29,56 @@ type LocalTemplateInstallSource struct {
 	MemberSnapshots map[string]TemplateMemberSnapshot
 	DefinitionFiles []orbittemplate.CandidateFile
 	Files           []orbittemplate.CandidateFile
+}
+
+type templateInstallSourceReader interface {
+	PathExists(context.Context, string) (bool, error)
+	ReadFile(context.Context, string) ([]byte, error)
+	FileMode(context.Context, string) (string, error)
+	ListFiles(context.Context) ([]string, error)
+	Commit(context.Context) (string, error)
+}
+
+type templateInstallSourceRevisionReader struct {
+	repoRoot string
+	revision string
+}
+
+type templateInstallSourceWorktreeReader struct {
+	repoRoot string
+}
+
+const (
+	templateInstallSourceFindingManifestInvalid         = "harness_template_manifest_invalid"
+	templateInstallSourceFindingBranchManifestInvalid   = "harness_template_branch_manifest_invalid"
+	templateInstallSourceFindingMemberDefinitionInvalid = "harness_template_member_definition_invalid"
+	templateInstallSourceFindingMemberSnapshotInvalid   = "harness_template_member_snapshot_invalid"
+	templateInstallSourceFindingForbiddenPath           = "harness_template_forbidden_path"
+	templateInstallSourceFindingVariablesInvalid        = "harness_template_variables_invalid"
+	templateInstallSourceFindingAgentTruthInvalid       = "harness_template_agent_truth_invalid"
+	templateInstallSourceFindingCapabilitiesInvalid     = "harness_template_capabilities_invalid"
+	templateInstallSourceFindingInstallabilityInvalid   = "harness_template_installability_invalid"
+)
+
+type templateInstallSourceValidationError struct {
+	Kind    string
+	Path    string
+	Package string
+	Err     error
+}
+
+func (err *templateInstallSourceValidationError) Error() string {
+	if err == nil || err.Err == nil {
+		return ""
+	}
+	return err.Err.Error()
+}
+
+func (err *templateInstallSourceValidationError) Unwrap() error {
+	if err == nil {
+		return nil
+	}
+	return err.Err
 }
 
 // FilePaths returns the stable file list that a harness template install preview can expose.
@@ -114,6 +165,12 @@ func ResolveLocalTemplateInstallSource(ctx context.Context, repoRoot string, ref
 	}
 
 	return loadTemplateInstallSourceAtRevision(ctx, repoRoot, trimmedRef, trimmedRef, "")
+}
+
+// ResolveWorktreeTemplateInstallSource loads and validates the current worktree
+// as a harness template install source without applying it to a runtime.
+func ResolveWorktreeTemplateInstallSource(ctx context.Context, repoRoot string) (LocalTemplateInstallSource, error) {
+	return loadTemplateInstallSource(ctx, templateInstallSourceWorktreeReader{repoRoot: repoRoot}, "current worktree", "")
 }
 
 // ResolveRemoteTemplateInstallSource resolves one remote harness template candidate and materializes its snapshot.
@@ -225,10 +282,147 @@ func ResolveRemoteTemplateInstallCandidateSnapshot(
 	return source, nil
 }
 
+func (reader templateInstallSourceRevisionReader) PathExists(ctx context.Context, path string) (bool, error) {
+	exists, err := gitpkg.PathExistsAtRev(ctx, reader.repoRoot, reader.revision, path)
+	if err != nil {
+		return false, fmt.Errorf("check %s at revision %s: %w", path, reader.revision, err)
+	}
+	return exists, nil
+}
+
+func (reader templateInstallSourceRevisionReader) ReadFile(ctx context.Context, path string) ([]byte, error) {
+	data, err := gitpkg.ReadFileAtRev(ctx, reader.repoRoot, reader.revision, path)
+	if err != nil {
+		return nil, fmt.Errorf("read %s at revision %s: %w", path, reader.revision, err)
+	}
+	return data, nil
+}
+
+func (reader templateInstallSourceRevisionReader) FileMode(ctx context.Context, path string) (string, error) {
+	mode, err := gitpkg.FileModeAtRev(ctx, reader.repoRoot, reader.revision, path)
+	if err != nil {
+		return "", fmt.Errorf("read file mode for %s at revision %s: %w", path, reader.revision, err)
+	}
+	return mode, nil
+}
+
+func (reader templateInstallSourceRevisionReader) ListFiles(ctx context.Context) ([]string, error) {
+	paths, err := gitpkg.ListAllFilesAtRev(ctx, reader.repoRoot, reader.revision)
+	if err != nil {
+		return nil, fmt.Errorf("list files at revision %s: %w", reader.revision, err)
+	}
+	return paths, nil
+}
+
+func (reader templateInstallSourceRevisionReader) Commit(ctx context.Context) (string, error) {
+	commit, err := gitpkg.ResolveRevision(ctx, reader.repoRoot, reader.revision)
+	if err != nil {
+		return "", fmt.Errorf("resolve revision %s: %w", reader.revision, err)
+	}
+	return commit, nil
+}
+
+func (reader templateInstallSourceWorktreeReader) PathExists(ctx context.Context, rawPath string) (bool, error) {
+	normalizedPath, err := ids.NormalizeRepoRelativePath(rawPath)
+	if err != nil {
+		return false, fmt.Errorf("normalize worktree path %q: %w", rawPath, err)
+	}
+
+	filename := filepath.Join(reader.repoRoot, filepath.FromSlash(normalizedPath))
+	if _, err := os.Lstat(filename); err == nil {
+		return true, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return false, fmt.Errorf("stat worktree file %s: %w", filename, err)
+	}
+
+	existsAtHead, err := gitpkg.PathExistsAtRev(ctx, reader.repoRoot, "HEAD", normalizedPath)
+	if err != nil {
+		return false, fmt.Errorf("check hidden worktree file %s at HEAD: %w", normalizedPath, err)
+	}
+	if !existsAtHead {
+		return false, nil
+	}
+
+	skipped, err := gitpkg.PathIsSkipWorktree(ctx, reader.repoRoot, normalizedPath)
+	if err != nil {
+		return false, fmt.Errorf("check skip-worktree for %s: %w", normalizedPath, err)
+	}
+	return skipped, nil
+}
+
+func (reader templateInstallSourceWorktreeReader) ReadFile(ctx context.Context, path string) ([]byte, error) {
+	data, err := gitpkg.ReadTrackedFileWorktreeOrHEAD(ctx, reader.repoRoot, path)
+	if err != nil {
+		return nil, fmt.Errorf("read worktree file %s: %w", path, err)
+	}
+	return data, nil
+}
+
+func (reader templateInstallSourceWorktreeReader) FileMode(ctx context.Context, path string) (string, error) {
+	mode, err := gitpkg.TrackedFileModeWorktreeOrHEAD(ctx, reader.repoRoot, path)
+	if err != nil {
+		return "", fmt.Errorf("read worktree file mode %s: %w", path, err)
+	}
+	return mode, nil
+}
+
+func (reader templateInstallSourceWorktreeReader) ListFiles(ctx context.Context) ([]string, error) {
+	paths, err := gitpkg.WorktreeFiles(ctx, reader.repoRoot)
+	if err != nil {
+		return nil, fmt.Errorf("list worktree files: %w", err)
+	}
+	return paths, nil
+}
+
+func (reader templateInstallSourceWorktreeReader) Commit(ctx context.Context) (string, error) {
+	commit, err := gitpkg.ResolveRevision(ctx, reader.repoRoot, "HEAD")
+	if err != nil {
+		return "", fmt.Errorf("resolve worktree HEAD: %w", err)
+	}
+	return commit, nil
+}
+
+func templateInstallSourceFindingError(kind string, path string, packageName string, err error) error {
+	if err == nil {
+		return nil
+	}
+	if kind == "" {
+		kind = templateInstallSourceFindingInstallabilityInvalid
+	}
+	return &templateInstallSourceValidationError{
+		Kind:    kind,
+		Path:    path,
+		Package: packageName,
+		Err:     err,
+	}
+}
+
+func templateInstallSourceForbiddenPathError(sourceRef string, path string, label string) error {
+	messageLabel := strings.TrimSpace(label)
+	if messageLabel == "" {
+		messageLabel = "forbidden path"
+	}
+	return templateInstallSourceFindingError(
+		templateInstallSourceFindingForbiddenPath,
+		path,
+		"",
+		fmt.Errorf("harness template source %q contains %s %s", sourceRef, messageLabel, path),
+	)
+}
+
 func loadTemplateInstallSourceAtRevision(
 	ctx context.Context,
 	repoRoot string,
 	revision string,
+	sourceRef string,
+	sourceCommit string,
+) (LocalTemplateInstallSource, error) {
+	return loadTemplateInstallSource(ctx, templateInstallSourceRevisionReader{repoRoot: repoRoot, revision: revision}, sourceRef, sourceCommit)
+}
+
+func loadTemplateInstallSource(
+	ctx context.Context,
+	reader templateInstallSourceReader,
 	sourceRef string,
 	sourceCommit string,
 ) (LocalTemplateInstallSource, error) {
@@ -237,7 +431,7 @@ func loadTemplateInstallSourceAtRevision(
 		return LocalTemplateInstallSource{}, fmt.Errorf("template source ref must not be empty")
 	}
 
-	manifestExists, err := gitpkg.PathExistsAtRev(ctx, repoRoot, revision, TemplateRepoPath())
+	manifestExists, err := reader.PathExists(ctx, TemplateRepoPath())
 	if err != nil {
 		return LocalTemplateInstallSource{}, fmt.Errorf("check harness template manifest at %q: %w", trimmedRef, err)
 	}
@@ -245,25 +439,40 @@ func loadTemplateInstallSourceAtRevision(
 		return LocalTemplateInstallSource{}, &LocalTemplateInstallSourceNotFoundError{Ref: trimmedRef}
 	}
 
-	manifestData, err := gitpkg.ReadFileAtRev(ctx, repoRoot, revision, TemplateRepoPath())
+	manifestData, err := reader.ReadFile(ctx, TemplateRepoPath())
 	if err != nil {
 		return LocalTemplateInstallSource{}, fmt.Errorf("read harness template manifest from %q: %w", trimmedRef, err)
 	}
 	manifest, err := ParseTemplateManifestData(manifestData)
 	if err != nil {
-		return LocalTemplateInstallSource{}, fmt.Errorf("parse harness template manifest from %q: %w", trimmedRef, err)
+		return LocalTemplateInstallSource{}, templateInstallSourceFindingError(
+			templateInstallSourceFindingManifestInvalid,
+			TemplateRepoPath(),
+			"",
+			fmt.Errorf("parse harness template manifest from %q: %w", trimmedRef, err),
+		)
 	}
-	branchManifest, err := loadTemplateInstallBranchManifestAtRevision(ctx, repoRoot, revision, trimmedRef)
+	branchManifest, err := loadTemplateInstallBranchManifest(ctx, reader, trimmedRef)
 	if err != nil {
 		return LocalTemplateInstallSource{}, err
 	}
 	if err := validateTemplateInstallBranchManifest(branchManifest, manifest); err != nil {
-		return LocalTemplateInstallSource{}, fmt.Errorf("harness template source %q: %w", trimmedRef, err)
+		return LocalTemplateInstallSource{}, templateInstallSourceFindingError(
+			templateInstallSourceFindingBranchManifestInvalid,
+			ManifestRepoPath(),
+			"",
+			fmt.Errorf("harness template source %q: %w", trimmedRef, err),
+		)
 	}
 	if err := validateTemplateInstallableManifest(manifest, trimmedRef); err != nil {
-		return LocalTemplateInstallSource{}, err
+		return LocalTemplateInstallSource{}, templateInstallSourceFindingError(
+			templateInstallSourceFindingManifestInvalid,
+			TemplateRepoPath(),
+			"",
+			err,
+		)
 	}
-	frameworksFile, err := loadOptionalTemplateInstallFrameworksAtRevision(ctx, repoRoot, revision, trimmedRef)
+	frameworksFile, err := loadOptionalTemplateInstallFrameworks(ctx, reader, trimmedRef)
 	if err != nil {
 		return LocalTemplateInstallSource{}, err
 	}
@@ -273,7 +482,7 @@ func loadTemplateInstallSourceAtRevision(
 	memberSnapshots := make(map[string]TemplateMemberSnapshot, len(manifest.Members))
 	memberSnapshotPaths := make(map[string]struct{}, len(manifest.Members))
 	for _, member := range manifest.Members {
-		definitionFile, err := loadTemplateInstallDefinitionAtRevision(ctx, repoRoot, revision, trimmedRef, member.OrbitID)
+		definitionFile, err := loadTemplateInstallDefinition(ctx, reader, trimmedRef, member.OrbitID)
 		if err != nil {
 			return LocalTemplateInstallSource{}, err
 		}
@@ -286,7 +495,7 @@ func loadTemplateInstallSourceAtRevision(
 		}
 		memberSnapshotPaths[snapshotPath] = struct{}{}
 
-		snapshotExists, err := gitpkg.PathExistsAtRev(ctx, repoRoot, revision, snapshotPath)
+		snapshotExists, err := reader.PathExists(ctx, snapshotPath)
 		if err != nil {
 			return LocalTemplateInstallSource{}, fmt.Errorf("check template member snapshot %s from %q: %w", snapshotPath, trimmedRef, err)
 		}
@@ -294,16 +503,26 @@ func loadTemplateInstallSourceAtRevision(
 			continue
 		}
 
-		snapshotData, err := gitpkg.ReadFileAtRev(ctx, repoRoot, revision, snapshotPath)
+		snapshotData, err := reader.ReadFile(ctx, snapshotPath)
 		if err != nil {
 			return LocalTemplateInstallSource{}, fmt.Errorf("read template member snapshot %s from %q: %w", snapshotPath, trimmedRef, err)
 		}
 		snapshot, err := ParseTemplateMemberSnapshotData(snapshotData)
 		if err != nil {
-			return LocalTemplateInstallSource{}, fmt.Errorf("parse template member snapshot %s from %q: %w", snapshotPath, trimmedRef, err)
+			return LocalTemplateInstallSource{}, templateInstallSourceFindingError(
+				templateInstallSourceFindingMemberSnapshotInvalid,
+				snapshotPath,
+				member.OrbitID,
+				fmt.Errorf("parse template member snapshot %s from %q: %w", snapshotPath, trimmedRef, err),
+			)
 		}
 		if snapshot.OrbitID != member.OrbitID {
-			return LocalTemplateInstallSource{}, fmt.Errorf("template member snapshot %s from %q must match orbit %q", snapshotPath, trimmedRef, member.OrbitID)
+			return LocalTemplateInstallSource{}, templateInstallSourceFindingError(
+				templateInstallSourceFindingMemberSnapshotInvalid,
+				snapshotPath,
+				member.OrbitID,
+				fmt.Errorf("template member snapshot %s from %q must match orbit %q", snapshotPath, trimmedRef, member.OrbitID),
+			)
 		}
 		memberSnapshots[member.OrbitID] = snapshot
 	}
@@ -311,15 +530,15 @@ func loadTemplateInstallSourceAtRevision(
 		return definitionFiles[left].Path < definitionFiles[right].Path
 	})
 
-	allPaths, err := gitpkg.ListAllFilesAtRev(ctx, repoRoot, revision)
+	allPaths, err := reader.ListFiles(ctx)
 	if err != nil {
 		return LocalTemplateInstallSource{}, fmt.Errorf("list harness template source files from %q: %w", trimmedRef, err)
 	}
-	agentConfig, hasAgentConfig, err := loadOptionalTemplateInstallAgentConfigAtRevision(ctx, repoRoot, revision, trimmedRef)
+	agentConfig, hasAgentConfig, err := loadOptionalTemplateInstallAgentConfig(ctx, reader, trimmedRef)
 	if err != nil {
 		return LocalTemplateInstallSource{}, err
 	}
-	agentOverlays, err := loadTemplateInstallAgentOverlaysAtRevision(ctx, repoRoot, revision, trimmedRef, allPaths)
+	agentOverlays, err := loadTemplateInstallAgentOverlays(ctx, reader, trimmedRef, allPaths)
 	if err != nil {
 		return LocalTemplateInstallSource{}, err
 	}
@@ -347,39 +566,39 @@ func loadTemplateInstallSourceAtRevision(
 			if _, ok := allowedAgentOverlayPaths[path]; ok {
 				continue
 			}
-			return LocalTemplateInstallSource{}, fmt.Errorf("harness template source %q contains unsupported agent overlay path %s", trimmedRef, path)
+			return LocalTemplateInstallSource{}, templateInstallSourceForbiddenPathError(trimmedRef, path, "unsupported agent overlay path")
 		case path == ".orbit/source.yaml":
-			return LocalTemplateInstallSource{}, fmt.Errorf("harness template source %q contains forbidden path %s", trimmedRef, path)
+			return LocalTemplateInstallSource{}, templateInstallSourceForbiddenPathError(trimmedRef, path, "forbidden path")
 		case path == ".orbit/config.yaml":
-			return LocalTemplateInstallSource{}, fmt.Errorf("harness template source %q contains forbidden path %s", trimmedRef, path)
+			return LocalTemplateInstallSource{}, templateInstallSourceForbiddenPathError(trimmedRef, path, "forbidden path")
 		case strings.HasPrefix(path, ".harness/orbits/"):
 			if _, ok := definitionPaths[path]; ok {
 				continue
 			}
-			return LocalTemplateInstallSource{}, fmt.Errorf("harness template source %q contains untracked member definition %s", trimmedRef, path)
+			return LocalTemplateInstallSource{}, templateInstallSourceForbiddenPathError(trimmedRef, path, "untracked member definition")
 		case strings.HasPrefix(path, ".orbit/orbits/"):
 			if _, ok := definitionPaths[path]; ok {
 				continue
 			}
-			return LocalTemplateInstallSource{}, fmt.Errorf("harness template source %q contains untracked member definition %s", trimmedRef, path)
+			return LocalTemplateInstallSource{}, templateInstallSourceForbiddenPathError(trimmedRef, path, "untracked member definition")
 		case strings.HasPrefix(path, TemplateMembersDirRepoPath()+"/"):
 			if _, ok := memberSnapshotPaths[path]; ok {
 				continue
 			}
-			return LocalTemplateInstallSource{}, fmt.Errorf("harness template source %q contains untracked member snapshot %s", trimmedRef, path)
+			return LocalTemplateInstallSource{}, templateInstallSourceForbiddenPathError(trimmedRef, path, "untracked member snapshot")
 		case strings.HasPrefix(path, ".harness/"):
-			return LocalTemplateInstallSource{}, fmt.Errorf("harness template source %q contains forbidden path %s", trimmedRef, path)
+			return LocalTemplateInstallSource{}, templateInstallSourceForbiddenPathError(trimmedRef, path, "forbidden path")
 		case strings.HasPrefix(path, ".git/orbit/state/"):
-			return LocalTemplateInstallSource{}, fmt.Errorf("harness template source %q contains forbidden path %s", trimmedRef, path)
+			return LocalTemplateInstallSource{}, templateInstallSourceForbiddenPathError(trimmedRef, path, "forbidden path")
 		case strings.HasPrefix(path, ".orbit/"):
-			return LocalTemplateInstallSource{}, fmt.Errorf("harness template source %q contains forbidden path %s", trimmedRef, path)
+			return LocalTemplateInstallSource{}, templateInstallSourceForbiddenPathError(trimmedRef, path, "forbidden path")
 		}
 
-		data, err := gitpkg.ReadFileAtRev(ctx, repoRoot, revision, path)
+		data, err := reader.ReadFile(ctx, path)
 		if err != nil {
 			return LocalTemplateInstallSource{}, fmt.Errorf("read harness template file %s from %q: %w", path, trimmedRef, err)
 		}
-		mode, err := gitpkg.FileModeAtRev(ctx, repoRoot, revision, path)
+		mode, err := reader.FileMode(ctx, path)
 		if err != nil {
 			return LocalTemplateInstallSource{}, fmt.Errorf("read harness template file mode %s from %q: %w", path, trimmedRef, err)
 		}
@@ -392,12 +611,17 @@ func loadTemplateInstallSourceAtRevision(
 
 	scanResult := orbittemplate.ScanVariables(files, templateManifestVariableSpecs(manifest.Variables))
 	if len(scanResult.Undeclared) > 0 {
-		return LocalTemplateInstallSource{}, fmt.Errorf("harness template source %q references undeclared variables: %s", trimmedRef, strings.Join(scanResult.Undeclared, ", "))
+		return LocalTemplateInstallSource{}, templateInstallSourceFindingError(
+			templateInstallSourceFindingVariablesInvalid,
+			"",
+			"",
+			fmt.Errorf("harness template source %q references undeclared variables: %s", trimmedRef, strings.Join(scanResult.Undeclared, ", ")),
+		)
 	}
 
 	commit := strings.TrimSpace(sourceCommit)
 	if commit == "" {
-		commit, err = gitpkg.ResolveRevision(ctx, repoRoot, revision)
+		commit, err = reader.Commit(ctx)
 		if err != nil {
 			return LocalTemplateInstallSource{}, fmt.Errorf("resolve harness template source commit for %q: %w", trimmedRef, err)
 		}
@@ -418,60 +642,73 @@ func loadTemplateInstallSourceAtRevision(
 	}
 
 	if err := validateTemplateInstallSourceCapabilities(source); err != nil {
-		return LocalTemplateInstallSource{}, fmt.Errorf("harness template source %q: %w", trimmedRef, err)
+		return LocalTemplateInstallSource{}, templateInstallSourceFindingError(
+			templateInstallSourceFindingCapabilitiesInvalid,
+			"",
+			"",
+			fmt.Errorf("harness template source %q: %w", trimmedRef, err),
+		)
 	}
 
 	return validateLoadedTemplateMemberSnapshots(source, trimmedRef)
 }
 
-func loadOptionalTemplateInstallFrameworksAtRevision(
+func loadOptionalTemplateInstallFrameworks(
 	ctx context.Context,
-	repoRoot string,
-	revision string,
+	reader templateInstallSourceReader,
 	sourceRef string,
 ) (FrameworksFile, error) {
-	exists, err := gitpkg.PathExistsAtRev(ctx, repoRoot, revision, FrameworksRepoPath())
+	exists, err := reader.PathExists(ctx, FrameworksRepoPath())
 	if err != nil {
 		return FrameworksFile{}, fmt.Errorf("check harness template frameworks file from %q: %w", sourceRef, err)
 	}
 	if !exists {
-		legacyExists, legacyErr := gitpkg.PathExistsAtRev(ctx, repoRoot, revision, ".harness/frameworks.yaml")
+		legacyExists, legacyErr := reader.PathExists(ctx, ".harness/frameworks.yaml")
 		if legacyErr != nil {
 			return FrameworksFile{}, fmt.Errorf("check legacy harness template frameworks file from %q: %w", sourceRef, legacyErr)
 		}
 		if !legacyExists {
 			return FrameworksFile{SchemaVersion: frameworksSchemaVersion}, nil
 		}
-		data, readErr := gitpkg.ReadFileAtRev(ctx, repoRoot, revision, ".harness/frameworks.yaml")
+		data, readErr := reader.ReadFile(ctx, ".harness/frameworks.yaml")
 		if readErr != nil {
 			return FrameworksFile{}, fmt.Errorf("read legacy harness template frameworks file from %q: %w", sourceRef, readErr)
 		}
 		file, parseErr := ParseFrameworksFileData(data)
 		if parseErr != nil {
-			return FrameworksFile{}, fmt.Errorf("parse legacy harness template frameworks file from %q: %w", sourceRef, parseErr)
+			return FrameworksFile{}, templateInstallSourceFindingError(
+				templateInstallSourceFindingAgentTruthInvalid,
+				".harness/frameworks.yaml",
+				"",
+				fmt.Errorf("parse legacy harness template frameworks file from %q: %w", sourceRef, parseErr),
+			)
 		}
 		return file, nil
 	}
 
-	data, err := gitpkg.ReadFileAtRev(ctx, repoRoot, revision, FrameworksRepoPath())
+	data, err := reader.ReadFile(ctx, FrameworksRepoPath())
 	if err != nil {
 		return FrameworksFile{}, fmt.Errorf("read harness template frameworks file from %q: %w", sourceRef, err)
 	}
 	file, err := ParseFrameworksFileData(data)
 	if err != nil {
-		return FrameworksFile{}, fmt.Errorf("parse harness template frameworks file from %q: %w", sourceRef, err)
+		return FrameworksFile{}, templateInstallSourceFindingError(
+			templateInstallSourceFindingAgentTruthInvalid,
+			FrameworksRepoPath(),
+			"",
+			fmt.Errorf("parse harness template frameworks file from %q: %w", sourceRef, err),
+		)
 	}
 
 	return file, nil
 }
 
-func loadOptionalTemplateInstallAgentConfigAtRevision(
+func loadOptionalTemplateInstallAgentConfig(
 	ctx context.Context,
-	repoRoot string,
-	revision string,
+	reader templateInstallSourceReader,
 	sourceRef string,
 ) (AgentConfigFile, bool, error) {
-	exists, err := gitpkg.PathExistsAtRev(ctx, repoRoot, revision, AgentConfigRepoPath())
+	exists, err := reader.PathExists(ctx, AgentConfigRepoPath())
 	if err != nil {
 		return AgentConfigFile{}, false, fmt.Errorf("check harness template agent config from %q: %w", sourceRef, err)
 	}
@@ -479,22 +716,26 @@ func loadOptionalTemplateInstallAgentConfigAtRevision(
 		return AgentConfigFile{}, false, nil
 	}
 
-	data, err := gitpkg.ReadFileAtRev(ctx, repoRoot, revision, AgentConfigRepoPath())
+	data, err := reader.ReadFile(ctx, AgentConfigRepoPath())
 	if err != nil {
 		return AgentConfigFile{}, false, fmt.Errorf("read harness template agent config from %q: %w", sourceRef, err)
 	}
 	file, err := ParseAgentConfigFileData(data)
 	if err != nil {
-		return AgentConfigFile{}, false, fmt.Errorf("parse harness template agent config from %q: %w", sourceRef, err)
+		return AgentConfigFile{}, false, templateInstallSourceFindingError(
+			templateInstallSourceFindingAgentTruthInvalid,
+			AgentConfigRepoPath(),
+			"",
+			fmt.Errorf("parse harness template agent config from %q: %w", sourceRef, err),
+		)
 	}
 
 	return file, true, nil
 }
 
-func loadTemplateInstallAgentOverlaysAtRevision(
+func loadTemplateInstallAgentOverlays(
 	ctx context.Context,
-	repoRoot string,
-	revision string,
+	reader templateInstallSourceReader,
 	sourceRef string,
 	allPaths []string,
 ) (map[string]AgentOverlayFile, error) {
@@ -510,13 +751,18 @@ func loadTemplateInstallAgentOverlaysAtRevision(
 		if !ok {
 			continue
 		}
-		data, err := gitpkg.ReadFileAtRev(ctx, repoRoot, revision, path)
+		data, err := reader.ReadFile(ctx, path)
 		if err != nil {
 			return nil, fmt.Errorf("read harness template agent overlay %s from %q: %w", path, sourceRef, err)
 		}
 		file, err := ParseAgentOverlayFileData(data)
 		if err != nil {
-			return nil, fmt.Errorf("parse harness template agent overlay %s from %q: %w", path, sourceRef, err)
+			return nil, templateInstallSourceFindingError(
+				templateInstallSourceFindingAgentTruthInvalid,
+				path,
+				"",
+				fmt.Errorf("parse harness template agent overlay %s from %q: %w", path, sourceRef, err),
+			)
 		}
 		overlays[agentID] = file
 	}
@@ -589,16 +835,20 @@ func validateLoadedTemplateMemberSnapshots(
 	sourceRef string,
 ) (LocalTemplateInstallSource, error) {
 	if _, err := validateTemplateMemberSnapshots(source); err != nil {
-		return LocalTemplateInstallSource{}, fmt.Errorf("harness template source %q: %w", sourceRef, err)
+		return LocalTemplateInstallSource{}, templateInstallSourceFindingError(
+			templateInstallSourceFindingMemberSnapshotInvalid,
+			"",
+			"",
+			fmt.Errorf("harness template source %q: %w", sourceRef, err),
+		)
 	}
 
 	return source, nil
 }
 
-func loadTemplateInstallDefinitionAtRevision(
+func loadTemplateInstallDefinition(
 	ctx context.Context,
-	repoRoot string,
-	revision string,
+	reader templateInstallSourceReader,
 	sourceRef string,
 	orbitID string,
 ) (orbittemplate.CandidateFile, error) {
@@ -611,24 +861,29 @@ func loadTemplateInstallDefinitionAtRevision(
 		return orbittemplate.CandidateFile{}, fmt.Errorf("build legacy harness template definition path for %q: %w", orbitID, err)
 	}
 
-	hostedExists, err := gitpkg.PathExistsAtRev(ctx, repoRoot, revision, hostedPath)
+	hostedExists, err := reader.PathExists(ctx, hostedPath)
 	if err != nil {
 		return orbittemplate.CandidateFile{}, fmt.Errorf("check harness template definition %s from %q: %w", hostedPath, sourceRef, err)
 	}
 	if hostedExists {
-		data, err := gitpkg.ReadFileAtRev(ctx, repoRoot, revision, hostedPath)
+		data, err := reader.ReadFile(ctx, hostedPath)
 		if err != nil {
 			return orbittemplate.CandidateFile{}, fmt.Errorf("read harness template definition %s from %q: %w", hostedPath, sourceRef, err)
 		}
 		spec, err := orbit.ParseHostedOrbitSpecData(data, hostedPath)
 		if err != nil {
-			return orbittemplate.CandidateFile{}, fmt.Errorf("parse harness template definition %s from %q: %w", hostedPath, sourceRef, err)
+			return orbittemplate.CandidateFile{}, templateInstallSourceFindingError(
+				templateInstallSourceFindingMemberDefinitionInvalid,
+				hostedPath,
+				orbitID,
+				fmt.Errorf("parse harness template definition %s from %q: %w", hostedPath, sourceRef, err),
+			)
 		}
 		data, err = stableInstallOrbitSpecData(spec)
 		if err != nil {
 			return orbittemplate.CandidateFile{}, fmt.Errorf("normalize harness template definition %s from %q: %w", hostedPath, sourceRef, err)
 		}
-		mode, err := gitpkg.FileModeAtRev(ctx, repoRoot, revision, hostedPath)
+		mode, err := reader.FileMode(ctx, hostedPath)
 		if err != nil {
 			return orbittemplate.CandidateFile{}, fmt.Errorf("read harness template definition mode %s from %q: %w", hostedPath, sourceRef, err)
 		}
@@ -640,19 +895,29 @@ func loadTemplateInstallDefinitionAtRevision(
 		}, nil
 	}
 
-	data, err := gitpkg.ReadFileAtRev(ctx, repoRoot, revision, legacyPath)
+	data, err := reader.ReadFile(ctx, legacyPath)
 	if err != nil {
-		return orbittemplate.CandidateFile{}, fmt.Errorf("read harness template definition %s from %q: %w", legacyPath, sourceRef, err)
+		return orbittemplate.CandidateFile{}, templateInstallSourceFindingError(
+			templateInstallSourceFindingMemberDefinitionInvalid,
+			legacyPath,
+			orbitID,
+			fmt.Errorf("read harness template definition %s from %q: %w", legacyPath, sourceRef, err),
+		)
 	}
 	definition, err := orbit.ParseDefinitionData(data, legacyPath)
 	if err != nil {
-		return orbittemplate.CandidateFile{}, fmt.Errorf("parse harness template definition %s from %q: %w", legacyPath, sourceRef, err)
+		return orbittemplate.CandidateFile{}, templateInstallSourceFindingError(
+			templateInstallSourceFindingMemberDefinitionInvalid,
+			legacyPath,
+			orbitID,
+			fmt.Errorf("parse harness template definition %s from %q: %w", legacyPath, sourceRef, err),
+		)
 	}
 	data, err = stableInstallDefinitionData(definition)
 	if err != nil {
 		return orbittemplate.CandidateFile{}, fmt.Errorf("normalize harness template definition %s from %q: %w", legacyPath, sourceRef, err)
 	}
-	mode, err := gitpkg.FileModeAtRev(ctx, repoRoot, revision, legacyPath)
+	mode, err := reader.FileMode(ctx, legacyPath)
 	if err != nil {
 		return orbittemplate.CandidateFile{}, fmt.Errorf("read harness template definition mode %s from %q: %w", legacyPath, sourceRef, err)
 	}
@@ -828,29 +1093,38 @@ func templateManifestVariableSpecs(values map[string]TemplateVariableSpec) map[s
 	return specs
 }
 
-func loadTemplateInstallBranchManifestAtRevision(
+func loadTemplateInstallBranchManifest(
 	ctx context.Context,
-	repoRoot string,
-	revision string,
+	reader templateInstallSourceReader,
 	sourceRef string,
 ) (ManifestFile, error) {
-	data, err := gitpkg.ReadFileAtRev(ctx, repoRoot, revision, ManifestRepoPath())
+	data, err := reader.ReadFile(ctx, ManifestRepoPath())
 	if err != nil {
-		return ManifestFile{}, fmt.Errorf(
-			"template source %q is not a valid harness template branch: read %s: %w",
-			sourceRef,
+		return ManifestFile{}, templateInstallSourceFindingError(
+			templateInstallSourceFindingBranchManifestInvalid,
 			ManifestRepoPath(),
-			err,
+			"",
+			fmt.Errorf(
+				"template source %q is not a valid harness template branch: read %s: %w",
+				sourceRef,
+				ManifestRepoPath(),
+				err,
+			),
 		)
 	}
 
 	manifest, err := parseTemplateInstallBranchManifestData(data)
 	if err != nil {
-		return ManifestFile{}, fmt.Errorf(
-			"template source %q is not a valid harness template branch: parse %s: %w",
-			sourceRef,
+		return ManifestFile{}, templateInstallSourceFindingError(
+			templateInstallSourceFindingBranchManifestInvalid,
 			ManifestRepoPath(),
-			err,
+			"",
+			fmt.Errorf(
+				"template source %q is not a valid harness template branch: parse %s: %w",
+				sourceRef,
+				ManifestRepoPath(),
+				err,
+			),
 		)
 	}
 

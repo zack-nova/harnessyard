@@ -308,6 +308,198 @@ func TestHyardAuditRuntimeRevisionReportsTextSummary(t *testing.T) {
 	require.Contains(t, stdout, "findings: none\n")
 }
 
+func TestHyardAuditHarnessTemplateRevisionReportsInstallablePassJSON(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardCloneHarnessTemplateSourceRepo(t)
+	repo.Run(t, "checkout", "harness-template/workspace")
+	beforeStatus := repo.Run(t, "status", "--short")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "audit", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Status       string `json:"status"`
+		RevisionKind string `json:"revision_kind"`
+		Packages     []struct {
+			Type         string `json:"type"`
+			Name         string `json:"name"`
+			RevisionRole string `json:"revision_role"`
+			OrbitID      string `json:"orbit_id,omitempty"`
+			HarnessID    string `json:"harness_id,omitempty"`
+			Source       string `json:"source,omitempty"`
+		} `json:"packages"`
+		Findings []struct {
+			Kind string `json:"kind"`
+		} `json:"findings"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "pass", payload.Status)
+	require.Equal(t, "harness_template", payload.RevisionKind)
+	require.Contains(t, payload.Packages, struct {
+		Type         string `json:"type"`
+		Name         string `json:"name"`
+		RevisionRole string `json:"revision_role"`
+		OrbitID      string `json:"orbit_id,omitempty"`
+		HarnessID    string `json:"harness_id,omitempty"`
+		Source       string `json:"source,omitempty"`
+	}{
+		Type: "harness", Name: "001", RevisionRole: "template", HarnessID: "001",
+	})
+	require.Contains(t, payload.Packages, struct {
+		Type         string `json:"type"`
+		Name         string `json:"name"`
+		RevisionRole string `json:"revision_role"`
+		OrbitID      string `json:"orbit_id,omitempty"`
+		HarnessID    string `json:"harness_id,omitempty"`
+		Source       string `json:"source,omitempty"`
+	}{
+		Type: "orbit", Name: "docs", RevisionRole: "member", OrbitID: "docs",
+	})
+	require.NotNil(t, payload.Findings)
+	require.Empty(t, payload.Findings)
+	require.Equal(t, beforeStatus, repo.Run(t, "status", "--short"))
+}
+
+func TestHyardAuditHarnessTemplateRevisionRejectsInvalidTemplateManifest(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardCloneHarnessTemplateSourceRepo(t)
+	repo.Run(t, "checkout", "harness-template/workspace")
+	repo.WriteFile(t, ".harness/template.yaml", ""+
+		"schema_version: 1\n"+
+		"kind: harness_template\n")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "audit", "--json")
+	require.Error(t, err)
+	require.Empty(t, stderr)
+
+	exitCode, ok := hyardcli.ErrorExitCode(err)
+	require.True(t, ok)
+	require.Equal(t, 1, exitCode)
+
+	var payload struct {
+		Status       string `json:"status"`
+		RevisionKind string `json:"revision_kind"`
+		Findings     []struct {
+			Severity string `json:"severity"`
+			Kind     string `json:"kind"`
+			Path     string `json:"path"`
+			Message  string `json:"message"`
+		} `json:"findings"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "fail", payload.Status)
+	require.Equal(t, "harness_template", payload.RevisionKind)
+	require.Len(t, payload.Findings, 1)
+	require.Equal(t, "fail", payload.Findings[0].Severity)
+	require.Equal(t, "harness_template_manifest_invalid", payload.Findings[0].Kind)
+	require.Equal(t, ".harness/template.yaml", payload.Findings[0].Path)
+	require.NotContains(t, payload.Findings[0].Message, repo.Root)
+	require.Contains(t, payload.Findings[0].Message, "template must be present")
+}
+
+func TestHyardAuditHarnessTemplateRevisionRejectsInvalidMemberDefinition(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardCloneHarnessTemplateSourceRepo(t)
+	repo.Run(t, "checkout", "harness-template/workspace")
+	repo.WriteFile(t, ".harness/orbits/docs.yaml", ""+
+		"package:\n"+
+		"  type: orbit\n"+
+		"  name: docs\n"+
+		"meta:\n"+
+		"  file: .harness/orbits/wrong.yaml\n")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "audit", "--json")
+	require.Error(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Status       string `json:"status"`
+		RevisionKind string `json:"revision_kind"`
+		Findings     []struct {
+			Severity string `json:"severity"`
+			Kind     string `json:"kind"`
+			Package  string `json:"package,omitempty"`
+			Path     string `json:"path"`
+			Message  string `json:"message"`
+		} `json:"findings"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "fail", payload.Status)
+	require.Equal(t, "harness_template", payload.RevisionKind)
+	requireAuditFinding(t, payload.Findings, "fail", "harness_template_member_definition_invalid", "docs", ".harness/orbits/docs.yaml")
+	require.NotContains(t, payload.Findings[0].Message, repo.Root)
+}
+
+func TestHyardAuditHarnessTemplateRevisionRejectsInvalidMemberSnapshot(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardCloneHarnessTemplateSourceRepo(t)
+	repo.Run(t, "checkout", "harness-template/workspace")
+	repo.WriteFile(t, ".harness/template_members/docs.yaml", ""+
+		"schema_version: 1\n"+
+		"kind: harness_template_member_snapshot\n"+
+		"orbit_id: other\n"+
+		"member_source: install_orbit\n"+
+		"snapshot:\n"+
+		"  exported_paths: []\n"+
+		"  file_digests: {}\n"+
+		"  variables: {}\n")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "audit", "--json")
+	require.Error(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Status       string `json:"status"`
+		RevisionKind string `json:"revision_kind"`
+		Findings     []struct {
+			Severity string `json:"severity"`
+			Kind     string `json:"kind"`
+			Package  string `json:"package,omitempty"`
+			Path     string `json:"path"`
+			Message  string `json:"message"`
+		} `json:"findings"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "fail", payload.Status)
+	require.Equal(t, "harness_template", payload.RevisionKind)
+	requireAuditFinding(t, payload.Findings, "fail", "harness_template_member_snapshot_invalid", "docs", ".harness/template_members/docs.yaml")
+	require.NotContains(t, payload.Findings[0].Message, repo.Root)
+}
+
+func TestHyardAuditHarnessTemplateRevisionRejectsForbiddenPath(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardCloneHarnessTemplateSourceRepo(t)
+	repo.Run(t, "checkout", "harness-template/workspace")
+	repo.WriteFile(t, ".harness/extra.yaml", "unsupported: true\n")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "audit", "--json")
+	require.Error(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Status       string `json:"status"`
+		RevisionKind string `json:"revision_kind"`
+		Findings     []struct {
+			Severity string `json:"severity"`
+			Kind     string `json:"kind"`
+			Package  string `json:"package,omitempty"`
+			Path     string `json:"path"`
+			Message  string `json:"message"`
+		} `json:"findings"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "fail", payload.Status)
+	require.Equal(t, "harness_template", payload.RevisionKind)
+	requireAuditFinding(t, payload.Findings, "fail", "harness_template_forbidden_path", "", ".harness/extra.yaml")
+	require.NotContains(t, payload.Findings[0].Message, repo.Root)
+}
+
 func TestHyardAuditInvalidManifestReportsFailJSON(t *testing.T) {
 	t.Parallel()
 
