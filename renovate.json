@@ -1,0 +1,21 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "enabledManagers": [
+    "mise"
+  ],
+  "packageRules": [
+    {
+      "description": "Open focused PRs for golangci-lint toolchain updates from mise.toml.",
+      "matchManagers": [
+        "mise"
+      ],
+      "matchPackageNames": [
+        "golangci-lint"
+      ],
+      "groupName": "golangci-lint toolchain"
+    }
+  ]
+}

@@ -118,15 +118,7 @@ fi
 
 [tasks."test:scripts"]
 description = "Run shell-based validation tests"
-run = """
-set -eu
-
-sh ./scripts/test_run_golangci_lint.sh
-sh ./scripts/test_build_binaries.sh
-sh ./scripts/test_install_script.sh
-sh ./scripts/test_run_view_guidance_docs.sh
-sh ./scripts/test_release_surface_hyard.sh
-"""
+run = "sh ./scripts/test_shell_validation.sh"
 
 [tasks.vuln]
 description = "Check Go vulnerabilities"
