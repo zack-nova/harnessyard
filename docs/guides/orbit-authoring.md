@@ -111,6 +111,20 @@ Use root guidance files as package templates and runtime entry points:
 - `BOOTSTRAP.md` exists only when first-use initialization is needed.
 - `README.md` summarizes source/package purpose and routes readers.
 
+Write the orbit's `AGENTS.md` guidance as a thin runtime entry point, not as a
+mandatory full-doc reading list. A good orbit agents guide has:
+
+- always-on boundaries: product identity, state model, and dangerous actions
+  that are unsafe to miss on any run
+- task-triggered reading: deeper docs grouped by the work that needs them,
+  such as implementation, testing, release surface, issue flow, or design memory
+- workflow entry points: skill or process triggers that point to the owning
+  docs instead of copying the full state machine into `AGENTS.md`
+
+Prefer "read this when the task touches X" over "read every file before every
+task." Keep detailed procedures in linked docs, local skills, prompt commands,
+or `BOOTSTRAP.md` when the procedure is initialization-only.
+
 Use local skills when an agent needs a reusable runtime workflow. A skill file
 owns trigger conditions, workflow steps, tool usage, and completion reporting.
 
@@ -128,8 +142,8 @@ Directory marker:
 ```yaml
 # docs/docs/.orbit-member.yaml
 orbit_member:
-  name: docs-rules
-  role: rule
+    name: docs-rules
+    role: rule
 ```
 
 Markdown frontmatter:
@@ -137,9 +151,9 @@ Markdown frontmatter:
 ```yaml
 ---
 orbit_member:
-  name: review-process
-  description: Review process
-  role: process
+    name: review-process
+    description: Review process
+    role: process
 ---
 ```
 
@@ -200,6 +214,10 @@ The user-facing publication path is `hyard publish orbit <package>`.
 
 - The orbit has one objective, one scope boundary, and one done probe.
 - `AGENTS.md` is an entry point, not a full manual.
+- `AGENTS.md` uses task-triggered reading instead of making every run pre-read
+  the whole orbit documentation set.
+- Only hard safety and product boundaries are always-on; detailed workflow
+  rules live in linked docs, skills, commands, or bootstrap guidance.
 - `HUMANS.md` is human orientation, not duplicated agent workflow.
 - `README.md` is source/package documentation, not runtime rule truth.
 - `BOOTSTRAP.md` exists only if there is real initialization state.
@@ -216,6 +234,7 @@ The user-facing publication path is `hyard publish orbit <package>`.
 - Using one Source Revision to compose multiple Orbit Packages.
 - Publishing with uncommitted `.harness/*` truth.
 - Treating markerless Run View guidance as authored Orbit Package truth.
+- Turning `AGENTS.md` into a mandatory full documentation reading list.
 - Putting capability-owned skill or command paths into ordinary content members.
 - Keeping old authoring references as runtime rules.
 - Adding templates that no bootstrap, install, or runtime consumer reads.
