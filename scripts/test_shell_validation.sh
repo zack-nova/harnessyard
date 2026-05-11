@@ -9,6 +9,7 @@ cd "$repo_root"
 
 sh ./scripts/test_validation_parity.sh
 sh ./scripts/test_go_test_shards.sh
+sh ./scripts/test_go_test_timing.sh
 sh ./scripts/test_ci_workflow_split.sh
 sh ./scripts/test_run_golangci_lint.sh
 sh ./scripts/test_build_binaries.sh

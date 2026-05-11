@@ -40,4 +40,51 @@ fi
 
 cd "$repo_root"
 
-go test -count=1 "$@"
+timing_limit=${GO_TEST_TIMING_LIMIT:-10}
+case "$timing_limit" in
+  "" | 0 | *[!0-9]*)
+    echo "GO_TEST_TIMING_LIMIT must be a positive integer, got: $timing_limit" >&2
+    exit 2
+    ;;
+esac
+
+timing_dir=${GO_TEST_TIMING_DIR:-"$repo_root/tmp/go-test-timing/$shard_name"}
+events_file="$timing_dir/go-test-events-$shard_name.json"
+summary_file="$timing_dir/go-test-timing-$shard_name.md"
+status_file="$timing_dir/go-test-status-$shard_name.txt"
+
+mkdir -p "$timing_dir"
+rm -f "$events_file" "$summary_file" "$status_file"
+
+set +e
+go test -count=1 -json "$@" >"$events_file" 2>&1
+test_status=$?
+set -e
+
+printf '%s\n' "$test_status" >"$status_file"
+
+set +e
+go run ./internal/citest/gotesttiming \
+  -input "$events_file" \
+  -shard "$shard_name" \
+  -limit "$timing_limit" >"$summary_file"
+summary_status=$?
+set -e
+
+if [ -f "$summary_file" ]; then
+  cat "$summary_file"
+  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+    {
+      printf '\n'
+      cat "$summary_file"
+    } >>"$GITHUB_STEP_SUMMARY"
+  fi
+fi
+
+if [ "$test_status" -ne 0 ]; then
+  echo "Go test shard failed; raw go test -json event log follows:"
+  cat "$events_file"
+  exit "$test_status"
+fi
+
+exit "$summary_status"

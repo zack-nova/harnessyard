@@ -12,3 +12,4 @@
 ./cmd/orbit/cli/state
 ./cmd/orbit/cli/testutil
 ./cmd/orbit/cli/view
+./internal/citest/gotesttiming
