@@ -36,6 +36,16 @@ type LocalTemplateSource struct {
 	Files          []CandidateFile
 }
 
+type templateSourceSnapshot struct {
+	displayRef      string
+	sourceCommit    string
+	readFile        func(string) ([]byte, error)
+	fileMode        func(string) (string, error)
+	listFiles       func() ([]string, error)
+	capabilityFiles func([]CandidateFile) ([]CandidateFile, error)
+	resolveCommit   func() (string, error)
+}
+
 // TemplateApplyPreviewInput describes the local apply preview path.
 type TemplateApplyPreviewInput struct {
 	RepoRoot                string
@@ -131,13 +141,60 @@ func ResolveLocalTemplateSource(ctx context.Context, repoRoot string, ref string
 	return loadTemplateSourceAtRevision(ctx, repoRoot, trimmedRef, trimmedRef, "")
 }
 
+// ResolveCurrentTemplateSource loads and validates the current visible template
+// worktree without checking out, installing, or rendering it into a runtime.
+func ResolveCurrentTemplateSource(ctx context.Context, repoRoot string) (LocalTemplateSource, error) {
+	return loadTemplateSourceFromSnapshot(templateSourceSnapshot{
+		displayRef: "current worktree",
+		readFile: func(repoPath string) ([]byte, error) {
+			return gitpkg.ReadFileWorktreeOrHEAD(ctx, repoRoot, repoPath)
+		},
+		fileMode: func(repoPath string) (string, error) {
+			return gitpkg.TrackedFileModeWorktreeOrHEAD(ctx, repoRoot, repoPath)
+		},
+		listFiles: func() ([]string, error) {
+			return gitpkg.WorktreeFiles(ctx, repoRoot)
+		},
+		capabilityFiles: func(files []CandidateFile) ([]CandidateFile, error) {
+			return trackedCandidateFiles(ctx, repoRoot, files)
+		},
+		resolveCommit: func() (string, error) {
+			return CurrentCommitOrZero(ctx, repoRoot)
+		},
+	})
+}
+
 func loadTemplateSourceAtRevision(ctx context.Context, repoRoot string, revision string, sourceRef string, sourceCommit string) (LocalTemplateSource, error) {
 	trimmedRef := strings.TrimSpace(sourceRef)
 	if trimmedRef == "" {
 		return LocalTemplateSource{}, fmt.Errorf("template source ref must not be empty")
 	}
 
-	branchManifestData, err := gitpkg.ReadFileAtRev(ctx, repoRoot, revision, branchManifestPath)
+	return loadTemplateSourceFromSnapshot(templateSourceSnapshot{
+		displayRef:   trimmedRef,
+		sourceCommit: sourceCommit,
+		readFile: func(repoPath string) ([]byte, error) {
+			return gitpkg.ReadFileAtRev(ctx, repoRoot, revision, repoPath)
+		},
+		fileMode: func(repoPath string) (string, error) {
+			return gitpkg.FileModeAtRev(ctx, repoRoot, revision, repoPath)
+		},
+		listFiles: func() ([]string, error) {
+			return gitpkg.ListAllFilesAtRev(ctx, repoRoot, revision)
+		},
+		resolveCommit: func() (string, error) {
+			return resolveRevisionCommit(ctx, repoRoot, revision)
+		},
+	})
+}
+
+func loadTemplateSourceFromSnapshot(snapshot templateSourceSnapshot) (LocalTemplateSource, error) {
+	trimmedRef := strings.TrimSpace(snapshot.displayRef)
+	if trimmedRef == "" {
+		return LocalTemplateSource{}, fmt.Errorf("template source ref must not be empty")
+	}
+
+	branchManifestData, err := snapshot.readFile(branchManifestPath)
 	if err != nil {
 		return LocalTemplateSource{}, fmt.Errorf("template source %q is not a valid orbit template branch: read %s: %w", trimmedRef, branchManifestPath, err)
 	}
@@ -161,50 +218,73 @@ func loadTemplateSourceAtRevision(ctx context.Context, repoRoot string, revision
 	if err != nil {
 		return LocalTemplateSource{}, fmt.Errorf("build template definition path: %w", err)
 	}
-	definitionPath, spec, err := loadTemplateCompanionAtRevision(ctx, repoRoot, revision, manifest.Template.OrbitID)
+
+	allPaths, err := snapshot.listFiles()
 	if err != nil {
-		return LocalTemplateSource{}, err
+		return LocalTemplateSource{}, fmt.Errorf("list template source files from %q: %w", trimmedRef, err)
 	}
-	definitionData, err := stableOrbitSpecData(spec)
+
+	definitionPath := legacyDefinitionPath
+	allPathSet := make(map[string]struct{}, len(allPaths))
+	for _, repoPath := range allPaths {
+		allPathSet[repoPath] = struct{}{}
+	}
+	if _, ok := allPathSet[hostedDefinitionPath]; ok {
+		definitionPath = hostedDefinitionPath
+	}
+
+	definitionData, err := snapshot.readFile(definitionPath)
+	if err != nil {
+		return LocalTemplateSource{}, fmt.Errorf("read template definition %s from %q: %w", definitionPath, trimmedRef, err)
+	}
+	var spec orbit.OrbitSpec
+	switch definitionPath {
+	case hostedDefinitionPath:
+		spec, err = orbit.ParseHostedOrbitSpecData(definitionData, definitionPath)
+	case legacyDefinitionPath:
+		spec, err = orbit.ParseOrbitSpecData(definitionData, definitionPath)
+	default:
+		return LocalTemplateSource{}, fmt.Errorf("parse template definition %s from %q: unexpected path", definitionPath, trimmedRef)
+	}
+	if err != nil {
+		return LocalTemplateSource{}, fmt.Errorf("parse template definition %s from %q: %w", definitionPath, trimmedRef, err)
+	}
+
+	stableDefinitionData, err := stableOrbitSpecData(spec)
 	if err != nil {
 		return LocalTemplateSource{}, fmt.Errorf("normalize template definition %s from %q: %w", definitionPath, trimmedRef, err)
 	}
 	definition := spec.LegacyDefinition()
 
-	allPaths, err := gitpkg.ListAllFilesAtRev(ctx, repoRoot, revision)
-	if err != nil {
-		return LocalTemplateSource{}, fmt.Errorf("list template source files from %q: %w", trimmedRef, err)
-	}
-
 	files := make([]CandidateFile, 0, len(allPaths))
-	for _, path := range allPaths {
-		switch path {
+	for _, repoPath := range allPaths {
+		switch repoPath {
 		case manifestRelativePath, branchManifestPath, definitionPath, hostedDefinitionPath, legacyDefinitionPath:
 			continue
 		}
-		if strings.HasPrefix(path, ".git/orbit/state/") {
-			return LocalTemplateSource{}, fmt.Errorf("template source %q contains forbidden path %s", trimmedRef, path)
+		if strings.HasPrefix(repoPath, ".git/orbit/state/") {
+			return LocalTemplateSource{}, fmt.Errorf("template source %q contains forbidden path %s", trimmedRef, repoPath)
 		}
-		if strings.HasPrefix(path, ".harness/") {
-			return LocalTemplateSource{}, fmt.Errorf("template source %q contains forbidden path %s", trimmedRef, path)
+		if strings.HasPrefix(repoPath, ".harness/") {
+			return LocalTemplateSource{}, fmt.Errorf("template source %q contains forbidden path %s", trimmedRef, repoPath)
 		}
-		if strings.HasPrefix(path, ".orbit/") {
-			return LocalTemplateSource{}, fmt.Errorf("template source %q contains forbidden path %s", trimmedRef, path)
+		if strings.HasPrefix(repoPath, ".orbit/") {
+			return LocalTemplateSource{}, fmt.Errorf("template source %q contains forbidden path %s", trimmedRef, repoPath)
 		}
-		if path == sharedFilePathAgents {
+		if repoPath == sharedFilePathAgents {
 			return LocalTemplateSource{}, fmt.Errorf("template source %q contains unsupported legacy AGENTS.md payload", trimmedRef)
 		}
 
-		data, err := gitpkg.ReadFileAtRev(ctx, repoRoot, revision, path)
+		data, err := snapshot.readFile(repoPath)
 		if err != nil {
-			return LocalTemplateSource{}, fmt.Errorf("read template file %s from %q: %w", path, trimmedRef, err)
+			return LocalTemplateSource{}, fmt.Errorf("read template file %s from %q: %w", repoPath, trimmedRef, err)
 		}
-		mode, err := gitpkg.FileModeAtRev(ctx, repoRoot, revision, path)
+		mode, err := snapshot.fileMode(repoPath)
 		if err != nil {
-			return LocalTemplateSource{}, fmt.Errorf("read template file mode %s from %q: %w", path, trimmedRef, err)
+			return LocalTemplateSource{}, fmt.Errorf("read template file mode %s from %q: %w", repoPath, trimmedRef, err)
 		}
 		files = append(files, CandidateFile{
-			Path:    path,
+			Path:    repoPath,
 			Content: data,
 			Mode:    mode,
 		})
@@ -213,7 +293,7 @@ func loadTemplateSourceAtRevision(ctx context.Context, repoRoot string, revision
 	scanResult := ScanVariables(files, manifest.Variables)
 	agentsCandidate, hasAgentsCandidate, err := companionAgentsCandidate([]CandidateFile{{
 		Path:    definitionPath,
-		Content: definitionData,
+		Content: stableDefinitionData,
 		Mode:    gitpkg.FileModeRegular,
 	}}, manifest.Template.OrbitID)
 	if err != nil {
@@ -226,23 +306,53 @@ func loadTemplateSourceAtRevision(ctx context.Context, repoRoot string, revision
 		return LocalTemplateSource{}, fmt.Errorf("template source %q references undeclared variables: %s", trimmedRef, strings.Join(scanResult.Undeclared, ", "))
 	}
 
-	commit := strings.TrimSpace(sourceCommit)
-	if commit == "" {
-		commit, err = resolveRevisionCommit(ctx, repoRoot, revision)
+	commit := strings.TrimSpace(snapshot.sourceCommit)
+	if commit == "" && snapshot.resolveCommit != nil {
+		commit, err = snapshot.resolveCommit()
 		if err != nil {
 			return LocalTemplateSource{}, fmt.Errorf("resolve template source commit for %q: %w", trimmedRef, err)
 		}
 	}
 
-	return LocalTemplateSource{
+	source := LocalTemplateSource{
 		Ref:            trimmedRef,
 		Commit:         commit,
 		Manifest:       manifest,
 		Spec:           spec,
 		Definition:     definition,
-		DefinitionData: definitionData,
+		DefinitionData: stableDefinitionData,
 		Files:          files,
-	}, validateTemplateSourceCapabilities(spec, files)
+	}
+
+	capabilityFiles := files
+	if snapshot.capabilityFiles != nil {
+		capabilityFiles, err = snapshot.capabilityFiles(files)
+		if err != nil {
+			return LocalTemplateSource{}, fmt.Errorf("resolve template capability files from %q: %w", trimmedRef, err)
+		}
+	}
+
+	return source, validateTemplateSourceCapabilities(spec, capabilityFiles)
+}
+
+func trackedCandidateFiles(ctx context.Context, repoRoot string, files []CandidateFile) ([]CandidateFile, error) {
+	trackedFiles, err := gitpkg.TrackedFiles(ctx, repoRoot)
+	if err != nil {
+		return nil, fmt.Errorf("list tracked files: %w", err)
+	}
+	trackedSet := make(map[string]struct{}, len(trackedFiles))
+	for _, trackedFile := range trackedFiles {
+		trackedSet[trackedFile] = struct{}{}
+	}
+
+	filtered := make([]CandidateFile, 0, len(files))
+	for _, file := range files {
+		if _, ok := trackedSet[file.Path]; ok {
+			filtered = append(filtered, file)
+		}
+	}
+
+	return filtered, nil
 }
 
 func validateTemplateSourceCapabilities(spec orbit.OrbitSpec, files []CandidateFile) error {

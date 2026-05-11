@@ -15,6 +15,7 @@ import (
 	gitpkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/git"
 	"github.com/zack-nova/harnessyard/cmd/orbit/cli/ids"
 	orbitpkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/orbit"
+	orbittemplate "github.com/zack-nova/harnessyard/cmd/orbit/cli/template"
 )
 
 const (
@@ -122,6 +123,9 @@ func AuditRevision(ctx context.Context, workingDir string) (AuditResult, error) 
 
 	if manifest.Kind == ManifestKindSource {
 		return auditSourceRevision(ctx, repo.Root, manifest)
+	}
+	if manifest.Kind == ManifestKindOrbitTemplate {
+		return auditOrbitTemplateRevision(ctx, repo.Root, manifest)
 	}
 
 	result := AuditResult{
@@ -424,6 +428,131 @@ func auditSourceRevision(ctx context.Context, repoRoot string, manifest Manifest
 	}, nil
 }
 
+func auditOrbitTemplateRevision(ctx context.Context, repoRoot string, manifest ManifestFile) (AuditResult, error) {
+	trackedFiles, err := gitpkg.TrackedFiles(ctx, repoRoot)
+	if err != nil {
+		return AuditResult{}, fmt.Errorf("list tracked files: %w", err)
+	}
+	trackedSet, err := auditPathSet(trackedFiles)
+	if err != nil {
+		return AuditResult{}, fmt.Errorf("index tracked files: %w", err)
+	}
+	worktreeFiles, err := gitpkg.WorktreeFiles(ctx, repoRoot)
+	if err != nil {
+		return AuditResult{}, fmt.Errorf("list worktree files: %w", err)
+	}
+	worktreeSet, err := auditPathSet(worktreeFiles)
+	if err != nil {
+		return AuditResult{}, fmt.Errorf("index worktree files: %w", err)
+	}
+	trackedDirectories, err := auditTrackedDirectories(trackedFiles)
+	if err != nil {
+		return AuditResult{}, fmt.Errorf("list tracked directories: %w", err)
+	}
+
+	findings := []AuditFinding{}
+	if _, ok := trackedSet[ManifestRepoPath()]; !ok {
+		findings = append(findings, AuditFinding{
+			Severity: AuditStatusFail,
+			Kind:     "manifest_untracked",
+			Path:     ManifestRepoPath(),
+			Message:  fmt.Sprintf("required orbit-template manifest %q is not tracked", ManifestRepoPath()),
+		})
+	}
+
+	packageName := ""
+	expectedSpecPath := ""
+	var spec *orbitpkg.OrbitSpec
+	if manifest.Template != nil {
+		packageName = manifest.Template.OrbitID
+		expectedSpecPath, err = orbitpkg.HostedDefinitionRelativePath(packageName)
+		if err != nil {
+			return AuditResult{}, fmt.Errorf("build orbit-template hosted OrbitSpec path: %w", err)
+		}
+	}
+
+	if expectedSpecPath != "" {
+		if _, ok := worktreeSet[expectedSpecPath]; !ok {
+			findings = append(findings, AuditFinding{
+				Severity: AuditStatusFail,
+				Kind:     "orbit_template_package_orbit_spec_missing",
+				Package:  packageName,
+				Path:     expectedSpecPath,
+				Message:  fmt.Sprintf("orbit-template package %q has no hosted OrbitSpec at %q", packageName, expectedSpecPath),
+			})
+		} else {
+			if _, ok := trackedSet[expectedSpecPath]; !ok {
+				findings = append(findings, AuditFinding{
+					Severity: AuditStatusFail,
+					Kind:     "orbit_spec_untracked",
+					Package:  packageName,
+					Path:     expectedSpecPath,
+					Message:  fmt.Sprintf("required hosted OrbitSpec %q is not tracked", expectedSpecPath),
+				})
+			}
+
+			data, err := gitpkg.ReadFileWorktreeOrHEAD(ctx, repoRoot, expectedSpecPath)
+			if err != nil {
+				findings = append(findings, AuditFinding{
+					Severity: AuditStatusFail,
+					Kind:     "orbit_spec_unreadable",
+					Package:  packageName,
+					Path:     expectedSpecPath,
+					Message:  stableAuditRepoError(err, repoRoot),
+				})
+			} else {
+				parsedSpec, err := orbitpkg.ParseHostedOrbitSpecData(data, filepath.Join(repoRoot, filepath.FromSlash(expectedSpecPath)))
+				if err != nil {
+					findings = append(findings, AuditFinding{
+						Severity: AuditStatusFail,
+						Kind:     "orbit_spec_schema_invalid",
+						Package:  packageName,
+						Path:     expectedSpecPath,
+						Message:  stableAuditRepoError(err, repoRoot),
+					})
+				} else {
+					if parsedSpec.ID != packageName {
+						findings = append(findings, AuditFinding{
+							Severity: AuditStatusFail,
+							Kind:     "package_identity_mismatch",
+							Package:  parsedSpec.ID,
+							Path:     expectedSpecPath,
+							Message:  fmt.Sprintf("hosted OrbitSpec %q package %q does not match orbit-template manifest package %q", expectedSpecPath, parsedSpec.ID, packageName),
+						})
+					}
+					spec = &parsedSpec
+				}
+			}
+		}
+	}
+
+	if spec != nil {
+		findings = append(findings, auditHostedOrbitSpecPathFindings(auditedHostedOrbitSpec{
+			Spec:    *spec,
+			Path:    expectedSpecPath,
+			Package: packageName,
+		}, trackedFiles, trackedDirectories)...)
+	}
+
+	if _, err := orbittemplate.ResolveCurrentTemplateSource(ctx, repoRoot); err != nil {
+		findings = append(findings, AuditFinding{
+			Severity: AuditStatusFail,
+			Kind:     "orbit_template_installability_invalid",
+			Package:  packageName,
+			Path:     auditTemplateInstallabilityPath(err),
+			Message:  stableAuditRepoError(err, repoRoot),
+		})
+	}
+
+	return AuditResult{
+		RepoRoot:     repoRoot,
+		Status:       DeriveAuditStatus(findings),
+		RevisionKind: manifest.Kind,
+		Packages:     auditPackageSummaries(manifest),
+		Findings:     findings,
+	}, nil
+}
+
 func stableAuditManifestError(err error, repoRoot string) string {
 	return strings.ReplaceAll(err.Error(), ManifestPath(repoRoot), ManifestRepoPath())
 }
@@ -435,6 +564,36 @@ func stableAuditRepoError(err error, repoRoot string) string {
 	message = strings.ReplaceAll(message, repoRoot, ".")
 
 	return message
+}
+
+func auditTemplateInstallabilityPath(err error) string {
+	message := err.Error()
+	markers := []string{
+		"forbidden path ",
+		"read template definition ",
+		"parse template definition ",
+		"normalize template definition ",
+		"read template file ",
+		"read template file mode ",
+	}
+	for _, marker := range markers {
+		index := strings.Index(message, marker)
+		if index < 0 {
+			continue
+		}
+		remainder := message[index+len(marker):]
+		for _, delimiter := range []string{" from ", ": ", " "} {
+			if delimiterIndex := strings.Index(remainder, delimiter); delimiterIndex >= 0 {
+				return remainder[:delimiterIndex]
+			}
+		}
+		return strings.TrimSpace(remainder)
+	}
+	if strings.Contains(message, ManifestRepoPath()) {
+		return ManifestRepoPath()
+	}
+
+	return ""
 }
 
 func auditHostedOrbitSpecPaths(trackedFiles []string) []string {
