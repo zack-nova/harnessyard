@@ -40,3 +40,15 @@ func TestParsePackageHandleCoordinateParsesDistTagButDoesNotCallItExact(t *testi
 	require.False(t, coordinate.IsExactVersion())
 	require.Equal(t, "acme/docs@latest", coordinate.String())
 }
+
+func TestLooksPackageHandleCoordinateRecognizesRegistryForms(t *testing.T) {
+	t.Parallel()
+
+	for _, input := range []string{"docs", "docs@latest", "acme/docs", "acme/docs@latest", "acme/docs@0.1.0"} {
+		require.True(t, registry.LooksPackageHandleCoordinate(input), input)
+	}
+
+	for _, input := range []string{"docs@main", "docs@git:orbit-template/docs", "https://example.com/acme/docs.git", "./docs", "orbit-template/docs"} {
+		require.False(t, registry.LooksPackageHandleCoordinate(input), input)
+	}
+}

@@ -48,22 +48,23 @@ type Source struct {
 	Ref    string
 }
 
-// Resolution is one exact Package Handle Coordinate resolution.
+// Resolution is one Package Handle Coordinate resolution.
 type Resolution struct {
-	Coordinate      PackageHandleCoordinate
-	RegistryRemote  string
-	RegistryRef     string
-	PackageType     string
-	PackageIdentity string
-	PackageStatus   PackageStatus
-	SourceRemote    string
-	SourceRef       string
-	SourceCommit    string
-	FromCache       bool
-	Warnings        []string
+	Coordinate         PackageHandleCoordinate
+	ResolvedCoordinate PackageHandleCoordinate
+	RegistryRemote     string
+	RegistryRef        string
+	PackageType        string
+	PackageIdentity    string
+	PackageStatus      PackageStatus
+	SourceRemote       string
+	SourceRef          string
+	SourceCommit       string
+	FromCache          bool
+	Warnings           []string
 }
 
-// ResolveInput configures registry-backed exact-version resolution.
+// ResolveInput configures registry-backed Package Handle Coordinate resolution.
 type ResolveInput struct {
 	RepoRoot       string
 	Coordinate     PackageHandleCoordinate
@@ -109,6 +110,11 @@ type NamespaceIndexLoader interface {
 	LoadNamespaceIndex(ctx context.Context, repoRoot string, source Source, namespace string) ([]byte, error)
 }
 
+// CuratedIndexLoader loads the curated bare-handle index from a registry source.
+type CuratedIndexLoader interface {
+	LoadCuratedIndex(ctx context.Context, repoRoot string, source Source) ([]byte, error)
+}
+
 // NamespaceIndexLoaderFunc adapts a function into a NamespaceIndexLoader.
 type NamespaceIndexLoaderFunc func(ctx context.Context, repoRoot string, source Source, namespace string) ([]byte, error)
 
@@ -139,6 +145,22 @@ func (GitNamespaceIndexLoader) LoadNamespaceIndex(ctx context.Context, repoRoot 
 	return data, nil
 }
 
+// LoadCuratedIndex loads curated/index.yaml from a Git registry source.
+func (GitNamespaceIndexLoader) LoadCuratedIndex(ctx context.Context, repoRoot string, source Source) ([]byte, error) {
+	normalizedSource, err := normalizeRegistrySource(source)
+	if err != nil {
+		return nil, err
+	}
+
+	const registryPath = "curated/index.yaml"
+	data, err := gitpkg.ReadFileAtRemoteRef(ctx, repoRoot, normalizedSource.Remote, normalizedSource.Ref, registryPath)
+	if err != nil {
+		return nil, fmt.Errorf("load registry curated index %s from %s at %s: %w", registryPath, normalizedSource.Remote, normalizedSource.Ref, err)
+	}
+
+	return data, nil
+}
+
 // ResolveExactPackageHandleCoordinate resolves an exact version from fresh registry data,
 // falling back to a previously verified cache entry only when the registry source is unavailable.
 func ResolveExactPackageHandleCoordinate(ctx context.Context, input ResolveInput) (Resolution, error) {
@@ -146,6 +168,12 @@ func ResolveExactPackageHandleCoordinate(ctx context.Context, input ResolveInput
 		return Resolution{}, fmt.Errorf("package handle coordinate %s is not an exact SemVer version", input.Coordinate.String())
 	}
 
+	return ResolvePackageHandleCoordinate(ctx, input)
+}
+
+// ResolvePackageHandleCoordinate resolves a Package Handle Coordinate from fresh registry data,
+// falling back to a previously verified cache entry only when the registry source is unavailable.
+func ResolvePackageHandleCoordinate(ctx context.Context, input ResolveInput) (Resolution, error) {
 	source, err := normalizeRegistrySource(input.RegistrySource)
 	if err != nil {
 		return Resolution{}, err
@@ -162,28 +190,33 @@ func ResolveExactPackageHandleCoordinate(ctx context.Context, input ResolveInput
 		loader = GitNamespaceIndexLoader{}
 	}
 
-	data, loadErr := loader.LoadNamespaceIndex(ctx, input.RepoRoot, source, input.Coordinate.Namespace)
-	if loadErr != nil {
-		cached, cacheErr := ReadVerifiedResolutionCache(cacheRoot, source.Remote, input.Coordinate)
-		if cacheErr == nil {
-			cached.RegistryRemote = source.Remote
-			cached.RegistryRef = source.Ref
-			cached.FromCache = true
-			cached.Warnings = append(cached.Warnings, fmt.Sprintf("using cached registry resolution for %s because fresh registry data is unavailable: %v", input.Coordinate.String(), loadErr))
-			return cached, nil
+	requestedCoordinate := input.Coordinate
+	resolutionCoordinate := requestedCoordinate
+	if requestedCoordinate.Namespace == "" {
+		curatedLoader, ok := loader.(CuratedIndexLoader)
+		if !ok {
+			return Resolution{}, fmt.Errorf("package handle coordinate %s requires a curated handle resolver", requestedCoordinate.String())
 		}
-		return Resolution{}, fmt.Errorf(
-			"resolve %s from registry %s: %w",
-			input.Coordinate.String(),
-			source.Remote,
-			errors.Join(loadErr, fmt.Errorf("no verified cache entry is available: %w", cacheErr)),
-		)
+		data, loadErr := curatedLoader.LoadCuratedIndex(ctx, input.RepoRoot, source)
+		if loadErr != nil {
+			return cachedResolutionForUnavailableRegistry(cacheRoot, source, requestedCoordinate, loadErr)
+		}
+		resolutionCoordinate, err = ResolveCuratedHandleFromIndex(requestedCoordinate, data)
+		if err != nil {
+			return Resolution{}, err
+		}
 	}
 
-	resolution, err := ResolveExactVersionFromNamespaceIndex(input.Coordinate, data)
+	data, loadErr := loader.LoadNamespaceIndex(ctx, input.RepoRoot, source, resolutionCoordinate.Namespace)
+	if loadErr != nil {
+		return cachedResolutionForUnavailableRegistry(cacheRoot, source, requestedCoordinate, loadErr)
+	}
+
+	resolution, err := ResolveFromNamespaceIndex(resolutionCoordinate, data)
 	if err != nil {
 		return Resolution{}, err
 	}
+	resolution.Coordinate = requestedCoordinate
 	resolution.RegistryRemote = source.Remote
 	resolution.RegistryRef = source.Ref
 	if err := WriteVerifiedResolutionCache(cacheRoot, source.Remote, resolution); err != nil {
@@ -193,6 +226,39 @@ func ResolveExactPackageHandleCoordinate(ctx context.Context, input ResolveInput
 	return resolution, nil
 }
 
+func cachedResolutionForUnavailableRegistry(cacheRoot string, source Source, coordinate PackageHandleCoordinate, loadErr error) (Resolution, error) {
+	cached, cacheErr := ReadVerifiedResolutionCache(cacheRoot, source.Remote, coordinate)
+	if cacheErr == nil {
+		cached.RegistryRemote = source.Remote
+		cached.RegistryRef = source.Ref
+		cached.FromCache = true
+		warning := "using cached registry resolution"
+		if !coordinate.IsExactVersion() {
+			warning = "using stale cached registry resolution"
+		}
+		cached.Warnings = append(cached.Warnings, fmt.Sprintf("%s for %s because fresh registry data is unavailable: %v", warning, coordinate.String(), loadErr))
+		return cached, nil
+	}
+	return Resolution{}, fmt.Errorf(
+		"resolve %s from registry %s: %w",
+		coordinate.String(),
+		source.Remote,
+		errors.Join(loadErr, fmt.Errorf("no verified cache entry is available: %w", cacheErr)),
+	)
+}
+
+// ResolveFromNamespaceIndex resolves an exact version or dist-tag from one namespace YAML index.
+func ResolveFromNamespaceIndex(coordinate PackageHandleCoordinate, data []byte) (Resolution, error) {
+	switch coordinate.Kind {
+	case HandleCoordinateExactVersion:
+		return ResolveExactVersionFromNamespaceIndex(coordinate, data)
+	case HandleCoordinateDistTag:
+		return ResolveDistTagFromNamespaceIndex(coordinate, data)
+	default:
+		return Resolution{}, fmt.Errorf("package handle coordinate %s has unsupported selector kind %q", coordinate.String(), coordinate.Kind)
+	}
+}
+
 // ResolveExactVersionFromNamespaceIndex resolves an exact version from one namespace YAML index.
 func ResolveExactVersionFromNamespaceIndex(coordinate PackageHandleCoordinate, data []byte) (Resolution, error) {
 	if !coordinate.IsExactVersion() {
@@ -200,6 +266,18 @@ func ResolveExactVersionFromNamespaceIndex(coordinate PackageHandleCoordinate, d
 	}
 	if coordinate.Namespace == "" {
 		return Resolution{}, errors.New("exact Package Handle Coordinate resolution requires a namespace")
+	}
+
+	return resolveVersionFromNamespaceIndex(coordinate, coordinate, data)
+}
+
+// ResolveDistTagFromNamespaceIndex resolves an explicit dist-tag from one namespace YAML index.
+func ResolveDistTagFromNamespaceIndex(coordinate PackageHandleCoordinate, data []byte) (Resolution, error) {
+	if coordinate.Kind != HandleCoordinateDistTag {
+		return Resolution{}, fmt.Errorf("package handle coordinate %s is not a dist-tag", coordinate.String())
+	}
+	if coordinate.Namespace == "" {
+		return Resolution{}, errors.New("dist-tag Package Handle Coordinate resolution requires a namespace")
 	}
 
 	var index namespaceIndexFile
@@ -217,19 +295,89 @@ func ResolveExactVersionFromNamespaceIndex(coordinate PackageHandleCoordinate, d
 	if !ok {
 		return Resolution{}, fmt.Errorf("package handle %q is not registered", coordinate.Handle())
 	}
+	version, ok := distTagVersion(entry.DistTags, coordinate.Tag)
+	if !ok {
+		return Resolution{}, fmt.Errorf("package handle %q has no registry dist-tag %q", coordinate.Handle(), coordinate.Tag)
+	}
+	resolvedCoordinate := coordinate
+	resolvedCoordinate.Kind = HandleCoordinateExactVersion
+	resolvedCoordinate.Version = version
+	resolvedCoordinate.Tag = ""
+
+	return resolvePackageEntryVersion(coordinate, resolvedCoordinate, entry)
+}
+
+// ResolveCuratedHandleFromIndex resolves a curated bare handle to a namespaced Package Handle Coordinate.
+func ResolveCuratedHandleFromIndex(coordinate PackageHandleCoordinate, data []byte) (PackageHandleCoordinate, error) {
+	if coordinate.Namespace != "" {
+		return PackageHandleCoordinate{}, fmt.Errorf("package handle coordinate %s is already namespaced", coordinate.String())
+	}
+
+	var index curatedIndexFile
+	if err := yaml.Unmarshal(data, &index); err != nil {
+		return PackageHandleCoordinate{}, fmt.Errorf("parse registry curated index: %w", err)
+	}
+	if index.SchemaVersion != namespaceIndexSchemaVersion {
+		return PackageHandleCoordinate{}, fmt.Errorf("registry curated index schema_version must be %d", namespaceIndexSchemaVersion)
+	}
+	entry, ok := curatedEntryForName(index.Curated, coordinate.Name)
+	if !ok {
+		return PackageHandleCoordinate{}, fmt.Errorf("curated package handle %q is not registered", coordinate.Name)
+	}
+
+	target := strings.ToLower(strings.TrimSpace(entry.Target))
+	if strings.Contains(target, "@") {
+		return PackageHandleCoordinate{}, fmt.Errorf("curated package handle %q target must be a namespaced Package Handle without version or dist-tag", coordinate.Name)
+	}
+	targetCoordinate, err := ParsePackageHandleCoordinate(target)
+	if err != nil {
+		return PackageHandleCoordinate{}, fmt.Errorf("curated package handle %q target: %w", coordinate.Name, err)
+	}
+	if targetCoordinate.Namespace == "" {
+		return PackageHandleCoordinate{}, fmt.Errorf("curated package handle %q target must be namespaced", coordinate.Name)
+	}
+	targetCoordinate.Kind = coordinate.Kind
+	targetCoordinate.Version = coordinate.Version
+	targetCoordinate.Tag = coordinate.Tag
+
+	return targetCoordinate, nil
+}
+
+func resolveVersionFromNamespaceIndex(coordinate PackageHandleCoordinate, resolvedCoordinate PackageHandleCoordinate, data []byte) (Resolution, error) {
+	var index namespaceIndexFile
+	if err := yaml.Unmarshal(data, &index); err != nil {
+		return Resolution{}, fmt.Errorf("parse registry namespace index for %s: %w", coordinate.Namespace, err)
+	}
+	if index.SchemaVersion != namespaceIndexSchemaVersion {
+		return Resolution{}, fmt.Errorf("registry namespace index schema_version must be %d", namespaceIndexSchemaVersion)
+	}
+	if strings.ToLower(strings.TrimSpace(index.Namespace)) != coordinate.Namespace {
+		return Resolution{}, fmt.Errorf("registry namespace index namespace must be %q", coordinate.Namespace)
+	}
+
+	entry, ok := packageEntryForName(index.Packages, coordinate.Name)
+	if !ok {
+		return Resolution{}, fmt.Errorf("package handle %q is not registered", coordinate.Handle())
+	}
+	return resolvePackageEntryVersion(coordinate, resolvedCoordinate, entry)
+}
+
+func resolvePackageEntryVersion(coordinate PackageHandleCoordinate, resolvedCoordinate PackageHandleCoordinate, entry packageEntry) (Resolution, error) {
 	status, err := normalizePackageStatus(entry.Status)
 	if err != nil {
 		return Resolution{}, fmt.Errorf("package handle %q: %w", coordinate.Handle(), err)
 	}
-	version, ok := versionEntryForExactVersion(entry.Versions, coordinate.Version)
+	version, ok := versionEntryForExactVersion(entry.Versions, resolvedCoordinate.Version)
 	if !ok {
-		return Resolution{}, fmt.Errorf("package handle %q is not registered", coordinate.String())
+		return Resolution{}, fmt.Errorf("package handle %q is not registered", resolvedCoordinate.String())
 	}
 
-	resolution, err := resolutionFromVersionEntry(coordinate, version)
+	resolution, err := resolutionFromVersionEntry(resolvedCoordinate, version)
 	if err != nil {
 		return Resolution{}, err
 	}
+	resolution.Coordinate = coordinate
+	resolution.ResolvedCoordinate = resolvedCoordinate
 	resolution.PackageStatus = status
 	if status == PackageStatusDeprecated {
 		resolution.Warnings = append(resolution.Warnings, fmt.Sprintf("package handle %s is deprecated", coordinate.Handle()))
@@ -256,8 +404,18 @@ type namespaceIndexFile struct {
 	Packages      map[string]packageEntry `yaml:"packages"`
 }
 
+type curatedIndexFile struct {
+	SchemaVersion int                     `yaml:"schema_version"`
+	Curated       map[string]curatedEntry `yaml:"curated"`
+}
+
+type curatedEntry struct {
+	Target string `yaml:"target"`
+}
+
 type packageEntry struct {
 	Status   string                  `yaml:"status"`
+	DistTags map[string]string       `yaml:"dist_tags"`
 	Versions map[string]versionEntry `yaml:"versions"`
 }
 
@@ -290,6 +448,16 @@ func packageEntryForName(packages map[string]packageEntry, name string) (package
 	return packageEntry{}, false
 }
 
+func curatedEntryForName(curated map[string]curatedEntry, name string) (curatedEntry, bool) {
+	for candidateName, entry := range curated {
+		if strings.ToLower(strings.TrimSpace(candidateName)) == name {
+			return entry, true
+		}
+	}
+
+	return curatedEntry{}, false
+}
+
 func versionEntryForExactVersion(versions map[string]versionEntry, version string) (versionEntry, bool) {
 	for candidateVersion, entry := range versions {
 		normalized := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(candidateVersion)), "v")
@@ -299,6 +467,21 @@ func versionEntryForExactVersion(versions map[string]versionEntry, version strin
 	}
 
 	return versionEntry{}, false
+}
+
+func distTagVersion(distTags map[string]string, tag string) (string, bool) {
+	for candidateTag, candidateVersion := range distTags {
+		if strings.ToLower(strings.TrimSpace(candidateTag)) != tag {
+			continue
+		}
+		version := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(candidateVersion)), "v")
+		if handleSemverPattern.MatchString(version) {
+			return version, true
+		}
+		return "", false
+	}
+
+	return "", false
 }
 
 func resolutionFromVersionEntry(coordinate PackageHandleCoordinate, version versionEntry) (Resolution, error) {
@@ -329,12 +512,13 @@ func resolutionFromVersionEntry(coordinate PackageHandleCoordinate, version vers
 	}
 
 	return Resolution{
-		Coordinate:      coordinate,
-		PackageType:     packageType,
-		PackageIdentity: packageIdentity,
-		SourceRemote:    sourceRemote,
-		SourceRef:       sourceRef,
-		SourceCommit:    sourceCommit,
+		Coordinate:         coordinate,
+		ResolvedCoordinate: coordinate,
+		PackageType:        packageType,
+		PackageIdentity:    packageIdentity,
+		SourceRemote:       sourceRemote,
+		SourceRef:          sourceRef,
+		SourceCommit:       sourceCommit,
 	}, nil
 }
 
@@ -415,7 +599,7 @@ func DefaultCacheRoot() (string, error) {
 	}
 }
 
-// WriteVerifiedResolutionCache records a successful fresh exact-version resolution.
+// WriteVerifiedResolutionCache records a successful fresh registry resolution.
 func WriteVerifiedResolutionCache(cacheRoot string, registryRemote string, resolution Resolution) error {
 	path, err := resolutionCachePath(cacheRoot, registryRemote, resolution.Coordinate)
 	if err != nil {
@@ -425,18 +609,24 @@ func WriteVerifiedResolutionCache(cacheRoot string, registryRemote string, resol
 		return fmt.Errorf("create registry resolution cache directory: %w", err)
 	}
 
+	exactCoordinate := resolution.ExactCoordinate()
 	entry := resolutionCacheEntry{
-		SchemaVersion:   resolutionCacheSchemaVersion,
-		RegistryRemote:  canonicalRegistryRemote(registryRemote),
-		Namespace:       resolution.Coordinate.Namespace,
-		Name:            resolution.Coordinate.Name,
-		Version:         resolution.Coordinate.Version,
-		PackageType:     resolution.PackageType,
-		PackageIdentity: resolution.PackageIdentity,
-		PackageStatus:   string(resolution.EffectivePackageStatus()),
-		SourceRemote:    resolution.SourceRemote,
-		SourceRef:       resolution.SourceRef,
-		SourceCommit:    resolution.SourceCommit,
+		SchemaVersion:     resolutionCacheSchemaVersion,
+		RegistryRemote:    canonicalRegistryRemote(registryRemote),
+		Coordinate:        resolution.Coordinate.String(),
+		Namespace:         resolution.Coordinate.Namespace,
+		Name:              resolution.Coordinate.Name,
+		Version:           resolution.Coordinate.Version,
+		Tag:               resolution.Coordinate.Tag,
+		ResolvedNamespace: exactCoordinate.Namespace,
+		ResolvedName:      exactCoordinate.Name,
+		ResolvedVersion:   exactCoordinate.Version,
+		PackageType:       resolution.PackageType,
+		PackageIdentity:   resolution.PackageIdentity,
+		PackageStatus:     string(resolution.EffectivePackageStatus()),
+		SourceRemote:      resolution.SourceRemote,
+		SourceRef:         resolution.SourceRef,
+		SourceCommit:      resolution.SourceCommit,
 	}
 	data, err := yaml.Marshal(entry)
 	if err != nil {
@@ -449,7 +639,7 @@ func WriteVerifiedResolutionCache(cacheRoot string, registryRemote string, resol
 	return nil
 }
 
-// ReadVerifiedResolutionCache reads a previously verified exact-version resolution.
+// ReadVerifiedResolutionCache reads a previously verified registry resolution.
 func ReadVerifiedResolutionCache(cacheRoot string, registryRemote string, coordinate PackageHandleCoordinate) (Resolution, error) {
 	path, err := resolutionCachePath(cacheRoot, registryRemote, coordinate)
 	if err != nil {
@@ -468,10 +658,10 @@ func ReadVerifiedResolutionCache(cacheRoot string, registryRemote string, coordi
 	if entry.SchemaVersion != resolutionCacheSchemaVersion {
 		return Resolution{}, fmt.Errorf("registry resolution cache schema_version must be %d", resolutionCacheSchemaVersion)
 	}
-	if canonicalRegistryRemote(entry.RegistryRemote) != canonicalRegistryRemote(registryRemote) ||
-		entry.Namespace != coordinate.Namespace ||
-		entry.Name != coordinate.Name ||
-		entry.Version != coordinate.Version {
+	if canonicalRegistryRemote(entry.RegistryRemote) != canonicalRegistryRemote(registryRemote) {
+		return Resolution{}, errors.New("registry resolution cache entry does not match requested registry remote")
+	}
+	if !cacheEntryMatchesCoordinate(entry, coordinate) {
 		return Resolution{}, errors.New("registry resolution cache entry does not match requested coordinate")
 	}
 	status, err := normalizePackageStatus(entry.PackageStatus)
@@ -479,15 +669,24 @@ func ReadVerifiedResolutionCache(cacheRoot string, registryRemote string, coordi
 		return Resolution{}, fmt.Errorf("cached registry resolution status: %w", err)
 	}
 
+	resolvedCoordinate := coordinate
+	if entry.ResolvedVersion != "" {
+		resolvedCoordinate.Namespace = entry.ResolvedNamespace
+		resolvedCoordinate.Name = entry.ResolvedName
+		resolvedCoordinate.Kind = HandleCoordinateExactVersion
+		resolvedCoordinate.Version = entry.ResolvedVersion
+		resolvedCoordinate.Tag = ""
+	}
 	resolution := Resolution{
-		Coordinate:      coordinate,
-		RegistryRemote:  canonicalRegistryRemote(registryRemote),
-		PackageType:     strings.ToLower(strings.TrimSpace(entry.PackageType)),
-		PackageIdentity: strings.ToLower(strings.TrimSpace(entry.PackageIdentity)),
-		PackageStatus:   status,
-		SourceRemote:    strings.TrimSpace(entry.SourceRemote),
-		SourceRef:       strings.TrimSpace(entry.SourceRef),
-		SourceCommit:    strings.ToLower(strings.TrimSpace(entry.SourceCommit)),
+		Coordinate:         coordinate,
+		ResolvedCoordinate: resolvedCoordinate,
+		RegistryRemote:     canonicalRegistryRemote(registryRemote),
+		PackageType:        strings.ToLower(strings.TrimSpace(entry.PackageType)),
+		PackageIdentity:    strings.ToLower(strings.TrimSpace(entry.PackageIdentity)),
+		PackageStatus:      status,
+		SourceRemote:       strings.TrimSpace(entry.SourceRemote),
+		SourceRef:          strings.TrimSpace(entry.SourceRef),
+		SourceCommit:       strings.ToLower(strings.TrimSpace(entry.SourceCommit)),
 	}
 	if err := validateCachedResolution(resolution); err != nil {
 		return Resolution{}, err
@@ -497,17 +696,22 @@ func ReadVerifiedResolutionCache(cacheRoot string, registryRemote string, coordi
 }
 
 type resolutionCacheEntry struct {
-	SchemaVersion   int    `yaml:"schema_version"`
-	RegistryRemote  string `yaml:"registry_remote"`
-	Namespace       string `yaml:"namespace"`
-	Name            string `yaml:"name"`
-	Version         string `yaml:"version"`
-	PackageType     string `yaml:"package_type"`
-	PackageIdentity string `yaml:"package_identity"`
-	PackageStatus   string `yaml:"package_status"`
-	SourceRemote    string `yaml:"source_remote"`
-	SourceRef       string `yaml:"source_ref"`
-	SourceCommit    string `yaml:"source_commit"`
+	SchemaVersion     int    `yaml:"schema_version"`
+	RegistryRemote    string `yaml:"registry_remote"`
+	Coordinate        string `yaml:"coordinate"`
+	Namespace         string `yaml:"namespace"`
+	Name              string `yaml:"name"`
+	Version           string `yaml:"version"`
+	Tag               string `yaml:"tag"`
+	ResolvedNamespace string `yaml:"resolved_namespace"`
+	ResolvedName      string `yaml:"resolved_name"`
+	ResolvedVersion   string `yaml:"resolved_version"`
+	PackageType       string `yaml:"package_type"`
+	PackageIdentity   string `yaml:"package_identity"`
+	PackageStatus     string `yaml:"package_status"`
+	SourceRemote      string `yaml:"source_remote"`
+	SourceRef         string `yaml:"source_ref"`
+	SourceCommit      string `yaml:"source_commit"`
 }
 
 func validateCachedResolution(resolution Resolution) error {
@@ -516,7 +720,7 @@ func validateCachedResolution(resolution Resolution) error {
 	default:
 		return fmt.Errorf("cached registry resolution package_type must be %q or %q", ids.PackageTypeOrbit, ids.PackageTypeHarness)
 	}
-	if _, err := ids.NewPackageIdentity(resolution.PackageType, resolution.PackageIdentity, resolution.Coordinate.Version); err != nil {
+	if _, err := ids.NewPackageIdentity(resolution.PackageType, resolution.PackageIdentity, resolution.ExactCoordinate().Version); err != nil {
 		return fmt.Errorf("cached registry resolution package identity: %w", err)
 	}
 	if resolution.SourceRemote == "" {
@@ -532,17 +736,35 @@ func validateCachedResolution(resolution Resolution) error {
 	return nil
 }
 
+// ExactCoordinate returns the resolved exact namespaced coordinate used for installation.
+func (resolution Resolution) ExactCoordinate() PackageHandleCoordinate {
+	if resolution.ResolvedCoordinate.IsExactVersion() {
+		return resolution.ResolvedCoordinate
+	}
+
+	return resolution.Coordinate
+}
+
 func resolutionCachePath(cacheRoot string, registryRemote string, coordinate PackageHandleCoordinate) (string, error) {
 	trimmedRoot := strings.TrimSpace(cacheRoot)
 	if trimmedRoot == "" {
 		return "", errors.New("cache root must not be empty")
 	}
-	if !coordinate.IsExactVersion() {
-		return "", fmt.Errorf("registry resolution cache only supports exact versions, got %s", coordinate.String())
+	keyBytes := sha256.Sum256([]byte(canonicalRegistryRemote(registryRemote)))
+	remoteKey := hex.EncodeToString(keyBytes[:])
+	coordinateBytes := sha256.Sum256([]byte(coordinate.String()))
+	coordinateKey := hex.EncodeToString(coordinateBytes[:])
+
+	return filepath.Join(trimmedRoot, "registry", "resolutions", remoteKey, coordinateKey+".yaml"), nil
+}
+
+func cacheEntryMatchesCoordinate(entry resolutionCacheEntry, coordinate PackageHandleCoordinate) bool {
+	if strings.TrimSpace(entry.Coordinate) != "" {
+		return entry.Coordinate == coordinate.String()
 	}
 
-	keyBytes := sha256.Sum256([]byte(canonicalRegistryRemote(registryRemote)))
-	key := hex.EncodeToString(keyBytes[:])
-
-	return filepath.Join(trimmedRoot, "registry", "resolutions", key, coordinate.Namespace, coordinate.Name, coordinate.Version+".yaml"), nil
+	return entry.Namespace == coordinate.Namespace &&
+		entry.Name == coordinate.Name &&
+		entry.Version == coordinate.Version &&
+		entry.Tag == coordinate.Tag
 }

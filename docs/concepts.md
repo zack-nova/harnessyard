@@ -51,9 +51,10 @@ Harness Package. It is made from package type, package name, and optional versio
 when present. Display names and descriptions are not stable identity.
 
 Package Handles, when available through a registry, are short names that resolve
-to installable package locators. Exact namespaced handles such as
-`acme/docs@0.1.0` can be installed through `hyard install`; examples may still
-use explicit Git locators when no registry entry is available.
+to installable package locators. Namespaced handles such as `acme/docs`,
+`acme/docs@latest`, and `acme/docs@0.1.0`, plus curated bare handles such as
+`docs`, can be installed through `hyard install`; examples may still use
+explicit Git locators when no registry entry is available.
 
 ## Views
 

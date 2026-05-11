@@ -51,12 +51,12 @@ curated/index.yaml
 Git-platform user or org identities, such as GitHub users or GitLab groups.
 
 `packages/<namespace>/index.yaml` records the packages under one namespace.
-Each package entry records status, dist-tags, version metadata, source locator
+Each package entry records status, `dist_tags`, version metadata, source locator
 metadata, and validation evidence.
 
 `curated/index.yaml` records curated bare handles such as `docs`. A curated
-handle points at a namespaced Package Handle and does not copy full version
-locator metadata.
+handle uses `target` to point at a namespaced Package Handle and does not copy
+full version locator metadata.
 
 ## Coordinate Rules
 
@@ -127,7 +127,8 @@ Windows: %LocalAppData%/hyard/Cache
 
 Cache semantics:
 
-- Cache keys include the canonical registry remote.
+- Cache keys include the canonical registry remote and normalized Package Handle
+  Coordinate.
 - Exact-version resolutions may be cached.
 - Bare and `latest` resolutions refresh from the registry when available.
 - If the registry is unavailable and a previously verified cached resolution
