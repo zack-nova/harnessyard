@@ -52,6 +52,7 @@ The canonical top-level package lifecycle surface is:
 
 ```bash
 hyard install <template-source>
+hyard install <namespace>/<name>@<semver>
 hyard uninstall orbit <orbit-package>
 hyard uninstall harness <harness-package>
 ```
@@ -63,8 +64,9 @@ membership rather than installed package lifecycle.
 
 ## Harness Start Demo Paths
 
-Public demo examples should use explicit GitHub locators until registry-backed
-package handles are part of the public release surface.
+Public demo examples may use explicit Git locators when no registry entry is
+available. Exact namespaced registry-backed handles are also part of the public
+install surface.
 
 Clone a Harness Template and hand off to Codex:
 
