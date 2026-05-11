@@ -106,6 +106,11 @@ hyard assign orbit <orbit-package> --harness <harness-package>
 Prefer `install` and `uninstall` for package lifecycle. Reserve add/remove
 language for scoped collection membership such as orbit members.
 
+Uninstall fully removes the package from the current Harness Runtime. Deleted
+install records, removed hosted OrbitSpecs, and retained provenance or audit
+evidence are not active package state and should not affect `hyard check` or
+`hyard ready`.
+
 ## Variables
 
 Plan Package Variables before installing a group of related packages. Runtime

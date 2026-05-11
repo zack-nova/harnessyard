@@ -88,6 +88,14 @@ to `behavior` on write. Member roles remain:
 
 `lane: bootstrap` is lifecycle metadata, not a fifth role.
 
+In a Harness Runtime, `.harness/installs/*.yaml`, `.harness/bundles/*.yaml`,
+and hosted OrbitSpecs under `.harness/orbits/` describe active package truth
+only while the package remains installed. Package Uninstallation deletes the
+target package record and hosted OrbitSpec when no other active package owns or
+references it. Retained Git history, audit/provenance evidence, detached install
+records, and removed hosted OrbitSpecs must not be used as installed, active, or
+reapplicable runtime state.
+
 ## Repo-Local State
 
 Repo-local state belongs under `.git/orbit/state` and is not history:
@@ -189,6 +197,11 @@ unsupported required events, cleanup blockers, invalid agent truth, invalid
 activation ledgers, and ownership conflicts. Missing Run View Root Guidance or
 malformed root guidance remains a guidance/readiness diagnostic, not a missing
 Agent Framework activation diagnostic.
+
+Readiness and check are derived from the current active runtime control plane.
+Deleted install records and removed hosted OrbitSpecs are ignored unless they are
+actually hidden active control files in the sparse worktree; ordinary retained
+Git history or audit evidence is not readiness-relevant package state.
 
 ## Agent And Capability Model
 

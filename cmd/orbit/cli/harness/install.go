@@ -84,6 +84,13 @@ func ListInstallRecordIDs(repoRoot string) ([]string, error) {
 		if pathpkg.Dir(repoPath) != InstallRecordsDirRepoPath() {
 			continue
 		}
+		skipped, err := gitpkg.PathIsSkipWorktree(context.Background(), repoRoot, repoPath)
+		if err != nil {
+			return nil, fmt.Errorf("check hidden harness install record %s: %w", repoPath, err)
+		}
+		if !skipped {
+			continue
+		}
 		entryNames = append(entryNames, pathpkg.Base(repoPath))
 	}
 
