@@ -48,6 +48,7 @@ Create and inspect a runtime:
 hyard create runtime demo-repo
 cd demo-repo
 hyard check --json
+hyard audit --json
 hyard ready
 hyard view status
 ```
@@ -65,7 +66,15 @@ hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/ap
 hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/ui --bindings .harness/vars.yaml
 hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/ops --bindings .harness/vars.yaml
 hyard check --json
+hyard audit --json
 ```
+
+Use `hyard audit` as the standard read-only review command for the current
+worktree. Audit reports one of four statuses: `pass`, `warn`, `fail`, or
+`not_hyard_revision`. `pass` and `warn` exit 0; `fail` and
+`not_hyard_revision` exit non-zero. Audit is scoped to the current Git worktree
+and does not publish packages, install templates, initialize runtimes, or rewrite
+authored truth.
 
 Each Run View Orbit Package install outputs its package guidance incrementally.
 You can start using the newly installed guidance immediately; standalone

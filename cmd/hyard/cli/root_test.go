@@ -45,6 +45,28 @@ func TestRootCommandRegistersAuditCommand(t *testing.T) {
 	require.Equal(t, "audit", cmd.Name())
 }
 
+func TestAuditHelpShowsRevisionKindExamples(t *testing.T) {
+	t.Parallel()
+
+	rootCmd := NewRootCommand()
+	rootCmd.SetArgs([]string{"audit", "--help"})
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	rootCmd.SetOut(&stdout)
+	rootCmd.SetErr(&stderr)
+
+	err := rootCmd.ExecuteContext(context.Background())
+	require.NoError(t, err)
+	require.Empty(t, stderr.String())
+	require.Contains(t, stdout.String(), "hyard audit")
+	require.Contains(t, stdout.String(), "hyard audit --json")
+	require.Contains(t, stdout.String(), "source revision")
+	require.Contains(t, stdout.String(), "runtime revision")
+	require.Contains(t, stdout.String(), "orbit-template revision")
+	require.Contains(t, stdout.String(), "harness-template revision")
+}
+
 func TestPublishHelpFramesRuntimePublicationAsDefaultPath(t *testing.T) {
 	t.Parallel()
 

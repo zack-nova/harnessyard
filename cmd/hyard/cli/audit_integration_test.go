@@ -82,6 +82,7 @@ func TestHyardAuditRuntimeRevisionReportsPassJSON(t *testing.T) {
 	require.NoError(t, err)
 	_, err = harnesspkg.WriteRuntimeFile(repo.Root, runtimeFile)
 	require.NoError(t, err)
+	repo.AddAndCommit(t, "seed runtime audit fixture")
 
 	stdout, stderr, err := executeHyardCLI(t, repo.Root, "audit", "--json")
 	require.NoError(t, err)
@@ -142,6 +143,53 @@ func TestHyardAuditRuntimeRevisionReportsPassJSON(t *testing.T) {
 	require.Zero(t, payload.Runtime.Readiness.Summary.OrbitCount)
 	require.Zero(t, payload.Runtime.Readiness.Summary.BlockingReasonCount)
 	require.Zero(t, payload.Runtime.Readiness.Summary.AdvisoryReasonCount)
+}
+
+func TestHyardAuditDirtyRuntimeRevisionReportsAdvisoryWithoutMutation(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	now := time.Date(2026, time.May, 7, 10, 0, 0, 0, time.UTC)
+	runtimeFile, err := harnesspkg.DefaultRuntimeFile(repo.Root, now)
+	require.NoError(t, err)
+	_, err = harnesspkg.WriteRuntimeFile(repo.Root, runtimeFile)
+	require.NoError(t, err)
+	repo.WriteFile(t, "README.md", "clean runtime\n")
+	repo.AddAndCommit(t, "seed clean runtime audit fixture")
+	repo.WriteFile(t, "README.md", "dirty runtime\n")
+
+	beforeStatus := repo.Run(t, "status", "--short")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "audit", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Status       string `json:"status"`
+		RevisionKind string `json:"revision_kind"`
+		Findings     []struct {
+			Severity string `json:"severity"`
+			Kind     string `json:"kind"`
+			Path     string `json:"path"`
+			Message  string `json:"message"`
+		} `json:"findings"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "warn", payload.Status)
+	require.Equal(t, "runtime", payload.RevisionKind)
+	require.Contains(t, payload.Findings, struct {
+		Severity string `json:"severity"`
+		Kind     string `json:"kind"`
+		Path     string `json:"path"`
+		Message  string `json:"message"`
+	}{
+		Severity: "warn",
+		Kind:     "dirty_worktree",
+		Path:     "README.md",
+		Message:  `worktree path "README.md" has uncommitted status M`,
+	})
+	require.Equal(t, beforeStatus, repo.Run(t, "status", "--short"))
+	require.Equal(t, "dirty runtime\n", readRepoFile(t, repo.Root, "README.md"))
 }
 
 func TestHyardAuditRuntimeRevisionMapsBlockingCheckFindingsToFailJSON(t *testing.T) {
@@ -297,6 +345,7 @@ func TestHyardAuditRuntimeRevisionReportsTextSummary(t *testing.T) {
 	require.NoError(t, err)
 	_, err = harnesspkg.WriteRuntimeFile(repo.Root, runtimeFile)
 	require.NoError(t, err)
+	repo.AddAndCommit(t, "seed runtime audit text fixture")
 
 	stdout, stderr, err := executeHyardCLI(t, repo.Root, "audit")
 	require.NoError(t, err)

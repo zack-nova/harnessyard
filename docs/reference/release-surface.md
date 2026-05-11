@@ -62,6 +62,21 @@ Scoped member-editing documentation may continue to use add/remove language, suc
 `hyard orbit member add` and `hyard orbit member remove`, when it describes collection
 membership rather than installed package lifecycle.
 
+## Audit Review Surface
+
+The public read-only review command is:
+
+```bash
+hyard audit
+hyard audit --json
+```
+
+Audit is scoped to the current Git worktree and reports `pass`, `warn`, `fail`,
+or `not_hyard_revision`. `pass` and `warn` exit 0; `fail` and
+`not_hyard_revision` exit non-zero. Public docs should describe Audit as the
+standard broad review command, while keeping runtime detail on `hyard check` and
+Orbit Package publish readiness on `hyard orbit prepare <package> --check --json`.
+
 ## Harness Start Demo Paths
 
 Public demo examples may use explicit Git locators when no registry entry is
