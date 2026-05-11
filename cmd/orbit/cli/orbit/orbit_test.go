@@ -47,6 +47,23 @@ func TestLoadHostedRepositoryConfigUsesHarnessHostedDefinitionsWithoutGlobalConf
 	require.Equal(t, filepath.Join(repo.Root, ".harness", "orbits", "docs.yaml"), config.Orbits[1].SourcePath)
 }
 
+func TestLoadHostedRepositoryConfigIgnoresDeletedHostedOrbitSpecEvidence(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, ".harness/orbits/docs.yaml", "id: docs\ninclude:\n  - docs/**\n")
+	repo.AddAndCommit(t, "seed hosted orbit evidence")
+
+	require.NoError(t, os.RemoveAll(filepath.Join(repo.Root, ".harness", "orbits")))
+
+	config, err := orbitpkg.LoadHostedRepositoryConfig(context.Background(), repo.Root)
+	require.NoError(t, err)
+	require.Empty(t, config.Orbits)
+
+	_, err = orbitpkg.LoadHostedOrbitSpec(context.Background(), repo.Root, "docs")
+	require.ErrorIs(t, err, os.ErrNotExist)
+}
+
 func TestLoadRuntimeRepositoryConfigUsesHostedDefinitionsWithoutGlobalConfig(t *testing.T) {
 	t.Parallel()
 

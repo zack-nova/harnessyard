@@ -8517,7 +8517,7 @@ func TestHarnessInstallOrbitTemplateOverrideBundleBackedMemberShrinksPreviousBun
 	require.Equal(t, "Installed Orbit reference\n", string(referenceData))
 }
 
-func TestHarnessInstallReinstallAfterRemoveRequiresOverwriteExisting(t *testing.T) {
+func TestHarnessInstallReinstallAfterRemoveIgnoresDetachedInstallRecord(t *testing.T) {
 	t.Parallel()
 
 	repo := seedHarnessInstallRepo(t)
@@ -8535,13 +8535,7 @@ func TestHarnessInstallReinstallAfterRemoveRequiresOverwriteExisting(t *testing.
 	_, _, err = executeHarnessCLI(t, repo.Root, "remove", "docs")
 	require.NoError(t, err)
 
-	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "install", "orbit-template/docs", "--bindings", bindingsPath)
-	require.Error(t, err)
-	require.Empty(t, stdout)
-	require.Empty(t, stderr)
-	require.ErrorContains(t, err, `orbit "docs" is detached; reinstall requires --overwrite-existing`)
-
-	stdout, stderr, err = executeHarnessCLI(t, repo.Root, "install", "orbit-template/docs", "--bindings", bindingsPath, "--overwrite-existing", "--json")
+	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "install", "orbit-template/docs", "--bindings", bindingsPath, "--json")
 	require.NoError(t, err)
 	require.Empty(t, stderr)
 
@@ -8558,7 +8552,7 @@ func TestHarnessInstallReinstallAfterRemoveRequiresOverwriteExisting(t *testing.
 	require.Equal(t, harnesspkg.MemberSourceInstallOrbit, runtimeFile.Members[0].Source)
 }
 
-func TestHarnessInstallBatchReinstallAfterRemoveRequiresOverwriteExisting(t *testing.T) {
+func TestHarnessInstallBatchReinstallAfterRemoveIgnoresDetachedInstallRecord(t *testing.T) {
 	t.Parallel()
 
 	repo := seedHarnessInstallRepo(t)
@@ -8577,10 +8571,9 @@ func TestHarnessInstallBatchReinstallAfterRemoveRequiresOverwriteExisting(t *tes
 	require.NoError(t, err)
 
 	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "install", "batch", "orbit-template/docs", "--bindings", bindingsPath)
-	require.Error(t, err)
-	require.Empty(t, stdout)
+	require.NoError(t, err)
 	require.Empty(t, stderr)
-	require.ErrorContains(t, err, `orbit "docs" is detached; reinstall requires --overwrite-existing`)
+	require.Contains(t, stdout, "orbit_ids: docs")
 }
 
 func TestHarnessInstallOverwriteFailsWhenExistingOwnedFilesCannotBeSafelyReconstructed(t *testing.T) {

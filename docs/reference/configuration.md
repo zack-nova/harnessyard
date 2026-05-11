@@ -51,9 +51,9 @@ Harness Yard stores versioned truth under `.harness/*`.
 | Path | Responsibility | Normal edit path |
 | --- | --- | --- |
 | `.harness/manifest.yaml` | Revision identity. | `hyard create`, `hyard init`, `hyard clone`, `hyard publish` |
-| `.harness/orbits/*.yaml` | Hosted OrbitSpec authored truth. | `hyard orbit ...`, `hyard guide save`, validated advanced edits |
+| `.harness/orbits/*.yaml` | Hosted OrbitSpec authored truth for active runtime packages and authored revisions. | `hyard orbit ...`, `hyard guide save`, validated advanced edits, `hyard uninstall` deletion when package ownership is unambiguous |
 | `.harness/vars.yaml` | Runtime-owned package variable bindings. | Bindings helpers, install commands, validated advanced edits |
-| `.harness/installs/*.yaml` | Installed package records. | `hyard install`, `hyard uninstall` |
+| `.harness/installs/*.yaml` | Active installed Orbit Package records. Deleted records and retained Git history are not active install state. | `hyard install`, `hyard uninstall` |
 | `.harness/bundles/*.yaml` | Harness package composition records. | `hyard publish`, `hyard assign`, `hyard unassign` |
 | `.harness/template.yaml` | Template metadata. | Publish or template commands |
 | `.harness/template_members/*.yaml` | Template member records. | Publish or template commands |

@@ -39,6 +39,49 @@ func TestEvaluateRuntimeReadinessZeroMemberRuntimeIsReady(t *testing.T) {
 	require.Empty(t, report.NextSteps)
 }
 
+func TestRuntimeCheckAndReadinessIgnoreDeletedPackageEvidence(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	now := time.Date(2026, time.April, 13, 9, 30, 0, 0, time.UTC)
+	runtimeFile, err := DefaultRuntimeFile(repo.Root, now)
+	require.NoError(t, err)
+	_, err = WriteRuntimeFile(repo.Root, runtimeFile)
+	require.NoError(t, err)
+
+	spec, err := orbitpkg.DefaultHostedMemberSchemaSpec("docs")
+	require.NoError(t, err)
+	_, err = orbitpkg.WriteHostedOrbitSpec(repo.Root, spec)
+	require.NoError(t, err)
+	_, err = WriteInstallRecord(repo.Root, orbittemplate.InstallRecord{
+		SchemaVersion: 1,
+		OrbitID:       "docs",
+		Template: orbittemplate.Source{
+			SourceKind:     orbittemplate.InstallSourceKindLocalBranch,
+			SourceRef:      "orbit-template/docs",
+			TemplateCommit: "abc123",
+		},
+		AppliedAt: now,
+	})
+	require.NoError(t, err)
+	repo.AddAndCommit(t, "seed retained package evidence")
+
+	require.NoError(t, os.RemoveAll(InstallRecordsDirPath(repo.Root)))
+	require.NoError(t, os.RemoveAll(orbitpkg.HostedOrbitsDir(repo.Root)))
+
+	checkResult, err := CheckRuntime(context.Background(), repo.Root)
+	require.NoError(t, err)
+	require.True(t, checkResult.OK)
+	require.Empty(t, checkResult.Findings)
+
+	report, err := EvaluateRuntimeReadiness(context.Background(), repo.Root)
+	require.NoError(t, err)
+	require.Equal(t, ReadinessStatusReady, report.Status)
+	require.Equal(t, 0, report.Summary.OrbitCount)
+	require.Empty(t, report.RuntimeReasons)
+	require.Empty(t, report.OrbitReports)
+}
+
 func TestEvaluateRuntimeReadinessInstallBackedOrbitWithMissingRequiredBindingsIsUsable(t *testing.T) {
 	t.Parallel()
 

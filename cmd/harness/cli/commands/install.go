@@ -956,7 +956,8 @@ func inspectInstallTargetState(repoRoot string, runtimeFile harnesspkg.RuntimeFi
 		return installTargetState{}, fmt.Errorf("stat %s: %w", installPath, err)
 	}
 
-	state.RequiresOverwrite = state.HasInstallRecord
+	state.RequiresOverwrite = state.HasInstallRecord &&
+		orbittemplate.EffectiveInstallRecordStatus(state.ExistingRecord) != orbittemplate.InstallRecordStatusDetached
 
 	return state, nil
 }
@@ -977,9 +978,6 @@ func validateInstallTargetState(state installTargetState, orbitID string, overwr
 
 	if state.HasInstallRecord {
 		if orbittemplate.EffectiveInstallRecordStatus(state.ExistingRecord) == orbittemplate.InstallRecordStatusDetached {
-			if !overwriteExisting {
-				return fmt.Errorf("orbit %q is detached; reinstall requires --overwrite-existing", orbitID)
-			}
 			return nil
 		}
 		if !overwriteExisting {
@@ -1034,9 +1032,6 @@ func validateOrbitInstallTargetState(
 
 	if state.HasInstallRecord {
 		if orbittemplate.EffectiveInstallRecordStatus(state.ExistingRecord) == orbittemplate.InstallRecordStatusDetached {
-			if !overwriteExisting {
-				return fmt.Errorf("orbit %q is detached; reinstall requires --overwrite-existing", orbitID)
-			}
 			return nil
 		}
 		if !sameInstallUnit(state.ExistingRecord.Template, incomingSource) {

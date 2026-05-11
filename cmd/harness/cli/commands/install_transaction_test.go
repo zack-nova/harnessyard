@@ -199,6 +199,7 @@ func TestInspectInstallTargetStateReadsDetachedInstallRecordHiddenByProjection(t
 	state, err := inspectInstallTargetState(repo.Root, runtimeFile, "docs")
 	require.NoError(t, err)
 	require.True(t, state.HasInstallRecord)
+	require.False(t, state.RequiresOverwrite)
 	require.Equal(t, orbittemplate.InstallRecordStatusDetached, orbittemplate.EffectiveInstallRecordStatus(state.ExistingRecord))
 }
 

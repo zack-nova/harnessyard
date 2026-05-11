@@ -120,6 +120,33 @@ func TestListInstallRecordIDsFallsBackToHEADWhenHidden(t *testing.T) {
 	require.Equal(t, []string{"docs"}, ids)
 }
 
+func TestSummarizeInstallRecordsIgnoresDeletedInstallRecordEvidence(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	_, err := WriteInstallRecord(repo.Root, orbittemplate.InstallRecord{
+		SchemaVersion: 1,
+		OrbitID:       "docs",
+		Template: orbittemplate.Source{
+			SourceKind:     orbittemplate.InstallSourceKindLocalBranch,
+			SourceRepo:     "",
+			SourceRef:      "orbit-template/docs",
+			TemplateCommit: "abc123",
+		},
+		AppliedAt: time.Date(2026, time.April, 16, 18, 50, 0, 0, time.UTC),
+	})
+	require.NoError(t, err)
+	repo.AddAndCommit(t, "seed install record evidence")
+
+	require.NoError(t, os.RemoveAll(InstallRecordsDirPath(repo.Root)))
+
+	summary, err := SummarizeInstallRecords(repo.Root)
+	require.NoError(t, err)
+	require.Empty(t, summary.ActiveIDs)
+	require.Empty(t, summary.DetachedIDs)
+	require.Empty(t, summary.InvalidIDs)
+}
+
 func TestSummarizeInstallRecordsSeparatesDetachedRecords(t *testing.T) {
 	t.Parallel()
 

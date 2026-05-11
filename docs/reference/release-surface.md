@@ -62,6 +62,13 @@ Scoped member-editing documentation may continue to use add/remove language, suc
 `hyard orbit member add` and `hyard orbit member remove`, when it describes collection
 membership rather than installed package lifecycle.
 
+Package Uninstallation is package-manager-style removal from the current Harness
+Runtime. The public `uninstall` surface deletes the active package record,
+hosted OrbitSpec when no active package still owns it, unambiguous owned root
+guidance, and package-owned runtime files. Retained Git history, audit output,
+provenance data, detached install records, or removed hosted OrbitSpecs must not
+make the package appear installed, active, reapplicable, or readiness-relevant.
+
 ## Audit Review Surface
 
 The public read-only review command is:

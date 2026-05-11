@@ -106,6 +106,12 @@ hyard uninstall harness frontend-lab
 hyard uninstall orbit docs
 ```
 
+Uninstall behaves like a package manager operation for the current Harness
+Runtime. It removes the active package record, hosted package truth, unambiguous
+owned root guidance, and package-owned runtime files; retained Git history or
+audit evidence does not keep the package installed, active, reapplicable, or
+readiness-relevant.
+
 Install a reusable template or package:
 
 ```bash
@@ -132,6 +138,10 @@ Uninstall an installed orbit package when it is no longer needed:
 ```bash
 hyard uninstall orbit <orbit-package>
 ```
+
+After uninstall, `hyard check --json` and `hyard ready` evaluate the remaining
+runtime. Deleted install records and removed hosted OrbitSpecs are not treated as
+active package state.
 
 Manage orbit affiliation in the current harness composition:
 
