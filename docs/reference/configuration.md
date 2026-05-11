@@ -210,6 +210,25 @@ Use the validation command that matches the revision and risk.
 | Run View / Author View state | `hyard view status`, `hyard check` |
 | Member hints | `hyard orbit content apply <package> --check --json` |
 
+## Audit, Check, And Prepare
+
+`hyard audit` is the broad read-only review command for the current Git
+worktree. It detects the current Harness Yard revision from
+`.harness/manifest.yaml`, reports `revision_kind`, package summaries, and flat
+findings, and does not mutate repository state. Audit statuses are `pass`,
+`warn`, `fail`, and `not_hyard_revision`. `pass` and `warn` exit 0; `fail` and
+`not_hyard_revision` exit non-zero. A dirty but otherwise valid worktree is an
+Audit advisory, because Audit reviews the current worktree rather than only the
+last commit.
+
+Use the narrower commands when you need their deeper contract:
+
+| Command | Scope | Use when |
+| --- | --- | --- |
+| `hyard audit` | Current Harness Yard worktree revision: runtime, source, orbit-template, or harness-template. | You need a read-only review signal before commit, review, or handoff. |
+| `hyard check` | Harness Runtime diagnostics and readiness detail. | You are operating a runtime and need detailed runtime findings. |
+| `hyard orbit prepare <package> --check --json` | One source or orbit-template package publish candidate. | You are authoring an Orbit Package and need source publish readiness without publishing. |
+
 For documentation-only edits in this repository, also run:
 
 ```bash

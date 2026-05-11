@@ -125,6 +125,10 @@ assert_contains "$quickstart_doc" "hyard view run --check"
 assert_contains "$quickstart_doc" "hyard current"
 assert_contains "$quickstart_doc" "hyard enter docs"
 assert_contains "$quickstart_doc" "hyard create runtime demo-repo"
+assert_contains "$quickstart_doc" "hyard audit --json"
+assert_contains "$quickstart_doc" 'Audit reports one of four statuses: `pass`, `warn`, `fail`, or'
+assert_contains "$quickstart_doc" '`not_hyard_revision` exit non-zero'
+assert_contains "$quickstart_doc" "Audit is scoped to the current Git worktree"
 assert_contains "$quickstart_doc" "### Existing Repository Assembly"
 assert_contains "$quickstart_doc" "hyard init runtime"
 assert_contains "$quickstart_doc" "hyard install https://github.com/acme/harness-templates.git --ref harness-template/frontend-lab"
@@ -192,6 +196,10 @@ assert_contains "$configuration_doc" ".harness/manifest.yaml"
 assert_contains "$configuration_doc" ".harness/orbits/*.yaml"
 assert_contains "$configuration_doc" 'Supported fields are `name`, `description`, `role`, and `lane`'
 assert_contains "$configuration_doc" "hyard orbit content apply <package> --check --json"
+assert_contains "$configuration_doc" "## Audit, Check, And Prepare"
+assert_contains "$configuration_doc" 'Audit statuses are `pass`,'
+assert_contains "$configuration_doc" 'A dirty but otherwise valid worktree is an'
+assert_contains "$configuration_doc" '`hyard orbit prepare <package> --check --json`'
 
 assert_contains "$content_workflows_doc" "# Content And Workflows"
 assert_contains "$content_workflows_doc" "objective"
@@ -231,6 +239,10 @@ assert_contains "$release_surface_doc" "hyard install <template-source>"
 assert_contains "$release_surface_doc" "hyard uninstall orbit <orbit-package>"
 assert_contains "$release_surface_doc" "hyard uninstall harness <harness-package>"
 assert_contains "$release_surface_doc" "hyard orbit member remove"
+assert_contains "$release_surface_doc" "## Audit Review Surface"
+assert_contains "$release_surface_doc" "hyard audit --json"
+assert_contains "$release_surface_doc" "Audit is scoped to the current Git worktree"
+assert_contains "$release_surface_doc" 'Orbit Package publish readiness on `hyard orbit prepare <package> --check --json`'
 assert_contains "$release_surface_doc" "## Harness Start Demo Paths"
 assert_contains "$release_surface_doc" "hyard clone https://github.com/acme/harness-templates.git demo-runtime --ref harness-template/frontend-lab"
 assert_contains "$release_surface_doc" "hyard start --with codex"

@@ -28,6 +28,15 @@ func newAuditCommand() *cobra.Command {
 		Short: "Audit the current Harness Yard revision",
 		Long: "Audit the current Harness Yard revision without mutating repository state.\n" +
 			"Ordinary Git repositories are reported as not_hyard_revision.",
+		Example: "" +
+			"  # Audit the current source revision\n" +
+			"  hyard audit --json\n\n" +
+			"  # Audit the current runtime revision\n" +
+			"  hyard audit\n\n" +
+			"  # Audit the current orbit-template revision\n" +
+			"  hyard audit --json\n\n" +
+			"  # Audit the current harness-template revision\n" +
+			"  hyard audit --json",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			workingDir, err := hyardWorkingDirFromCommand(cmd)

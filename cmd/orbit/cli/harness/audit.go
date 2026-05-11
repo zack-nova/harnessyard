@@ -122,10 +122,18 @@ func AuditRevision(ctx context.Context, workingDir string) (AuditResult, error) 
 	}
 
 	if manifest.Kind == ManifestKindSource {
-		return auditSourceRevision(ctx, repo.Root, manifest)
+		result, err := auditSourceRevision(ctx, repo.Root, manifest)
+		if err != nil {
+			return AuditResult{}, err
+		}
+		return auditResultWithDirtyWorktreeFindings(ctx, result)
 	}
 	if manifest.Kind == ManifestKindOrbitTemplate {
-		return auditOrbitTemplateRevision(ctx, repo.Root, manifest)
+		result, err := auditOrbitTemplateRevision(ctx, repo.Root, manifest)
+		if err != nil {
+			return AuditResult{}, err
+		}
+		return auditResultWithDirtyWorktreeFindings(ctx, result)
 	}
 
 	result := AuditResult{
@@ -149,7 +157,7 @@ func AuditRevision(ctx context.Context, workingDir string) (AuditResult, error) 
 		result.Status = DeriveAuditStatus(result.Findings)
 	}
 
-	return result, nil
+	return auditResultWithDirtyWorktreeFindings(ctx, result)
 }
 
 // DeriveAuditStatus reduces flat audit findings to the command status contract.
@@ -171,6 +179,28 @@ func DeriveAuditStatus(findings []AuditFinding) string {
 	}
 
 	return status
+}
+
+func auditResultWithDirtyWorktreeFindings(ctx context.Context, result AuditResult) (AuditResult, error) {
+	if result.RepoRoot == "" || DeriveAuditStatus(result.Findings) == AuditStatusFail {
+		return result, nil
+	}
+
+	statusEntries, err := gitpkg.WorktreeStatus(ctx, result.RepoRoot)
+	if err != nil {
+		return AuditResult{}, fmt.Errorf("inspect audit worktree status: %w", err)
+	}
+	for _, entry := range statusEntries {
+		result.Findings = append(result.Findings, AuditFinding{
+			Severity: AuditStatusWarn,
+			Kind:     "dirty_worktree",
+			Path:     entry.Path,
+			Message:  fmt.Sprintf("worktree path %q has uncommitted status %s", entry.Path, entry.Code),
+		})
+	}
+	result.Status = DeriveAuditStatus(result.Findings)
+
+	return result, nil
 }
 
 func auditPackageSummaries(manifest ManifestFile) []AuditPackageSummary {
