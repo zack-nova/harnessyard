@@ -63,6 +63,19 @@ func TestLoadRuntimeRepositoryConfigUsesHostedDefinitionsWithoutGlobalConfig(t *
 	require.Equal(t, filepath.Join(repo.Root, ".harness", "orbits", "docs.yaml"), config.Orbits[0].SourcePath)
 }
 
+func TestLoadRuntimeRepositoryConfigUsesDefaultGlobalConfigWithoutHostedDefinitions(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+
+	config, err := orbitpkg.LoadRuntimeRepositoryConfig(context.Background(), repo.Root)
+	require.NoError(t, err)
+
+	require.Equal(t, orbitpkg.DefaultGlobalConfig(), config.Global)
+	require.Empty(t, config.Orbits)
+	require.False(t, config.HasLegacyGlobalConfig)
+}
+
 func TestLoadOrbitSpecAndProjectionPlanDoesNotInjectLegacyConfigIntoHostedControlPaths(t *testing.T) {
 	t.Parallel()
 

@@ -58,7 +58,7 @@ func LoadRuntimeRepositoryConfig(ctx context.Context, repoRoot string) (Reposito
 		return RepositoryConfig{}, fmt.Errorf("load orbit definitions: %w", err)
 	}
 
-	globalConfig, hasLegacyGlobalConfig, err := loadRuntimeGlobalConfig(ctx, repoRoot, len(definitions) > 0)
+	globalConfig, hasLegacyGlobalConfig, err := loadRuntimeGlobalConfig(ctx, repoRoot, true)
 	if err != nil {
 		return RepositoryConfig{}, err
 	}
