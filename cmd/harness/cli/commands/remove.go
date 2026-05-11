@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	removeModeRuntimeCleanup     = "runtime_cleanup"
-	removeModeTemplateFullRemove = "template_full_remove"
+	removeModeRuntimeMemberCleanup = "runtime_cleanup"
+	removeModeTemplateMemberRemove = "template_full_remove"
 )
 
 type removeOutput struct {
@@ -29,12 +29,15 @@ type removeOutput struct {
 	ZeroMemberTemplate    bool     `json:"zero_member_template"`
 }
 
-// NewRemoveCommand creates the harness remove command.
+// NewRemoveCommand creates the plumbing harness member remove command.
 func NewRemoveCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "remove <orbit-id>",
-		Short: "Remove one orbit from the current harness",
-		Args:  cobra.ExactArgs(1),
+		Short: "Remove one lower-level member from the current harness",
+		Long: "Remove one lower-level runtime or template member from the current harness.\n" +
+			"This is plumbing for member operations, not public Package Uninstallation.\n" +
+			"Use `hyard uninstall orbit <package>` or `hyard uninstall harness <package>` for installed package lifecycle.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			targetPath, err := pathFromCommand(cmd)
 			if err != nil {
@@ -58,7 +61,7 @@ func NewRemoveCommand() *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("remove harness member: %w", err)
 				}
-				output.RemoveMode = removeModeRuntimeCleanup
+				output.RemoveMode = removeModeRuntimeMemberCleanup
 				output.ManifestPath = result.ManifestPath
 				output.MemberCount = len(result.Runtime.Members)
 				output.RemovedPaths = result.RemovedPaths
@@ -70,7 +73,7 @@ func NewRemoveCommand() *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("remove harness member: %w", err)
 				}
-				output.RemoveMode = removeModeTemplateFullRemove
+				output.RemoveMode = removeModeTemplateMemberRemove
 				output.ManifestPath = result.ManifestPath
 				output.TemplatePath = result.TemplatePath
 				output.MemberCount = len(result.TemplateManifest.Members)

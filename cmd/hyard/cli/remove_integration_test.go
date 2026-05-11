@@ -23,32 +23,23 @@ type hyardLocalChangeRiskPayload struct {
 	Staged    bool   `json:"staged"`
 }
 
-func TestHyardRemoveOrbitRemovesUnambiguousRuntimeOrbit(t *testing.T) {
+func TestHyardRemoveBareNameRejectsManualRuntimeMember(t *testing.T) {
 	t.Parallel()
 
 	repo := seedCommittedHyardRuntimeRepo(t)
 
 	stdout, stderr, err := executeHyardCLI(t, repo.Root, "remove", "docs", "--json")
-	require.NoError(t, err)
+	require.Error(t, err)
+	require.Empty(t, stdout)
 	require.Empty(t, stderr)
-
-	var payload struct {
-		TargetType   string `json:"target_type"`
-		OrbitPackage string `json:"orbit_package"`
-		OrbitID      string `json:"orbit_id"`
-		RemoveMode   string `json:"remove_mode"`
-		MemberCount  int    `json:"member_count"`
-	}
-	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
-	require.Equal(t, "orbit", payload.TargetType)
-	require.Equal(t, "docs", payload.OrbitPackage)
-	require.Equal(t, "docs", payload.OrbitID)
-	require.Equal(t, "runtime_cleanup", payload.RemoveMode)
-	require.Equal(t, 0, payload.MemberCount)
+	require.ErrorContains(t, err, `remove target "docs" is a manual runtime member, not an installed package`)
+	require.ErrorContains(t, err, "hyard plumbing harness remove docs")
 
 	runtimeFile, err := harnesspkg.LoadRuntimeFile(repo.Root)
 	require.NoError(t, err)
-	require.Empty(t, runtimeFile.Members)
+	require.Len(t, runtimeFile.Members, 1)
+	require.Equal(t, "docs", runtimeFile.Members[0].OrbitID)
+	require.FileExists(t, filepath.Join(repo.Root, "docs", "guide.md"))
 }
 
 func TestHyardUninstallOrbitJSONRemovesInstallBackedRuntimeOrbit(t *testing.T) {
@@ -77,7 +68,7 @@ func TestHyardUninstallOrbitJSONRemovesInstallBackedRuntimeOrbit(t *testing.T) {
 	require.Equal(t, "docs", payload.OrbitPackage)
 	require.Equal(t, "docs", payload.OrbitID)
 	require.Equal(t, "install_orbit", payload.MemberSource)
-	require.Equal(t, "runtime_cleanup", payload.RemoveMode)
+	require.Equal(t, "orbit_package_uninstall", payload.RemoveMode)
 	require.Equal(t, 0, payload.MemberCount)
 	require.Contains(t, payload.RemovedPaths, "docs")
 	require.Contains(t, payload.RemovedPaths, "docs/guide.md")
@@ -97,21 +88,23 @@ func TestHyardUninstallOrbitJSONRemovesInstallBackedRuntimeOrbit(t *testing.T) {
 	require.Equal(t, "Use docs runtime guidance.\n", readRepoFile(t, repo.Root, "AGENTS.md"))
 }
 
-func TestHyardUninstallOrbitTextDisclosesManualRuntimeOrbitSource(t *testing.T) {
+func TestHyardUninstallOrbitRejectsManualRuntimeMember(t *testing.T) {
 	t.Parallel()
 
 	repo := seedCommittedHyardRuntimeRepo(t)
 
-	stdout, stderr, err := executeHyardCLI(t, repo.Root, "uninstall", "orbit", "docs")
-	require.NoError(t, err)
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "uninstall", "orbit", "docs", "--json")
+	require.Error(t, err)
+	require.Empty(t, stdout)
 	require.Empty(t, stderr)
-	require.Contains(t, stdout, "uninstalled orbit package docs from "+repo.Root)
-	require.Contains(t, stdout, "member_source: manual")
-	require.NotContains(t, stdout, "removed orbit package docs")
+	require.ErrorContains(t, err, `uninstall orbit package "docs" is a manual runtime member, not an installed package`)
+	require.ErrorContains(t, err, "hyard plumbing harness remove docs")
 
 	runtimeFile, err := harnesspkg.LoadRuntimeFile(repo.Root)
 	require.NoError(t, err)
-	require.Empty(t, runtimeFile.Members)
+	require.Len(t, runtimeFile.Members, 1)
+	require.Equal(t, "docs", runtimeFile.Members[0].OrbitID)
+	require.FileExists(t, filepath.Join(repo.Root, "docs", "guide.md"))
 }
 
 func TestHyardRemoveOrbitJSONUninstallsInstallBackedRuntimeOrbit(t *testing.T) {
@@ -137,7 +130,7 @@ func TestHyardRemoveOrbitJSONUninstallsInstallBackedRuntimeOrbit(t *testing.T) {
 	require.Equal(t, "docs", payload.OrbitPackage)
 	require.Equal(t, "docs", payload.OrbitID)
 	require.Empty(t, payload.MemberSource)
-	require.Equal(t, "runtime_cleanup", payload.RemoveMode)
+	require.Equal(t, "orbit_package_uninstall", payload.RemoveMode)
 	require.Equal(t, 0, payload.MemberCount)
 	require.False(t, payload.DetachedInstallRecord)
 
@@ -458,7 +451,7 @@ func TestHyardUninstallBareNameResolvesUnambiguousOrbitPackage(t *testing.T) {
 	require.Equal(t, "orbit", payload.TargetType)
 	require.Equal(t, "docs", payload.OrbitPackage)
 	require.Equal(t, "docs", payload.OrbitID)
-	require.Equal(t, "runtime_cleanup", payload.RemoveMode)
+	require.Equal(t, "orbit_package_uninstall", payload.RemoveMode)
 	require.Equal(t, 0, payload.MemberCount)
 
 	runtimeFile, err := harnesspkg.LoadRuntimeFile(repo.Root)
@@ -517,7 +510,7 @@ func TestHyardRemoveOrbitRecompilesLedgerOwnedPackageHookOutputs(t *testing.T) {
 	require.Equal(t, "ok", applyPayload.Status)
 	require.FileExists(t, filepath.Join(repo.Root, ".codex", "hooks.json"))
 
-	stdout, stderr, err = executeHyardCLIUnlocked(t, repo.Root, "remove", "orbit", "docs", "--json")
+	stdout, stderr, err = executeHyardCLIUnlocked(t, repo.Root, "remove", "orbit", "docs", "--yes", "--json")
 	require.NoError(t, err)
 	require.Empty(t, stderr)
 
@@ -568,7 +561,7 @@ func TestHyardRemoveOrbitRecompilesLedgerOwnedPackageHookOutputs(t *testing.T) {
 }
 
 func TestHyardRemoveOrbitRemovesLedgerOwnedPackageHookOutputsWhenLastAddonIsRemoved(t *testing.T) {
-	repo := seedHyardRuntimeWithAgentAddonHook(t)
+	repo := seedHyardInstallBackedRuntimeWithAgentAddonHook(t)
 	repo.AddAndCommit(t, "seed docs package hook")
 	selectHyardAgentAddonFramework(t, repo)
 	makeHyardAgentAddonHandlerExecutable(t, repo)
@@ -587,7 +580,7 @@ func TestHyardRemoveOrbitRemovesLedgerOwnedPackageHookOutputsWhenLastAddonIsRemo
 	require.Equal(t, "ok", applyPayload.Status)
 	require.FileExists(t, filepath.Join(repo.Root, ".codex", "hooks.json"))
 
-	stdout, stderr, err = executeHyardCLIUnlocked(t, repo.Root, "remove", "orbit", "docs", "--json")
+	stdout, stderr, err = executeHyardCLIUnlocked(t, repo.Root, "remove", "orbit", "docs", "--yes", "--json")
 	require.NoError(t, err)
 	require.Empty(t, stderr)
 
@@ -628,7 +621,7 @@ func TestHyardRemoveOrbitRemovesLedgerOwnedPackageHookOutputsWhenLastAddonIsRemo
 }
 
 func TestHyardRemoveOrbitFailsClosedWhenPackageHookOutputIsUserOwned(t *testing.T) {
-	repo := seedHyardRuntimeWithAgentAddonHook(t)
+	repo := seedHyardInstallBackedRuntimeWithAgentAddonHook(t)
 	repo.AddAndCommit(t, "seed docs package hook")
 	selectHyardAgentAddonFramework(t, repo)
 	makeHyardAgentAddonHandlerExecutable(t, repo)
@@ -649,7 +642,7 @@ func TestHyardRemoveOrbitFailsClosedWhenPackageHookOutputIsUserOwned(t *testing.
 	userOwnedHooks := []byte("{\"user\":\"owned\"}\n")
 	require.NoError(t, os.WriteFile(filepath.Join(repo.Root, ".codex", "hooks.json"), userOwnedHooks, 0o600))
 
-	stdout, stderr, err = executeHyardCLIUnlocked(t, repo.Root, "remove", "orbit", "docs", "--json")
+	stdout, stderr, err = executeHyardCLIUnlocked(t, repo.Root, "remove", "orbit", "docs", "--yes", "--json")
 	require.Error(t, err)
 	require.Empty(t, stdout)
 	require.Empty(t, stderr)
@@ -684,7 +677,7 @@ func TestHyardRemoveOrbitRemovesLedgerOwnedPackageSkillOutput(t *testing.T) {
 	require.FileExists(t, filepath.Join(repo.Root, ".codex", "skills", "docs-style"))
 	require.FileExists(t, filepath.Join(repo.Root, ".codex", "skills", "ops-style"))
 
-	stdout, stderr, err = executeHyardCLI(t, repo.Root, "remove", "orbit", "docs", "--json")
+	stdout, stderr, err = executeHyardCLI(t, repo.Root, "remove", "orbit", "docs", "--yes", "--json")
 	require.NoError(t, err)
 	require.Empty(t, stderr)
 
@@ -730,7 +723,7 @@ func TestHyardRemoveRejectsVersionedPackageCoordinate(t *testing.T) {
 	require.Equal(t, "docs", runtimeFile.Members[0].OrbitID)
 }
 
-func TestHyardRemoveOrbitDryRunRequiresInstallBackedPackage(t *testing.T) {
+func TestHyardRemoveOrbitDryRunRejectsManualRuntimeMember(t *testing.T) {
 	t.Parallel()
 
 	repo := seedCommittedHyardRuntimeRepo(t)
@@ -739,7 +732,8 @@ func TestHyardRemoveOrbitDryRunRequiresInstallBackedPackage(t *testing.T) {
 	require.Error(t, err)
 	require.Empty(t, stdout)
 	require.Empty(t, stderr)
-	require.ErrorContains(t, err, "remove orbit --dry-run is only supported for install-backed orbit packages")
+	require.ErrorContains(t, err, `remove orbit package "docs" is a manual runtime member, not an installed package`)
+	require.ErrorContains(t, err, "hyard plumbing harness remove docs")
 }
 
 func TestHyardRemoveOrbitDryRunJSONReportsInstallOwnedFiles(t *testing.T) {
@@ -809,7 +803,7 @@ func TestHyardUninstallBareNameRejectsVersionedPackageCoordinate(t *testing.T) {
 	require.Equal(t, "docs", runtimeFile.Members[0].OrbitID)
 }
 
-func TestHyardRemoveOrbitDisambiguationRemovesOrbitWhenHarnessHasSameName(t *testing.T) {
+func TestHyardRemoveOrbitRejectsManualRuntimeMemberWhenHarnessHasSameName(t *testing.T) {
 	t.Parallel()
 
 	runtimeRoot, harnessID := cloneHyardHarnessRuntime(t)
@@ -818,18 +812,33 @@ func TestHyardRemoveOrbitDisambiguationRemovesOrbitWhenHarnessHasSameName(t *tes
 	require.NoError(t, executeHarnessCLIForHyardTest(t, runtimeRoot, "add", harnessID))
 
 	stdout, stderr, err := executeHyardCLI(t, runtimeRoot, "remove", "orbit", harnessID, "--json")
-	require.NoError(t, err)
+	require.Error(t, err)
+	require.Empty(t, stdout)
 	require.Empty(t, stderr)
+	require.ErrorContains(t, err, `remove orbit package "`+harnessID+`" is a manual runtime member, not an installed package`)
+	require.ErrorContains(t, err, "hyard plumbing harness remove "+harnessID)
 
-	var payload struct {
-		TargetType   string `json:"target_type"`
-		OrbitPackage string `json:"orbit_package"`
-		MemberCount  int    `json:"member_count"`
+	runtimeFile, err := harnesspkg.LoadRuntimeFile(runtimeRoot)
+	require.NoError(t, err)
+	require.Len(t, runtimeFile.Members, 2)
+	var orbitIDs []string
+	for _, member := range runtimeFile.Members {
+		orbitIDs = append(orbitIDs, member.OrbitID)
 	}
-	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
-	require.Equal(t, "orbit", payload.TargetType)
-	require.Equal(t, harnessID, payload.OrbitPackage)
-	require.Equal(t, 1, payload.MemberCount)
+	require.ElementsMatch(t, []string{"docs", harnessID}, orbitIDs)
+}
+
+func TestHyardUninstallOrbitRejectsBundleBackedRuntimeMember(t *testing.T) {
+	t.Parallel()
+
+	runtimeRoot, _ := cloneHyardHarnessRuntime(t)
+
+	stdout, stderr, err := executeHyardCLI(t, runtimeRoot, "uninstall", "orbit", "docs", "--json")
+	require.Error(t, err)
+	require.Empty(t, stdout)
+	require.Empty(t, stderr)
+	require.ErrorContains(t, err, `uninstall orbit package "docs" is a bundle-backed runtime member, not an installed package`)
+	require.ErrorContains(t, err, "hyard plumbing harness remove docs")
 
 	runtimeFile, err := harnesspkg.LoadRuntimeFile(runtimeRoot)
 	require.NoError(t, err)
@@ -885,6 +894,19 @@ func TestHyardUninstallBareNameNotFoundUsesUninstallGuidance(t *testing.T) {
 	require.ErrorContains(t, err, `uninstall target "missing" was not found in the current runtime`)
 	require.ErrorContains(t, err, `hyard uninstall orbit missing`)
 	require.ErrorContains(t, err, `hyard uninstall harness missing`)
+}
+
+func TestHyardUninstallOrbitNotFoundFailsBeforeMemberOperationGuidance(t *testing.T) {
+	t.Parallel()
+
+	repo := seedCommittedHyardRuntimeRepo(t)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "uninstall", "orbit", "missing")
+	require.Error(t, err)
+	require.Empty(t, stdout)
+	require.Empty(t, stderr)
+	require.ErrorContains(t, err, `uninstall orbit package "missing" was not found in the current runtime`)
+	require.NotContains(t, err.Error(), "hyard plumbing harness remove missing")
 }
 
 func TestHyardRemoveHarnessDryRunJSONListsOwnedOrbits(t *testing.T) {
@@ -1086,7 +1108,7 @@ func TestHyardUninstallHarnessYesJSONPreservesRemoveShapedPayload(t *testing.T) 
 	require.Equal(t, "harness", payload.TargetType)
 	require.Equal(t, harnessID, payload.HarnessPackage)
 	require.Equal(t, harnessID, payload.HarnessID)
-	require.Equal(t, "harness_package_remove", payload.RemoveMode)
+	require.Equal(t, "harness_package_uninstall", payload.RemoveMode)
 	require.Equal(t, []string{"docs"}, payload.OrbitPackages)
 	require.Equal(t, []string{"docs"}, payload.OrbitIDs)
 	require.False(t, payload.DryRun)
@@ -1240,10 +1262,25 @@ func seedCommittedHyardInstallBackedRuntimeRepo(t *testing.T) *testutil.Repo {
 	t.Helper()
 
 	repo := seedHyardRunViewOrbitInstallRepo(t)
-	_, stderr, err := executeHyardCLI(t, repo.Root, "install", "orbit-template/docs", "--json")
-	require.NoError(t, err)
-	require.Empty(t, stderr)
+	installHyardOrbitTemplatePackage(t, repo, "docs")
 	repo.AddAndCommit(t, "install docs package")
+
+	return repo
+}
+
+func seedHyardInstallBackedRuntimeWithAgentAddonHook(t *testing.T) *testutil.Repo {
+	t.Helper()
+
+	repo := testutil.NewRepo(t)
+	_, err := harnesspkg.BootstrapRuntimeControlPlane(repo.Root, time.Date(2026, time.April, 26, 11, 55, 0, 0, time.UTC))
+	require.NoError(t, err)
+
+	writeHyardAgentAddonHookPackage(t, repo, "docs")
+	repo.AddAndCommit(t, "seed docs package hook template")
+	saveHyardOrbitTemplateBranch(t, repo, "docs", time.Date(2026, time.April, 26, 12, 0, 0, 0, time.UTC))
+	clearHyardAgentAddonHookPackageRuntimeContent(t, repo, "docs")
+	repo.AddAndCommit(t, "clear docs package hook runtime content")
+	installHyardOrbitTemplatePackage(t, repo, "docs")
 
 	return repo
 }
@@ -1261,19 +1298,57 @@ func seedCommittedHyardRuntimeWithTwoAgentAddonHooks(t *testing.T) *testutil.Rep
 	t.Helper()
 
 	repo := testutil.NewRepo(t)
-	_, _, err := executeHyardCLI(t, repo.Root, "init", "runtime")
+	_, err := harnesspkg.BootstrapRuntimeControlPlane(repo.Root, time.Date(2026, time.April, 26, 11, 55, 0, 0, time.UTC))
 	require.NoError(t, err)
 
 	writeHyardAgentAddonHookPackage(t, repo, "docs")
+	repo.AddAndCommit(t, "seed docs package hook template")
+	saveHyardOrbitTemplateBranch(t, repo, "docs", time.Date(2026, time.April, 26, 12, 0, 0, 0, time.UTC))
+
 	writeHyardAgentAddonHookPackage(t, repo, "ops")
-	repo.Run(t, "add", "-A")
-	_, err = harnesspkg.AddManualMember(context.Background(), repo.Root, "docs", time.Date(2026, time.April, 26, 12, 0, 0, 0, time.UTC))
-	require.NoError(t, err)
-	_, err = harnesspkg.AddManualMember(context.Background(), repo.Root, "ops", time.Date(2026, time.April, 26, 12, 5, 0, 0, time.UTC))
-	require.NoError(t, err)
+	repo.AddAndCommit(t, "seed ops package hook template")
+	saveHyardOrbitTemplateBranch(t, repo, "ops", time.Date(2026, time.April, 26, 12, 5, 0, 0, time.UTC))
+
+	clearHyardAgentAddonHookPackageRuntimeContent(t, repo, "docs")
+	clearHyardAgentAddonHookPackageRuntimeContent(t, repo, "ops")
+	repo.AddAndCommit(t, "clear package hook runtime content")
+	installHyardOrbitTemplatePackage(t, repo, "docs")
+	installHyardOrbitTemplatePackage(t, repo, "ops")
 	repo.AddAndCommit(t, "seed package hooks")
 
 	return repo
+}
+
+func saveHyardOrbitTemplateBranch(t *testing.T, repo *testutil.Repo, packageName string, now time.Time) {
+	t.Helper()
+
+	_, err := orbittemplate.SaveTemplateBranch(context.Background(), orbittemplate.TemplateSaveInput{
+		Preview: orbittemplate.TemplateSavePreviewInput{
+			RepoRoot:     repo.Root,
+			OrbitID:      packageName,
+			TargetBranch: "orbit-template/" + packageName,
+			Now:          now,
+		},
+	})
+	require.NoError(t, err)
+}
+
+func installHyardOrbitTemplatePackage(t *testing.T, repo *testutil.Repo, packageName string) {
+	t.Helper()
+
+	_, stderr, err := executeHyardCLI(t, repo.Root, "install", "orbit-template/"+packageName, "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+}
+
+func clearHyardAgentAddonHookPackageRuntimeContent(t *testing.T, repo *testutil.Repo, packageName string) {
+	t.Helper()
+
+	repo.Run(t, "rm", "-rf",
+		".harness/orbits/"+packageName+".yaml",
+		packageName,
+		"hooks/"+packageName,
+	)
 }
 
 func writeHyardAgentAddonHookPackage(t *testing.T, repo *testutil.Repo, packageName string) {
@@ -1322,19 +1397,35 @@ func seedCommittedHyardRuntimeWithTwoSkillPackages(t *testing.T) *testutil.Repo 
 	t.Helper()
 
 	repo := testutil.NewRepo(t)
-	_, _, err := executeHyardCLI(t, repo.Root, "init", "runtime")
+	_, err := harnesspkg.BootstrapRuntimeControlPlane(repo.Root, time.Date(2026, time.April, 26, 11, 55, 0, 0, time.UTC))
 	require.NoError(t, err)
 
 	writeHyardSkillPackage(t, repo, "docs", "docs-style")
+	repo.AddAndCommit(t, "seed docs skill package template")
+	saveHyardOrbitTemplateBranch(t, repo, "docs", time.Date(2026, time.April, 26, 12, 0, 0, 0, time.UTC))
+
 	writeHyardSkillPackage(t, repo, "ops", "ops-style")
-	repo.Run(t, "add", "-A")
-	_, err = harnesspkg.AddManualMember(context.Background(), repo.Root, "docs", time.Date(2026, time.April, 26, 12, 0, 0, 0, time.UTC))
-	require.NoError(t, err)
-	_, err = harnesspkg.AddManualMember(context.Background(), repo.Root, "ops", time.Date(2026, time.April, 26, 12, 5, 0, 0, time.UTC))
-	require.NoError(t, err)
+	repo.AddAndCommit(t, "seed ops skill package template")
+	saveHyardOrbitTemplateBranch(t, repo, "ops", time.Date(2026, time.April, 26, 12, 5, 0, 0, time.UTC))
+
+	clearHyardSkillPackageRuntimeContent(t, repo, "docs")
+	clearHyardSkillPackageRuntimeContent(t, repo, "ops")
+	repo.AddAndCommit(t, "clear skill package runtime content")
+	installHyardOrbitTemplatePackage(t, repo, "docs")
+	installHyardOrbitTemplatePackage(t, repo, "ops")
 	repo.AddAndCommit(t, "seed skill packages")
 
 	return repo
+}
+
+func clearHyardSkillPackageRuntimeContent(t *testing.T, repo *testutil.Repo, packageName string) {
+	t.Helper()
+
+	repo.Run(t, "rm", "-rf",
+		".harness/orbits/"+packageName+".yaml",
+		packageName,
+		"skills/"+packageName,
+	)
 }
 
 func writeHyardSkillPackage(t *testing.T, repo *testutil.Repo, packageName string, skillName string) {
