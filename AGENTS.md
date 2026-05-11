@@ -4,27 +4,30 @@ This file is a thin agent entry point. Keep durable product, architecture,
 testing, and release rules in `docs/`; keep this root artifact as an index plus
 hard boundaries.
 
-## Read First
+## Startup Reading
 
-Use these docs as the current working set:
+Read this file first. Do not pre-read the full documentation set for every
+task; use the deeper docs below only when the task touches that area.
 
-1. `README.md`
-2. `docs/quickstart.md`
-3. `docs/installation.md`
-4. `docs/README.md`
-5. `docs/reference/release-surface.md`
-6. `docs/maintainers/current-architecture.md`
-7. `docs/maintainers/unresolved-work.md`
-8. `docs/contributing/testing.md`
-9. `docs/maintainers/testing-strategy.md`
-10. `docs/maintainers/release.md`
+## Task-Triggered Reading
+
+- For project overview, setup, or navigation, read `README.md`,
+  `docs/README.md`, `docs/quickstart.md`, and `docs/installation.md` as needed.
+- For implementation, architecture, package responsibility, or known maintainer
+  gaps, read `docs/maintainers/current-architecture.md` and
+  `docs/maintainers/unresolved-work.md`.
+- For tests or validation strategy, read `docs/contributing/testing.md` and
+  `docs/maintainers/testing-strategy.md`.
+- For public command behavior, help text, install flow, release surface, or
+  release process changes, read `docs/reference/release-surface.md` and
+  `docs/maintainers/release.md`.
 
 Historical design docs and historical issue archives were intentionally removed
 from the working tree. Do not recreate them as active references. If old context
 is needed, recover it from external backup and extract only the current decision
 or still-open problem into the maintainer docs above.
 
-## Hard Boundaries
+## Always-On Boundaries
 
 - Treat `hyard` as the public product surface and the only public release
   binary. Historical `orbit` and `harness` command trees are compatibility
@@ -42,11 +45,10 @@ or still-open problem into the maintainer docs above.
 
 ## Implementation Notes
 
-Prefer the package responsibilities documented in
-`docs/maintainers/current-architecture.md`. Keep command files thin; route
-durable behavior into the existing packages. Use the system `git` through
-explicit argument lists, validate identifiers before using them in paths or ref
-names, and prefer NUL-delimited Git I/O for path lists.
+Keep command files thin; route durable behavior into the existing packages. Use
+the system `git` through explicit argument lists, validate identifiers before
+using them in paths or ref names, and prefer NUL-delimited Git I/O for path
+lists.
 
 ## Testing
 
@@ -60,20 +62,16 @@ testing strategy lives in `docs/maintainers/testing-strategy.md`.
 
 # AGENTS.md - Issue Tracker Contract Orbit
 
-This repository uses the Issue Tracker Contract Orbit to manage issue-driven delivery.
+This repository uses the Issue Tracker Contract Orbit for issue-driven delivery.
 
-## Non-Negotiable Rules
+## When To Read
 
-- Read `docs/issue-tracker-orbit/tracker-contract.md` first. If it is still `pending-bootstrap`, run `BOOTSTRAP.md` first.
-- Do not assume issues live in GitHub. Use the backend and mappings selected in the tracker contract.
-- Every open issue must have exactly one canonical state role.
-- Before an issue enters `ready-for-dev`, it must have exactly one issue type, a complete `Dev Brief`, and valid delivery mode metadata when present.
-- Before an issue enters `in-progress`, it must already be in canonical state role `ready-for-dev`.
-- `needs-split`, `blocked`, and `cancelled` are gated states. Record split resolution, blocker/unblock facts, cancellation resolution, duplicate superseding issue, or out-of-scope catalog reference before advancing through those gates.
-- `Dev Workpad` is an issue-scoped execution record, not an external runtime session.
-- `Review Sweep` records only observations. It can identify objective AFK rework, objective AFK merge eligibility, or the need for `human-review`, but it does not decide human-dependent outcomes.
-- `hitl` issues and issues in `human-review` require `Human Review Decision` before `to-rework` or `to-merge`.
-- After `to-rework` work is completed, the issue returns to `in-review`; `to-merge` can enter `merged` only after Land succeeds.
+- When handling issue state, metadata, issue sections, review artifacts,
+  templates, or tracker safety rules, read
+  `docs/issue-tracker-orbit/tracker-contract.md` first. If it is still
+  `pending-bootstrap`, run `BOOTSTRAP.md` first.
+- Do not assume issues live in GitHub. Use the backend and mappings selected in
+  the tracker contract.
 - Do not develop directly on the default branch, and do not locally merge the default branch.
 - If rules, templates, state, or fact sources conflict, stop and ask the human maintainer for a decision.
 
@@ -82,36 +80,43 @@ This repository uses the Issue Tracker Contract Orbit to manage issue-driven del
 - Runtime contract: `docs/issue-tracker-orbit/tracker-contract.md`
 - Documentation index: `docs/issue-tracker-orbit/INDEX.md`
 
-When handling state, metadata, issue sections, review artifacts, templates, or safety rules, read the tracker contract first, then read core or adapter docs as needed.
+After the tracker contract is loaded, read core or adapter docs only as needed.
 
 # AGENTS.md - Issue Discovery Orbit
 
-You are working in the Issue Discovery Orbit. This orbit turns PRD synthesis and issue slicing into traceable work in the issue tracker.
+This orbit turns PRD synthesis and issue slicing into traceable work in the
+issue tracker.
 
-## Required Rules
+## When To Read
 
-1. Before running any skill from this orbit, read `docs/issue-discovery-orbit/discovery-rules.md`.
-2. When publishing a PRD or issues, follow the target repository's Repository Publishing Rules; if rules are missing or conflicting, output candidates only.
+- Before generating PRDs, slicing issues, or publishing issue candidates, read
+  `docs/issue-discovery-orbit/discovery-rules.md`.
+- When publishing a PRD or issues, follow the target repository's Repository
+  Publishing Rules; if rules are missing or conflicting, output candidates only.
 
 # Design Memory Constitution
 
 This repository uses the Design Memory Orbit to preserve long-lived project language and architecture decisions from human-agent design discussions.
 
-## Non-Negotiable Rules
+## When To Read
 
-- Read `docs/design-memory-orbit/INDEX.md` first.
-- Project memory consists of `CONTEXT.md`, `CONTEXT-MAP.md`, `docs/adr/`, and same-named files inside context directories.
-- Do not invent domain terms, context boundaries, or architecture decisions; uncertain content must remain an open question.
-- Missing project memory is not an error; create memory lazily only after a term or decision is confirmed.
-- If any output conflicts with an existing ADR, state the conflict clearly and wait for a human decision.
-
-See `docs/design-memory-orbit/INDEX.md` for more rules and templates.
+- When discussing project language, context boundaries, architecture decisions,
+  `CONTEXT.md`, `CONTEXT-MAP.md`, or ADRs, read
+  `docs/design-memory-orbit/INDEX.md` first.
+- Do not invent domain terms, context boundaries, or architecture decisions;
+  uncertain content must remain an open question.
+- If any output conflicts with an existing ADR, state the conflict clearly and
+  wait for a human decision.
 
 # AGENTS.md - Development Discipline Orbit
 
-You are working in the Development Discipline Orbit. This orbit selects and runs TDD, diagnosis, or review-commit feedback discipline for the target codebase.
+This orbit selects and runs TDD, diagnosis, or review-commit feedback discipline
+for the target codebase.
 
-## Required Rules
+## When To Read
 
-1. Before running any skill from this orbit, apply the currently available orbit or repository discipline rules.
-2. When reporting completion, include the feedback loop used, observed failure signals, passing signals, commit or technical-debt recording result, and any still-missing evidence.
+- Before running a TDD, diagnosis, or review-commit skill, apply the currently
+  available orbit or repository discipline rules.
+- When reporting completion, include the feedback loop used, observed failure
+  signals, passing signals, commit or technical-debt recording result, and any
+  still-missing evidence.
