@@ -131,13 +131,17 @@ func AuditRevision(ctx context.Context, workingDir string) (AuditResult, error) 
 		Packages:     auditPackageSummaries(manifest),
 		Findings:     []AuditFinding{},
 	}
-	if manifest.Kind == ManifestKindRuntime {
+	switch manifest.Kind {
+	case ManifestKindRuntime:
 		runtimeSummary, runtimeFindings, err := auditRuntimeRevision(ctx, repo.Root)
 		if err != nil {
 			return AuditResult{}, err
 		}
 		result.Runtime = &runtimeSummary
 		result.Findings = runtimeFindings
+		result.Status = DeriveAuditStatus(result.Findings)
+	case ManifestKindHarnessTemplate:
+		result.Findings = auditHarnessTemplateRevision(ctx, repo.Root)
 		result.Status = DeriveAuditStatus(result.Findings)
 	}
 
@@ -244,6 +248,33 @@ func auditRuntimeRevision(ctx context.Context, repoRoot string) (AuditRuntimeSum
 			Summary:               readiness.Summary,
 		},
 	}, findings, nil
+}
+
+func auditHarnessTemplateRevision(ctx context.Context, repoRoot string) []AuditFinding {
+	if _, err := ResolveWorktreeTemplateInstallSource(ctx, repoRoot); err != nil {
+		return []AuditFinding{auditFindingFromTemplateInstallSourceError(err, repoRoot)}
+	}
+
+	return []AuditFinding{}
+}
+
+func auditFindingFromTemplateInstallSourceError(err error, repoRoot string) AuditFinding {
+	finding := AuditFinding{
+		Severity: AuditStatusFail,
+		Kind:     templateInstallSourceFindingInstallabilityInvalid,
+		Message:  stableAuditRepoError(err, repoRoot),
+	}
+
+	var validationErr *templateInstallSourceValidationError
+	if errors.As(err, &validationErr) {
+		if strings.TrimSpace(validationErr.Kind) != "" {
+			finding.Kind = validationErr.Kind
+		}
+		finding.Package = validationErr.Package
+		finding.Path = validationErr.Path
+	}
+
+	return finding
 }
 
 func auditFindingsFromRuntimeCheck(findings []CheckFinding) []AuditFinding {
