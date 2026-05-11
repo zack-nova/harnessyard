@@ -20,37 +20,39 @@ const bundleRecordSchemaVersion = 1
 
 // BundleRecord stores one harness template bundle installation provenance record.
 type BundleRecord struct {
-	SchemaVersion        int                                     `yaml:"schema_version"`
-	HarnessID            string                                  `yaml:"harness_id"`
-	Template             orbittemplate.Source                    `yaml:"template"`
-	RecommendedFramework string                                  `yaml:"recommended_framework,omitempty"`
-	AgentConfig          *AgentConfigFile                        `yaml:"agent_config,omitempty"`
-	AgentOverlays        map[string]string                       `yaml:"agent_overlays,omitempty"`
-	AgentAddons          *orbittemplate.AgentAddonsSnapshot      `yaml:"agent_addons,omitempty"`
-	MemberIDs            []string                                `yaml:"member_ids"`
-	AppliedAt            time.Time                               `yaml:"applied_at"`
-	IncludesRootAgents   bool                                    `yaml:"includes_root_agents"`
-	OwnedPaths           []string                                `yaml:"owned_paths"`
-	OwnedPathDigests     map[string]string                       `yaml:"owned_path_digests,omitempty"`
-	RootAgentsDigest     string                                  `yaml:"root_agents_digest,omitempty"`
-	Variables            *orbittemplate.InstallVariablesSnapshot `yaml:"variables,omitempty"`
+	SchemaVersion        int                                      `yaml:"schema_version"`
+	HarnessID            string                                   `yaml:"harness_id"`
+	Template             orbittemplate.Source                     `yaml:"template"`
+	RecommendedFramework string                                   `yaml:"recommended_framework,omitempty"`
+	AgentConfig          *AgentConfigFile                         `yaml:"agent_config,omitempty"`
+	AgentOverlays        map[string]string                        `yaml:"agent_overlays,omitempty"`
+	AgentAddons          *orbittemplate.AgentAddonsSnapshot       `yaml:"agent_addons,omitempty"`
+	MemberIDs            []string                                 `yaml:"member_ids"`
+	AppliedAt            time.Time                                `yaml:"applied_at"`
+	Registry             *orbittemplate.InstallRegistryProvenance `yaml:"registry,omitempty"`
+	IncludesRootAgents   bool                                     `yaml:"includes_root_agents"`
+	OwnedPaths           []string                                 `yaml:"owned_paths"`
+	OwnedPathDigests     map[string]string                        `yaml:"owned_path_digests,omitempty"`
+	RootAgentsDigest     string                                   `yaml:"root_agents_digest,omitempty"`
+	Variables            *orbittemplate.InstallVariablesSnapshot  `yaml:"variables,omitempty"`
 }
 
 type rawBundleRecord struct {
-	SchemaVersion        *int                               `yaml:"schema_version"`
-	HarnessID            *string                            `yaml:"harness_id"`
-	Template             *rawBundleTemplateSource           `yaml:"template"`
-	RecommendedFramework *string                            `yaml:"recommended_framework"`
-	AgentConfig          *rawAgentConfigFile                `yaml:"agent_config"`
-	AgentOverlays        map[string]string                  `yaml:"agent_overlays"`
-	AgentAddons          *orbittemplate.AgentAddonsSnapshot `yaml:"agent_addons"`
-	MemberIDs            *[]string                          `yaml:"member_ids"`
-	AppliedAt            *time.Time                         `yaml:"applied_at"`
-	IncludesRootAgents   *bool                              `yaml:"includes_root_agents"`
-	OwnedPaths           *[]string                          `yaml:"owned_paths"`
-	OwnedPathDigests     map[string]string                  `yaml:"owned_path_digests"`
-	RootAgentsDigest     *string                            `yaml:"root_agents_digest"`
-	Variables            *rawBundleVariablesSnapshot        `yaml:"variables"`
+	SchemaVersion        *int                                     `yaml:"schema_version"`
+	HarnessID            *string                                  `yaml:"harness_id"`
+	Template             *rawBundleTemplateSource                 `yaml:"template"`
+	RecommendedFramework *string                                  `yaml:"recommended_framework"`
+	AgentConfig          *rawAgentConfigFile                      `yaml:"agent_config"`
+	AgentOverlays        map[string]string                        `yaml:"agent_overlays"`
+	AgentAddons          *orbittemplate.AgentAddonsSnapshot       `yaml:"agent_addons"`
+	MemberIDs            *[]string                                `yaml:"member_ids"`
+	AppliedAt            *time.Time                               `yaml:"applied_at"`
+	Registry             *orbittemplate.InstallRegistryProvenance `yaml:"registry"`
+	IncludesRootAgents   *bool                                    `yaml:"includes_root_agents"`
+	OwnedPaths           *[]string                                `yaml:"owned_paths"`
+	OwnedPathDigests     map[string]string                        `yaml:"owned_path_digests"`
+	RootAgentsDigest     *string                                  `yaml:"root_agents_digest"`
+	Variables            *rawBundleVariablesSnapshot              `yaml:"variables"`
 }
 
 type rawBundleTemplateSource struct {
@@ -179,6 +181,11 @@ func ValidateBundleRecord(record BundleRecord) error {
 	if record.AgentAddons != nil {
 		if err := orbittemplate.ValidateAgentAddonsSnapshot(*record.AgentAddons); err != nil {
 			return fmt.Errorf("agent_addons: %w", err)
+		}
+	}
+	if record.Registry != nil {
+		if err := orbittemplate.ValidateInstallRegistryProvenance(*record.Registry); err != nil {
+			return fmt.Errorf("registry: %w", err)
 		}
 	}
 	if record.AppliedAt.IsZero() {
@@ -337,6 +344,9 @@ func (raw rawBundleRecord) toBundleRecord() (BundleRecord, error) {
 	if raw.AgentAddons != nil {
 		record.AgentAddons = raw.AgentAddons
 	}
+	if raw.Registry != nil {
+		record.Registry = raw.Registry
+	}
 	if raw.OwnedPathDigests != nil {
 		record.OwnedPathDigests = make(map[string]string, len(raw.OwnedPathDigests))
 		for path, digest := range raw.OwnedPathDigests {
@@ -483,6 +493,9 @@ func bundleRecordNode(record BundleRecord) *yaml.Node {
 	contractutil.AppendMapping(root, "member_ids", memberIDsNode)
 
 	contractutil.AppendMapping(root, "applied_at", contractutil.TimestampNode(record.AppliedAt))
+	if record.Registry != nil {
+		contractutil.AppendMapping(root, "registry", orbittemplate.InstallRegistryProvenanceNode(*record.Registry))
+	}
 	contractutil.AppendMapping(root, "includes_root_agents", contractutil.BoolNode(record.IncludesRootAgents))
 	if record.Variables != nil {
 		contractutil.AppendMapping(root, "variables", orbittemplate.InstallVariablesSnapshotNode(*record.Variables))

@@ -114,6 +114,21 @@ func TestHyardInstallExactPackageHandleCoordinateFromGitRegistry(t *testing.T) {
 			PackageCoordinate  string `json:"package_coordinate"`
 			PackageLocatorKind string `json:"package_locator_kind"`
 			PackageLocator     string `json:"package_locator"`
+			RegistryProvenance struct {
+				RequestedCoordinate string `json:"requested_coordinate"`
+				ResolvedCoordinate  string `json:"resolved_coordinate"`
+				ResolvedVersion     string `json:"resolved_version"`
+				RegistryRemote      string `json:"registry_remote"`
+				RegistryRef         string `json:"registry_ref"`
+				PackageType         string `json:"package_type"`
+				PackageIdentity     string `json:"package_identity"`
+				PackageStatus       string `json:"package_status"`
+				SourceRemote        string `json:"source_remote"`
+				SourceRef           string `json:"source_ref"`
+				SourceCommit        string `json:"source_commit"`
+				CacheUsed           bool   `json:"cache_used"`
+				CacheStale          bool   `json:"cache_stale"`
+			} `json:"registry_provenance"`
 		} `json:"source"`
 		OrbitID string `json:"orbit_id"`
 	}
@@ -128,6 +143,19 @@ func TestHyardInstallExactPackageHandleCoordinateFromGitRegistry(t *testing.T) {
 	require.Equal(t, "acme/docs@0.1.0", preview.Source.PackageCoordinate)
 	require.Equal(t, "git", preview.Source.PackageLocatorKind)
 	require.Contains(t, preview.Source.PackageLocator, sourceCommit)
+	require.Equal(t, "acme/docs@0.1.0", preview.Source.RegistryProvenance.RequestedCoordinate)
+	require.Equal(t, "acme/docs@0.1.0", preview.Source.RegistryProvenance.ResolvedCoordinate)
+	require.Equal(t, "0.1.0", preview.Source.RegistryProvenance.ResolvedVersion)
+	require.Equal(t, gitpkg.ComparablePath(registryRemote), gitpkg.ComparablePath(preview.Source.RegistryProvenance.RegistryRemote))
+	require.Equal(t, "HEAD", preview.Source.RegistryProvenance.RegistryRef)
+	require.Equal(t, "orbit", preview.Source.RegistryProvenance.PackageType)
+	require.Equal(t, "docs", preview.Source.RegistryProvenance.PackageIdentity)
+	require.Equal(t, "active", preview.Source.RegistryProvenance.PackageStatus)
+	require.Equal(t, gitpkg.ComparablePath(sourceRemote), gitpkg.ComparablePath(preview.Source.RegistryProvenance.SourceRemote))
+	require.Equal(t, "orbit-template/docs", preview.Source.RegistryProvenance.SourceRef)
+	require.Equal(t, sourceCommit, preview.Source.RegistryProvenance.SourceCommit)
+	require.False(t, preview.Source.RegistryProvenance.CacheUsed)
+	require.False(t, preview.Source.RegistryProvenance.CacheStale)
 
 	stdout, stderr, err = executeHyardCLIUnlocked(
 		t,
@@ -144,9 +172,15 @@ func TestHyardInstallExactPackageHandleCoordinateFromGitRegistry(t *testing.T) {
 	var result struct {
 		DryRun bool `json:"dry_run"`
 		Source struct {
-			Repo   string `json:"repo"`
-			Ref    string `json:"ref"`
-			Commit string `json:"commit"`
+			Repo               string `json:"repo"`
+			Ref                string `json:"ref"`
+			Commit             string `json:"commit"`
+			RegistryProvenance struct {
+				RequestedCoordinate string `json:"requested_coordinate"`
+				ResolvedCoordinate  string `json:"resolved_coordinate"`
+				SourceRef           string `json:"source_ref"`
+				SourceCommit        string `json:"source_commit"`
+			} `json:"registry_provenance"`
 		} `json:"source"`
 		OrbitID string `json:"orbit_id"`
 	}
@@ -156,6 +190,10 @@ func TestHyardInstallExactPackageHandleCoordinateFromGitRegistry(t *testing.T) {
 	require.Equal(t, gitpkg.ComparablePath(sourceRemote), gitpkg.ComparablePath(result.Source.Repo))
 	require.Equal(t, sourceCommit, result.Source.Ref)
 	require.Equal(t, sourceCommit, result.Source.Commit)
+	require.Equal(t, "acme/docs@0.1.0", result.Source.RegistryProvenance.RequestedCoordinate)
+	require.Equal(t, "acme/docs@0.1.0", result.Source.RegistryProvenance.ResolvedCoordinate)
+	require.Equal(t, "orbit-template/docs", result.Source.RegistryProvenance.SourceRef)
+	require.Equal(t, sourceCommit, result.Source.RegistryProvenance.SourceCommit)
 
 	record, err := harnesspkg.LoadInstallRecord(runtimeRepo.Root, "docs")
 	require.NoError(t, err)
@@ -163,6 +201,123 @@ func TestHyardInstallExactPackageHandleCoordinateFromGitRegistry(t *testing.T) {
 	require.Equal(t, gitpkg.ComparablePath(sourceRemote), gitpkg.ComparablePath(record.Template.SourceRepo))
 	require.Equal(t, sourceCommit, record.Template.SourceRef)
 	require.Equal(t, sourceCommit, record.Template.TemplateCommit)
+	require.NotNil(t, record.Registry)
+	require.Equal(t, "acme/docs@0.1.0", record.Registry.RequestedCoordinate)
+	require.Equal(t, "acme/docs@0.1.0", record.Registry.ResolvedCoordinate)
+	require.Equal(t, "0.1.0", record.Registry.ResolvedVersion)
+	require.Equal(t, gitpkg.ComparablePath(registryRemote), gitpkg.ComparablePath(record.Registry.RegistryRemote))
+	require.Equal(t, "HEAD", record.Registry.RegistryRef)
+	require.Equal(t, "orbit", record.Registry.PackageType)
+	require.Equal(t, "docs", record.Registry.PackageIdentity)
+	require.Equal(t, "active", record.Registry.PackageStatus)
+	require.Equal(t, gitpkg.ComparablePath(sourceRemote), gitpkg.ComparablePath(record.Registry.SourceRemote))
+	require.Equal(t, "orbit-template/docs", record.Registry.SourceRef)
+	require.Equal(t, sourceCommit, record.Registry.SourceCommit)
+	require.False(t, record.Registry.CacheUsed)
+	require.False(t, record.Registry.CacheStale)
+
+	recordData, err := os.ReadFile(filepath.Join(runtimeRepo.Root, ".harness", "installs", "docs.yaml"))
+	require.NoError(t, err)
+	require.Contains(t, string(recordData), "requested_coordinate: acme/docs@0.1.0\n")
+	require.Contains(t, string(recordData), "package_identity: docs\n")
+	require.Contains(t, string(recordData), "source_commit: "+sourceCommit+"\n")
+	require.Contains(t, string(recordData), "cache_used: false\n")
+	require.Contains(t, string(recordData), "cache_stale: false\n")
+}
+
+func TestHyardInstallPackageHandleCoordinateTextReportsRegistryProvenance(t *testing.T) {
+	lockHyardProcessEnv(t)
+	t.Setenv("HYARD_CACHE_DIR", t.TempDir())
+
+	fixture := seedPackageHandleInstallFixture(t, "active")
+
+	stdout, stderr, err := executeHyardCLIUnlocked(
+		t,
+		fixture.RuntimeRepo.Root,
+		"install",
+		"acme/docs@latest",
+		"--registry-source",
+		fixture.RegistryRemote,
+	)
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+	require.Contains(t, stdout, "registry.requested_coordinate: acme/docs@latest\n")
+	require.Contains(t, stdout, "registry.resolved_coordinate: acme/docs@0.1.0\n")
+	require.Contains(t, stdout, "registry.resolved_version: 0.1.0\n")
+	require.Contains(t, stdout, "registry.registry_remote: "+fixture.RegistryRemote+"\n")
+	require.Contains(t, stdout, "registry.registry_ref: HEAD\n")
+	require.Contains(t, stdout, "registry.package_type: orbit\n")
+	require.Contains(t, stdout, "registry.package_identity: docs\n")
+	require.Contains(t, stdout, "registry.source_remote: "+fixture.SourceRemote+"\n")
+	require.Contains(t, stdout, "registry.source_ref: orbit-template/docs\n")
+	require.Contains(t, stdout, "registry.source_commit: "+fixture.SourceCommit+"\n")
+	require.Contains(t, stdout, "registry.cache_used: false\n")
+	require.Contains(t, stdout, "registry.cache_stale: false\n")
+}
+
+func TestHyardInstallLatestPackageHandleCoordinateRecordsStaleRegistryCacheProvenance(t *testing.T) {
+	lockHyardProcessEnv(t)
+	t.Setenv("HYARD_CACHE_DIR", t.TempDir())
+
+	fixture := seedPackageHandleInstallFixture(t, "active")
+
+	_, stderr, err := executeHyardCLIUnlocked(
+		t,
+		fixture.RuntimeRepo.Root,
+		"install",
+		"acme/docs@latest",
+		"--registry-source",
+		fixture.RegistryRemote,
+		"--dry-run",
+		"--json",
+	)
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	offlineRegistryRemote := fixture.RegistryRemote + ".offline"
+	require.NoError(t, os.Rename(fixture.RegistryRemote, offlineRegistryRemote))
+	t.Cleanup(func() {
+		require.NoError(t, os.Rename(offlineRegistryRemote, fixture.RegistryRemote))
+	})
+
+	stdout, stderr, err := executeHyardCLIUnlocked(
+		t,
+		fixture.RuntimeRepo.Root,
+		"install",
+		"acme/docs@latest",
+		"--registry-source",
+		fixture.RegistryRemote,
+		"--json",
+	)
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var result struct {
+		Source struct {
+			RegistryProvenance struct {
+				RequestedCoordinate string `json:"requested_coordinate"`
+				ResolvedCoordinate  string `json:"resolved_coordinate"`
+				CacheUsed           bool   `json:"cache_used"`
+				CacheStale          bool   `json:"cache_stale"`
+			} `json:"registry_provenance"`
+		} `json:"source"`
+		Warnings []string `json:"warnings"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &result))
+	require.Equal(t, "acme/docs@latest", result.Source.RegistryProvenance.RequestedCoordinate)
+	require.Equal(t, "acme/docs@0.1.0", result.Source.RegistryProvenance.ResolvedCoordinate)
+	require.True(t, result.Source.RegistryProvenance.CacheUsed)
+	require.True(t, result.Source.RegistryProvenance.CacheStale)
+	require.Len(t, result.Warnings, 1)
+	require.Contains(t, result.Warnings[0], "stale cached registry resolution")
+
+	record, err := harnesspkg.LoadInstallRecord(fixture.RuntimeRepo.Root, "docs")
+	require.NoError(t, err)
+	require.NotNil(t, record.Registry)
+	require.Equal(t, "acme/docs@latest", record.Registry.RequestedCoordinate)
+	require.Equal(t, "acme/docs@0.1.0", record.Registry.ResolvedCoordinate)
+	require.True(t, record.Registry.CacheUsed)
+	require.True(t, record.Registry.CacheStale)
 }
 
 func TestHyardInstallNamespacedLatestPackageHandleCoordinateFromGitRegistry(t *testing.T) {

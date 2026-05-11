@@ -88,6 +88,64 @@ func TestWriteAndLoadInstallRecordRoundTripWithDetachedStatus(t *testing.T) {
 	require.Equal(t, input, loaded)
 }
 
+func TestWriteAndLoadInstallRecordRoundTripWithRegistryProvenance(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := t.TempDir()
+	appliedAt := time.Date(2026, time.March, 21, 11, 15, 0, 0, time.UTC)
+	input := InstallRecord{
+		SchemaVersion: 1,
+		OrbitID:       "docs",
+		Template: Source{
+			SourceKind:     InstallSourceKindExternalGit,
+			SourceRepo:     "https://example.com/acme/templates.git",
+			SourceRef:      "aabbccddeeff0011223344556677889900aabbcc",
+			TemplateCommit: "aabbccddeeff0011223344556677889900aabbcc",
+		},
+		AppliedAt: appliedAt,
+		Registry: &InstallRegistryProvenance{
+			RequestedCoordinate: "docs@latest",
+			ResolvedCoordinate:  "acme/docs@0.1.0",
+			ResolvedVersion:     "0.1.0",
+			RegistryRemote:      "https://example.com/acme/registry.git",
+			RegistryRef:         "main",
+			PackageType:         "orbit",
+			PackageIdentity:     "docs",
+			PackageStatus:       "deprecated",
+			SourceRemote:        "https://example.com/acme/templates.git",
+			SourceRef:           "orbit-template/docs",
+			SourceCommit:        "aabbccddeeff0011223344556677889900aabbcc",
+			CacheUsed:           true,
+			CacheStale:          true,
+		},
+	}
+
+	filename, err := WriteInstallRecord(repoRoot, input)
+	require.NoError(t, err)
+
+	data, err := os.ReadFile(filename)
+	require.NoError(t, err)
+	require.Contains(t, string(data), ""+
+		"registry:\n"+
+		"    requested_coordinate: docs@latest\n"+
+		"    resolved_coordinate: acme/docs@0.1.0\n"+
+		"    resolved_version: 0.1.0\n"+
+		"    registry_remote: https://example.com/acme/registry.git\n"+
+		"    registry_ref: main\n"+
+		"    package_type: orbit\n"+
+		"    package_identity: docs\n"+
+		"    package_status: deprecated\n"+
+		"    source_remote: https://example.com/acme/templates.git\n"+
+		"    source_ref: orbit-template/docs\n"+
+		"    source_commit: aabbccddeeff0011223344556677889900aabbcc\n"+
+		"    cache_used: true\n"+
+		"    cache_stale: true\n")
+
+	loaded, err := LoadInstallRecord(repoRoot, "docs")
+	require.NoError(t, err)
+	require.Equal(t, input, loaded)
+}
+
 func TestWriteAndLoadInstallRecordRoundTripWithEmptyVariableSnapshot(t *testing.T) {
 	t.Parallel()
 

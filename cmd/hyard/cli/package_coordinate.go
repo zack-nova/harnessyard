@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/zack-nova/harnessyard/cmd/orbit/cli/ids"
+	"github.com/zack-nova/harnessyard/cmd/orbit/cli/registry"
 )
 
 const (
@@ -17,6 +18,20 @@ const (
 	packageLocatorKindFlag = "package-locator-kind"
 	packageLocatorFlag     = "package-locator"
 	packageWarningFlag     = "package-resolution-warning"
+
+	packageRegistryRequestedCoordinateFlag = "package-registry-requested-coordinate"
+	packageRegistryResolvedCoordinateFlag  = "package-registry-resolved-coordinate"
+	packageRegistryResolvedVersionFlag     = "package-registry-resolved-version"
+	packageRegistryRemoteFlag              = "package-registry-remote"
+	packageRegistryRefFlag                 = "package-registry-ref"
+	packageRegistryPackageTypeFlag         = "package-registry-package-type"
+	packageRegistryPackageIdentityFlag     = "package-registry-package-identity"
+	packageRegistryPackageStatusFlag       = "package-registry-package-status"
+	packageRegistrySourceRemoteFlag        = "package-registry-source-remote"
+	packageRegistrySourceRefFlag           = "package-registry-source-ref"
+	packageRegistrySourceCommitFlag        = "package-registry-source-commit"
+	packageRegistryCacheUsedFlag           = "package-registry-cache-used"
+	packageRegistryCacheStaleFlag          = "package-registry-cache-stale"
 
 	packageVersionNone    = "none"
 	packageKindRelease    = "release"
@@ -119,6 +134,32 @@ func bindPackageResolutionWarnings(cmd *cobra.Command, warnings []string) error 
 	for _, warning := range warnings {
 		if err := cmd.Flags().Set(packageWarningFlag, warning); err != nil {
 			return fmt.Errorf("set --%s flag: %w", packageWarningFlag, err)
+		}
+	}
+
+	return nil
+}
+
+func bindPackageRegistryProvenance(cmd *cobra.Command, resolution registry.Resolution) error {
+	exactCoordinate := resolution.ExactCoordinate()
+	cacheStale := resolution.FromCache && !resolution.Coordinate.IsExactVersion()
+	for flagName, value := range map[string]string{
+		packageRegistryRequestedCoordinateFlag: resolution.Coordinate.String(),
+		packageRegistryResolvedCoordinateFlag:  exactCoordinate.String(),
+		packageRegistryResolvedVersionFlag:     exactCoordinate.Version,
+		packageRegistryRemoteFlag:              resolution.RegistryRemote,
+		packageRegistryRefFlag:                 resolution.RegistryRef,
+		packageRegistryPackageTypeFlag:         resolution.PackageType,
+		packageRegistryPackageIdentityFlag:     resolution.PackageIdentity,
+		packageRegistryPackageStatusFlag:       string(resolution.EffectivePackageStatus()),
+		packageRegistrySourceRemoteFlag:        resolution.SourceRemote,
+		packageRegistrySourceRefFlag:           resolution.SourceRef,
+		packageRegistrySourceCommitFlag:        resolution.SourceCommit,
+		packageRegistryCacheUsedFlag:           fmt.Sprintf("%t", resolution.FromCache),
+		packageRegistryCacheStaleFlag:          fmt.Sprintf("%t", cacheStale),
+	} {
+		if err := setFlagString(cmd, flagName, value); err != nil {
+			return err
 		}
 	}
 

@@ -61,6 +61,7 @@ type TemplateApplyPreviewInput struct {
 	EditorMode              bool
 	Editor                  Editor
 	Now                     time.Time
+	Registry                *InstallRegistryProvenance
 }
 
 // ApplyConflict summarizes one fail-closed apply conflict.
@@ -104,6 +105,7 @@ type RemoteTemplateApplyPreviewInput struct {
 	EditorMode              bool
 	Editor                  Editor
 	Now                     time.Time
+	Registry                *InstallRegistryProvenance
 }
 
 // RemoteTemplateApplyInput describes the real write path for remote template apply.
@@ -435,12 +437,21 @@ func BuildTemplateApplyPreview(ctx context.Context, input TemplateApplyPreviewIn
 		return TemplateApplyPreview{}, err
 	}
 
-	return buildTemplateApplyPreviewFromSourceWithLocalInputs(ctx, input.RepoRoot, source, Source{
+	preview, err := buildTemplateApplyPreviewFromSourceWithLocalInputs(ctx, input.RepoRoot, source, Source{
 		SourceKind:     InstallSourceKindLocalBranch,
 		SourceRepo:     "",
 		SourceRef:      source.Ref,
 		TemplateCommit: source.Commit,
 	}, localInputs, input.VariableNamespaces, input.RuntimeInstallOrbitIDs, input.SkipSharedAgentsWrite, input.AllowUnresolvedBindings, input.Interactive, input.Prompter, input.EditorMode, input.Editor, input.Now)
+	if err != nil {
+		return TemplateApplyPreview{}, err
+	}
+	if input.Registry != nil {
+		registry := *input.Registry
+		preview.InstallRecord.Registry = &registry
+	}
+
+	return preview, nil
 }
 
 // BuildRemoteTemplateApplyPreview resolves a remote template source, renders files, and reports conflicts without writing.
@@ -467,6 +478,10 @@ func BuildRemoteTemplateApplyPreview(ctx context.Context, input RemoteTemplateAp
 	}, localInputs, input.VariableNamespaces, input.RuntimeInstallOrbitIDs, input.SkipSharedAgentsWrite, input.AllowUnresolvedBindings, input.Interactive, input.Prompter, input.EditorMode, input.Editor, input.Now)
 	if err != nil {
 		return TemplateApplyPreview{}, err
+	}
+	if input.Registry != nil {
+		registry := *input.Registry
+		preview.InstallRecord.Registry = &registry
 	}
 
 	preview.RemoteRequestedRef = candidate.RequestedRef

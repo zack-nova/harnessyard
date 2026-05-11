@@ -28,13 +28,14 @@ const legacyInstallSourceKindRemoteGit = "remote_git"
 
 // InstallRecord stores the schema-backed template source for one orbit installation.
 type InstallRecord struct {
-	SchemaVersion int                       `yaml:"schema_version"`
-	OrbitID       string                    `yaml:"orbit_id"`
-	Status        string                    `yaml:"status,omitempty"`
-	Template      Source                    `yaml:"template"`
-	AppliedAt     time.Time                 `yaml:"applied_at"`
-	Variables     *InstallVariablesSnapshot `yaml:"variables,omitempty"`
-	AgentAddons   *AgentAddonsSnapshot      `yaml:"agent_addons,omitempty"`
+	SchemaVersion int                        `yaml:"schema_version"`
+	OrbitID       string                     `yaml:"orbit_id"`
+	Status        string                     `yaml:"status,omitempty"`
+	Template      Source                     `yaml:"template"`
+	AppliedAt     time.Time                  `yaml:"applied_at"`
+	Registry      *InstallRegistryProvenance `yaml:"registry,omitempty"`
+	Variables     *InstallVariablesSnapshot  `yaml:"variables,omitempty"`
+	AgentAddons   *AgentAddonsSnapshot       `yaml:"agent_addons,omitempty"`
 }
 
 // Source captures where the installed template came from.
@@ -43,6 +44,23 @@ type Source struct {
 	SourceRepo     string `yaml:"source_repo"`
 	SourceRef      string `yaml:"source_ref"`
 	TemplateCommit string `yaml:"template_commit"`
+}
+
+// InstallRegistryProvenance captures a registry-backed install resolution.
+type InstallRegistryProvenance struct {
+	RequestedCoordinate string `yaml:"requested_coordinate"`
+	ResolvedCoordinate  string `yaml:"resolved_coordinate"`
+	ResolvedVersion     string `yaml:"resolved_version"`
+	RegistryRemote      string `yaml:"registry_remote"`
+	RegistryRef         string `yaml:"registry_ref"`
+	PackageType         string `yaml:"package_type"`
+	PackageIdentity     string `yaml:"package_identity"`
+	PackageStatus       string `yaml:"package_status,omitempty"`
+	SourceRemote        string `yaml:"source_remote"`
+	SourceRef           string `yaml:"source_ref"`
+	SourceCommit        string `yaml:"source_commit"`
+	CacheUsed           bool   `yaml:"cache_used"`
+	CacheStale          bool   `yaml:"cache_stale"`
 }
 
 // InstallVariablesSnapshot stores the variable contract and values that produced one install.
@@ -55,13 +73,14 @@ type InstallVariablesSnapshot struct {
 }
 
 type rawInstallRecord struct {
-	SchemaVersion *int                         `yaml:"schema_version"`
-	OrbitID       *string                      `yaml:"orbit_id"`
-	Status        *string                      `yaml:"status"`
-	Template      *rawTemplateSource           `yaml:"template"`
-	AppliedAt     *time.Time                   `yaml:"applied_at"`
-	Variables     *rawInstallVariablesSnapshot `yaml:"variables"`
-	AgentAddons   *AgentAddonsSnapshot         `yaml:"agent_addons"`
+	SchemaVersion *int                          `yaml:"schema_version"`
+	OrbitID       *string                       `yaml:"orbit_id"`
+	Status        *string                       `yaml:"status"`
+	Template      *rawTemplateSource            `yaml:"template"`
+	AppliedAt     *time.Time                    `yaml:"applied_at"`
+	Registry      *rawInstallRegistryProvenance `yaml:"registry"`
+	Variables     *rawInstallVariablesSnapshot  `yaml:"variables"`
+	AgentAddons   *AgentAddonsSnapshot          `yaml:"agent_addons"`
 }
 
 type rawTemplateSource struct {
@@ -69,6 +88,22 @@ type rawTemplateSource struct {
 	SourceRepo     *string `yaml:"source_repo"`
 	SourceRef      *string `yaml:"source_ref"`
 	TemplateCommit *string `yaml:"template_commit"`
+}
+
+type rawInstallRegistryProvenance struct {
+	RequestedCoordinate *string `yaml:"requested_coordinate"`
+	ResolvedCoordinate  *string `yaml:"resolved_coordinate"`
+	ResolvedVersion     *string `yaml:"resolved_version"`
+	RegistryRemote      *string `yaml:"registry_remote"`
+	RegistryRef         *string `yaml:"registry_ref"`
+	PackageType         *string `yaml:"package_type"`
+	PackageIdentity     *string `yaml:"package_identity"`
+	PackageStatus       *string `yaml:"package_status"`
+	SourceRemote        *string `yaml:"source_remote"`
+	SourceRef           *string `yaml:"source_ref"`
+	SourceCommit        *string `yaml:"source_commit"`
+	CacheUsed           *bool   `yaml:"cache_used"`
+	CacheStale          *bool   `yaml:"cache_stale"`
 }
 
 type rawInstallVariablesSnapshot struct {
@@ -190,6 +225,11 @@ func ValidateInstallRecord(record InstallRecord) error {
 	if record.AppliedAt.IsZero() {
 		return fmt.Errorf("applied_at must be set")
 	}
+	if record.Registry != nil {
+		if err := validateInstallRegistryProvenance(*record.Registry); err != nil {
+			return fmt.Errorf("registry: %w", err)
+		}
+	}
 	if record.Variables != nil {
 		if err := validateInstallVariablesSnapshot(*record.Variables); err != nil {
 			return fmt.Errorf("variables: %w", err)
@@ -202,6 +242,11 @@ func ValidateInstallRecord(record InstallRecord) error {
 	}
 
 	return nil
+}
+
+// ValidateInstallRegistryProvenance validates a registry-backed install provenance snapshot.
+func ValidateInstallRegistryProvenance(provenance InstallRegistryProvenance) error {
+	return validateInstallRegistryProvenance(provenance)
 }
 
 // EffectiveInstallRecordStatus returns the runtime status for one install record, defaulting missing status to active.
@@ -270,6 +315,13 @@ func (raw rawInstallRecord) toInstallRecord() (InstallRecord, error) {
 	if raw.Status != nil {
 		record.Status = strings.TrimSpace(*raw.Status)
 	}
+	if raw.Registry != nil {
+		registry, err := raw.Registry.toInstallRegistryProvenance()
+		if err != nil {
+			return InstallRecord{}, err
+		}
+		record.Registry = &registry
+	}
 	if raw.Variables != nil {
 		snapshot, err := raw.Variables.toInstallVariablesSnapshot()
 		if err != nil {
@@ -308,6 +360,58 @@ func (raw rawTemplateSource) toTemplateSource() (Source, error) {
 	}
 }
 
+func (raw rawInstallRegistryProvenance) toInstallRegistryProvenance() (InstallRegistryProvenance, error) {
+	switch {
+	case raw.RequestedCoordinate == nil:
+		return InstallRegistryProvenance{}, fmt.Errorf("registry.requested_coordinate must be present")
+	case raw.ResolvedCoordinate == nil:
+		return InstallRegistryProvenance{}, fmt.Errorf("registry.resolved_coordinate must be present")
+	case raw.ResolvedVersion == nil:
+		return InstallRegistryProvenance{}, fmt.Errorf("registry.resolved_version must be present")
+	case raw.RegistryRemote == nil:
+		return InstallRegistryProvenance{}, fmt.Errorf("registry.registry_remote must be present")
+	case raw.RegistryRef == nil:
+		return InstallRegistryProvenance{}, fmt.Errorf("registry.registry_ref must be present")
+	case raw.PackageType == nil:
+		return InstallRegistryProvenance{}, fmt.Errorf("registry.package_type must be present")
+	case raw.PackageIdentity == nil:
+		return InstallRegistryProvenance{}, fmt.Errorf("registry.package_identity must be present")
+	case raw.SourceRemote == nil:
+		return InstallRegistryProvenance{}, fmt.Errorf("registry.source_remote must be present")
+	case raw.SourceRef == nil:
+		return InstallRegistryProvenance{}, fmt.Errorf("registry.source_ref must be present")
+	case raw.SourceCommit == nil:
+		return InstallRegistryProvenance{}, fmt.Errorf("registry.source_commit must be present")
+	}
+
+	provenance := InstallRegistryProvenance{
+		RequestedCoordinate: strings.TrimSpace(*raw.RequestedCoordinate),
+		ResolvedCoordinate:  strings.TrimSpace(*raw.ResolvedCoordinate),
+		ResolvedVersion:     strings.TrimSpace(*raw.ResolvedVersion),
+		RegistryRemote:      strings.TrimSpace(*raw.RegistryRemote),
+		RegistryRef:         strings.TrimSpace(*raw.RegistryRef),
+		PackageType:         strings.TrimSpace(*raw.PackageType),
+		PackageIdentity:     strings.TrimSpace(*raw.PackageIdentity),
+		SourceRemote:        strings.TrimSpace(*raw.SourceRemote),
+		SourceRef:           strings.TrimSpace(*raw.SourceRef),
+		SourceCommit:        strings.TrimSpace(*raw.SourceCommit),
+	}
+	if raw.PackageStatus != nil {
+		provenance.PackageStatus = strings.TrimSpace(*raw.PackageStatus)
+	}
+	if raw.CacheUsed != nil {
+		provenance.CacheUsed = *raw.CacheUsed
+	}
+	if raw.CacheStale != nil {
+		provenance.CacheStale = *raw.CacheStale
+	}
+	if err := validateInstallRegistryProvenance(provenance); err != nil {
+		return InstallRegistryProvenance{}, err
+	}
+
+	return provenance, nil
+}
+
 func normalizeInstallSourceKind(kind string) string {
 	switch strings.TrimSpace(kind) {
 	case legacyInstallSourceKindRemoteGit:
@@ -320,6 +424,39 @@ func normalizeInstallSourceKind(kind string) string {
 func canonicalizeInstallRecord(record InstallRecord) InstallRecord {
 	record.Template.SourceKind = normalizeInstallSourceKind(record.Template.SourceKind)
 	return record
+}
+
+func validateInstallRegistryProvenance(provenance InstallRegistryProvenance) error {
+	required := map[string]string{
+		"requested_coordinate": provenance.RequestedCoordinate,
+		"resolved_coordinate":  provenance.ResolvedCoordinate,
+		"resolved_version":     provenance.ResolvedVersion,
+		"registry_remote":      provenance.RegistryRemote,
+		"registry_ref":         provenance.RegistryRef,
+		"package_type":         provenance.PackageType,
+		"package_identity":     provenance.PackageIdentity,
+		"source_remote":        provenance.SourceRemote,
+		"source_ref":           provenance.SourceRef,
+		"source_commit":        provenance.SourceCommit,
+	}
+	for field, value := range required {
+		if strings.TrimSpace(value) == "" {
+			return fmt.Errorf("%s must not be empty", field)
+		}
+	}
+	switch provenance.PackageType {
+	case ids.PackageTypeOrbit, ids.PackageTypeHarness:
+	default:
+		return fmt.Errorf("package_type must be %q or %q", ids.PackageTypeOrbit, ids.PackageTypeHarness)
+	}
+	if _, err := ids.NewPackageIdentity(provenance.PackageType, provenance.PackageIdentity, ""); err != nil {
+		return fmt.Errorf("package_identity: %w", err)
+	}
+	if provenance.CacheStale && !provenance.CacheUsed {
+		return fmt.Errorf("cache_stale requires cache_used")
+	}
+
+	return nil
 }
 
 func (raw rawInstallVariablesSnapshot) toInstallVariablesSnapshot() (InstallVariablesSnapshot, error) {
@@ -441,6 +578,9 @@ func installRecordNode(record InstallRecord) *yaml.Node {
 	contractutil.AppendMapping(root, "template", templateNode)
 
 	contractutil.AppendMapping(root, "applied_at", contractutil.TimestampNode(record.AppliedAt))
+	if record.Registry != nil {
+		contractutil.AppendMapping(root, "registry", installRegistryProvenanceNode(*record.Registry))
+	}
 	if record.Variables != nil {
 		contractutil.AppendMapping(root, "variables", installVariablesSnapshotNode(*record.Variables))
 	}
@@ -449,6 +589,32 @@ func installRecordNode(record InstallRecord) *yaml.Node {
 	}
 
 	return root
+}
+
+func installRegistryProvenanceNode(provenance InstallRegistryProvenance) *yaml.Node {
+	root := contractutil.MappingNode()
+	contractutil.AppendMapping(root, "requested_coordinate", contractutil.StringNode(provenance.RequestedCoordinate))
+	contractutil.AppendMapping(root, "resolved_coordinate", contractutil.StringNode(provenance.ResolvedCoordinate))
+	contractutil.AppendMapping(root, "resolved_version", contractutil.StringNode(provenance.ResolvedVersion))
+	contractutil.AppendMapping(root, "registry_remote", contractutil.StringNode(provenance.RegistryRemote))
+	contractutil.AppendMapping(root, "registry_ref", contractutil.StringNode(provenance.RegistryRef))
+	contractutil.AppendMapping(root, "package_type", contractutil.StringNode(provenance.PackageType))
+	contractutil.AppendMapping(root, "package_identity", contractutil.StringNode(provenance.PackageIdentity))
+	if strings.TrimSpace(provenance.PackageStatus) != "" {
+		contractutil.AppendMapping(root, "package_status", contractutil.StringNode(provenance.PackageStatus))
+	}
+	contractutil.AppendMapping(root, "source_remote", contractutil.StringNode(provenance.SourceRemote))
+	contractutil.AppendMapping(root, "source_ref", contractutil.StringNode(provenance.SourceRef))
+	contractutil.AppendMapping(root, "source_commit", contractutil.StringNode(provenance.SourceCommit))
+	contractutil.AppendMapping(root, "cache_used", contractutil.BoolNode(provenance.CacheUsed))
+	contractutil.AppendMapping(root, "cache_stale", contractutil.BoolNode(provenance.CacheStale))
+
+	return root
+}
+
+// InstallRegistryProvenanceNode returns a stable YAML node for registry provenance.
+func InstallRegistryProvenanceNode(provenance InstallRegistryProvenance) *yaml.Node {
+	return installRegistryProvenanceNode(provenance)
 }
 
 func installVariablesSnapshotNode(snapshot InstallVariablesSnapshot) *yaml.Node {
