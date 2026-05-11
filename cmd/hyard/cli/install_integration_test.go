@@ -165,6 +165,90 @@ func TestHyardInstallExactPackageHandleCoordinateFromGitRegistry(t *testing.T) {
 	require.Equal(t, sourceCommit, record.Template.TemplateCommit)
 }
 
+func TestHyardInstallNamespacedLatestPackageHandleCoordinateFromGitRegistry(t *testing.T) {
+	lockHyardProcessEnv(t)
+	t.Setenv("HYARD_CACHE_DIR", t.TempDir())
+
+	fixture := seedPackageHandleInstallFixture(t, "active")
+
+	for _, coordinate := range []string{"Acme/Docs", "acme/docs@latest"} {
+		stdout, stderr, err := executeHyardCLIUnlocked(
+			t,
+			fixture.RuntimeRepo.Root,
+			"install",
+			coordinate,
+			"--registry-source",
+			fixture.RegistryRemote,
+			"--dry-run",
+			"--json",
+		)
+		require.NoError(t, err)
+		require.Empty(t, stderr)
+
+		var preview struct {
+			DryRun bool `json:"dry_run"`
+			Source struct {
+				Kind              string `json:"kind"`
+				Repo              string `json:"repo"`
+				Ref               string `json:"ref"`
+				Commit            string `json:"commit"`
+				PackageCoordinate string `json:"package_coordinate"`
+			} `json:"source"`
+			OrbitID string `json:"orbit_id"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(stdout), &preview))
+		require.True(t, preview.DryRun)
+		require.Equal(t, "docs", preview.OrbitID)
+		require.Equal(t, orbittemplate.InstallSourceKindExternalGit, preview.Source.Kind)
+		require.Equal(t, gitpkg.ComparablePath(fixture.SourceRemote), gitpkg.ComparablePath(preview.Source.Repo))
+		require.Equal(t, fixture.SourceCommit, preview.Source.Ref)
+		require.Equal(t, fixture.SourceCommit, preview.Source.Commit)
+		require.Equal(t, "acme/docs@latest", preview.Source.PackageCoordinate)
+	}
+}
+
+func TestHyardInstallCuratedLatestPackageHandleCoordinateFromGitRegistry(t *testing.T) {
+	lockHyardProcessEnv(t)
+	t.Setenv("HYARD_CACHE_DIR", t.TempDir())
+
+	fixture := seedPackageHandleInstallFixture(t, "active")
+
+	for _, coordinate := range []string{"Docs", "docs@latest"} {
+		stdout, stderr, err := executeHyardCLIUnlocked(
+			t,
+			fixture.RuntimeRepo.Root,
+			"install",
+			coordinate,
+			"--registry-source",
+			fixture.RegistryRemote,
+			"--dry-run",
+			"--json",
+		)
+		require.NoError(t, err)
+		require.Empty(t, stderr)
+
+		var preview struct {
+			DryRun bool `json:"dry_run"`
+			Source struct {
+				Kind              string `json:"kind"`
+				Repo              string `json:"repo"`
+				Ref               string `json:"ref"`
+				Commit            string `json:"commit"`
+				PackageCoordinate string `json:"package_coordinate"`
+			} `json:"source"`
+			OrbitID string `json:"orbit_id"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(stdout), &preview))
+		require.True(t, preview.DryRun)
+		require.Equal(t, "docs", preview.OrbitID)
+		require.Equal(t, orbittemplate.InstallSourceKindExternalGit, preview.Source.Kind)
+		require.Equal(t, gitpkg.ComparablePath(fixture.SourceRemote), gitpkg.ComparablePath(preview.Source.Repo))
+		require.Equal(t, fixture.SourceCommit, preview.Source.Ref)
+		require.Equal(t, fixture.SourceCommit, preview.Source.Commit)
+		require.Equal(t, "docs@latest", preview.Source.PackageCoordinate)
+	}
+}
+
 func TestHyardInstallYankedPackageHandleCoordinateRequiresOverride(t *testing.T) {
 	lockHyardProcessEnv(t)
 	t.Setenv("HYARD_CACHE_DIR", t.TempDir())
@@ -325,12 +409,19 @@ func seedPackageHandleInstallFixture(t *testing.T, packageStatus string) package
 
 	registryRepo := testutil.NewRepo(t)
 	registryRepo.Run(t, "branch", "-m", "main")
+	registryRepo.WriteFile(t, "curated/index.yaml", ""+
+		"schema_version: 1\n"+
+		"curated:\n"+
+		"  docs:\n"+
+		"    target: acme/docs\n")
 	registryRepo.WriteFile(t, "packages/acme/index.yaml", fmt.Sprintf(""+
 		"schema_version: 1\n"+
 		"namespace: acme\n"+
 		"packages:\n"+
 		"  docs:\n"+
 		"    status: %s\n"+
+		"    dist_tags:\n"+
+		"      latest: 0.1.0\n"+
 		"    versions:\n"+
 		"      0.1.0:\n"+
 		"        package_type: orbit\n"+

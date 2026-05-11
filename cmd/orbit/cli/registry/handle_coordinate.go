@@ -42,14 +42,25 @@ func LooksPackageHandleCoordinate(raw string) bool {
 	}
 
 	handle, suffix, hasSuffix := strings.Cut(trimmed, "@")
-	if !hasSuffix || suffix == "" {
-		return false
+	if hasSuffix {
+		if suffix == "" || strings.Contains(suffix, ":") {
+			return false
+		}
+		normalizedSelector := strings.ToLower(suffix)
+		version := strings.TrimPrefix(normalizedSelector, "v")
+		if normalizedSelector != "latest" && !handleSemverPattern.MatchString(version) {
+			return false
+		}
 	}
 	if strings.ContainsAny(handle, `:\`) || strings.HasPrefix(handle, ".") || strings.HasPrefix(handle, "/") {
 		return false
 	}
+	if !hasSuffix && (strings.HasPrefix(strings.ToLower(handle), "orbit-template/") || strings.HasPrefix(strings.ToLower(handle), "harness-template/")) {
+		return false
+	}
 
-	return strings.Count(handle, "/") == 1
+	slashCount := strings.Count(handle, "/")
+	return slashCount == 0 || slashCount == 1
 }
 
 // ParsePackageHandleCoordinate parses a registry-backed Package Handle Coordinate.

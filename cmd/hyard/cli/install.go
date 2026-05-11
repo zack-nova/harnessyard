@@ -17,8 +17,10 @@ import (
 func newInstallCommand() *cobra.Command {
 	cmd := harnesscommands.NewInstallCommand()
 	originalRunE := cmd.RunE
-	cmd.Use = "install <package-handle@version|package@git:ref|template-branch|git-source>"
+	cmd.Use = "install <package-handle|package@git:ref|template-branch|git-source>"
 	cmd.Example = "" +
+		"  hyard install docs\n" +
+		"  hyard install acme/docs@latest\n" +
 		"  hyard install acme/docs@0.1.0\n" +
 		"  hyard install docs@git:orbit-template/docs\n" +
 		"  hyard install orbit-template/docs --bindings .harness/vars.yaml\n" +
@@ -72,9 +74,6 @@ func resolvePackageHandleInstallCoordinate(cmd *cobra.Command, raw string) (regi
 	if err != nil {
 		return registry.Resolution{}, fmt.Errorf("parse package handle coordinate: %w", err)
 	}
-	if !coordinate.IsExactVersion() {
-		return registry.Resolution{}, fmt.Errorf("hyard install currently supports exact SemVer Package Handle Coordinates only; got %s", coordinate.String())
-	}
 	if cmd.Flags().Changed("ref") {
 		return registry.Resolution{}, fmt.Errorf("package handle coordinate %s cannot be combined with --ref; registry versions resolve their source ref from catalog data", coordinate.String())
 	}
@@ -96,7 +95,7 @@ func resolvePackageHandleInstallCoordinate(cmd *cobra.Command, raw string) (regi
 		return registry.Resolution{}, fmt.Errorf("resolve registry cache root: %w", err)
 	}
 
-	resolution, err := registry.ResolveExactPackageHandleCoordinate(cmd.Context(), registry.ResolveInput{
+	resolution, err := registry.ResolvePackageHandleCoordinate(cmd.Context(), registry.ResolveInput{
 		RepoRoot:       resolved.Repo.Root,
 		Coordinate:     coordinate,
 		RegistrySource: registrySource,
@@ -163,9 +162,10 @@ func hyardInstallTargetPathFromCommand(cmd *cobra.Command) (string, error) {
 }
 
 func packageMetadataFromRegistryResolution(resolution registry.Resolution) packageMetadata {
+	exactCoordinate := resolution.ExactCoordinate()
 	return packageMetadata{
 		name:        resolution.PackageIdentity,
-		version:     resolution.Coordinate.Version,
+		version:     exactCoordinate.Version,
 		publishKind: packageKindRelease,
 		coordinate:  resolution.Coordinate.String(),
 		locatorKind: packageLocatorKindGit,

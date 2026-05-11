@@ -30,7 +30,7 @@ func NewRootCommand() *cobra.Command {
 			"  hyard create runtime demo-repo\n" +
 			"  hyard create source ./research-source --orbit research\n" +
 			"  hyard clone ../starter-template --ref harness-template/workspace\n" +
-			"  hyard install orbit-template/docs --bindings .harness/vars.yaml\n" +
+			"  hyard install docs --bindings .harness/vars.yaml\n" +
 			"  hyard current\n" +
 			"  hyard enter docs\n" +
 			"  hyard status\n" +
