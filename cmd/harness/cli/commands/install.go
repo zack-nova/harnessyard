@@ -21,17 +21,34 @@ import (
 )
 
 type installSourceJSON struct {
-	Kind               string `json:"kind"`
-	Repo               string `json:"repo,omitempty"`
-	Ref                string `json:"ref"`
-	RequestedRef       string `json:"requested_ref,omitempty"`
-	ResolvedRef        string `json:"resolved_ref,omitempty"`
-	ResolutionKind     string `json:"resolution_kind,omitempty"`
-	Commit             string `json:"commit"`
-	PackageName        string `json:"package_name,omitempty"`
-	PackageCoordinate  string `json:"package_coordinate,omitempty"`
-	PackageLocatorKind string `json:"package_locator_kind,omitempty"`
-	PackageLocator     string `json:"package_locator,omitempty"`
+	Kind               string                         `json:"kind"`
+	Repo               string                         `json:"repo,omitempty"`
+	Ref                string                         `json:"ref"`
+	RequestedRef       string                         `json:"requested_ref,omitempty"`
+	ResolvedRef        string                         `json:"resolved_ref,omitempty"`
+	ResolutionKind     string                         `json:"resolution_kind,omitempty"`
+	Commit             string                         `json:"commit"`
+	PackageName        string                         `json:"package_name,omitempty"`
+	PackageCoordinate  string                         `json:"package_coordinate,omitempty"`
+	PackageLocatorKind string                         `json:"package_locator_kind,omitempty"`
+	PackageLocator     string                         `json:"package_locator,omitempty"`
+	RegistryProvenance *installRegistryProvenanceJSON `json:"registry_provenance,omitempty"`
+}
+
+type installRegistryProvenanceJSON struct {
+	RequestedCoordinate string `json:"requested_coordinate"`
+	ResolvedCoordinate  string `json:"resolved_coordinate"`
+	ResolvedVersion     string `json:"resolved_version"`
+	RegistryRemote      string `json:"registry_remote"`
+	RegistryRef         string `json:"registry_ref"`
+	PackageType         string `json:"package_type"`
+	PackageIdentity     string `json:"package_identity"`
+	PackageStatus       string `json:"package_status,omitempty"`
+	SourceRemote        string `json:"source_remote"`
+	SourceRef           string `json:"source_ref"`
+	SourceCommit        string `json:"source_commit"`
+	CacheUsed           bool   `json:"cache_used"`
+	CacheStale          bool   `json:"cache_stale"`
 }
 
 type installBindingJSON struct {
@@ -198,6 +215,14 @@ func NewInstallCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			registryProvenance, hasRegistryProvenance, err := readInstallRegistryProvenance(cmd)
+			if err != nil {
+				return err
+			}
+			var registryProvenancePtr *orbittemplate.InstallRegistryProvenance
+			if hasRegistryProvenance {
+				registryProvenancePtr = &registryProvenance
+			}
 
 			sourceArg := args[0]
 			prompter := buildInstallPrompter(cmd, interactive)
@@ -249,6 +274,7 @@ func NewInstallCommand() *cobra.Command {
 							Editor:                  editor,
 							RequireResolvedBindings: !allowUnresolvedBindings,
 							Now:                     now,
+							Registry:                registryProvenancePtr,
 						})
 						if err != nil {
 							return fmt.Errorf("build harness template install preview: %w", err)
@@ -281,6 +307,7 @@ func NewInstallCommand() *cobra.Command {
 						Editor:                  editor,
 						RequireResolvedBindings: !allowUnresolvedBindings,
 						Now:                     now,
+						Registry:                registryProvenancePtr,
 					})
 					if err != nil {
 						return fmt.Errorf("build harness template install preview: %w", err)
@@ -320,6 +347,7 @@ func NewInstallCommand() *cobra.Command {
 					EditorMode:              editorMode,
 					Editor:                  editor,
 					Now:                     now,
+					Registry:                registryProvenancePtr,
 				}
 				if err := stageProgress(progress, "resolving bindings"); err != nil {
 					return err
@@ -431,6 +459,7 @@ func NewInstallCommand() *cobra.Command {
 				EditorMode:              editorMode,
 				Editor:                  editor,
 				Now:                     now,
+				Registry:                registryProvenancePtr,
 			}
 			if err := preflightRemoteInstallLocalInputs(cmd.Context(), resolved.Repo.Root, bindingsPath); err != nil {
 				return err
@@ -485,6 +514,7 @@ func NewInstallCommand() *cobra.Command {
 							Editor:                  editor,
 							RequireResolvedBindings: !allowUnresolvedBindings,
 							Now:                     now,
+							Registry:                registryProvenancePtr,
 						})
 						if err != nil {
 							return fmt.Errorf("build harness template install preview: %w", err)
@@ -521,6 +551,7 @@ func NewInstallCommand() *cobra.Command {
 						Editor:                  editor,
 						RequireResolvedBindings: !allowUnresolvedBindings,
 						Now:                     now,
+						Registry:                registryProvenancePtr,
 					})
 					if err != nil {
 						return fmt.Errorf("build harness template install preview: %w", err)
@@ -580,6 +611,7 @@ func NewInstallCommand() *cobra.Command {
 								Editor:                  editor,
 								RequireResolvedBindings: !allowUnresolvedBindings,
 								Now:                     now,
+								Registry:                registryProvenancePtr,
 							})
 							if err != nil {
 								return fmt.Errorf("build harness template install preview: %w", err)
@@ -609,6 +641,7 @@ func NewInstallCommand() *cobra.Command {
 							Editor:                  editor,
 							RequireResolvedBindings: !allowUnresolvedBindings,
 							Now:                     now,
+							Registry:                registryProvenancePtr,
 						})
 						if err != nil {
 							return fmt.Errorf("build harness template install preview: %w", err)
@@ -747,6 +780,7 @@ type installPackageMetadata struct {
 	LocatorKind string
 	Locator     string
 	Warnings    []string
+	Registry    *orbittemplate.InstallRegistryProvenance
 }
 
 func addInstallPackageMetadataFlags(cmd *cobra.Command) {
@@ -757,7 +791,41 @@ func addInstallPackageMetadataFlags(cmd *cobra.Command) {
 	cmd.Flags().String("package-locator-kind", "", "User-facing package locator kind for install output")
 	cmd.Flags().String("package-locator", "", "User-facing package locator for install output")
 	cmd.Flags().StringArray("package-resolution-warning", nil, "User-facing package resolution warnings for install output")
-	for _, flagName := range []string{"package-name", "package-version", "package-publish-kind", "package-coordinate", "package-locator-kind", "package-locator", "package-resolution-warning"} {
+	cmd.Flags().String("package-registry-requested-coordinate", "", "Package Handle Coordinate requested from a registry")
+	cmd.Flags().String("package-registry-resolved-coordinate", "", "Package Handle Coordinate resolved from a registry")
+	cmd.Flags().String("package-registry-resolved-version", "", "Package version resolved from a registry")
+	cmd.Flags().String("package-registry-remote", "", "Canonical registry remote used for package resolution")
+	cmd.Flags().String("package-registry-ref", "", "Registry ref used for package resolution")
+	cmd.Flags().String("package-registry-package-type", "", "Registry package type")
+	cmd.Flags().String("package-registry-package-identity", "", "Registry Package Identity")
+	cmd.Flags().String("package-registry-package-status", "", "Registry package status")
+	cmd.Flags().String("package-registry-source-remote", "", "Resolved package source remote")
+	cmd.Flags().String("package-registry-source-ref", "", "Resolved package source ref")
+	cmd.Flags().String("package-registry-source-commit", "", "Resolved package source commit")
+	cmd.Flags().Bool("package-registry-cache-used", false, "Whether registry resolution used a verified cache entry")
+	cmd.Flags().Bool("package-registry-cache-stale", false, "Whether registry resolution used stale cache because fresh registry data was unavailable")
+	for _, flagName := range []string{
+		"package-name",
+		"package-version",
+		"package-publish-kind",
+		"package-coordinate",
+		"package-locator-kind",
+		"package-locator",
+		"package-resolution-warning",
+		"package-registry-requested-coordinate",
+		"package-registry-resolved-coordinate",
+		"package-registry-resolved-version",
+		"package-registry-remote",
+		"package-registry-ref",
+		"package-registry-package-type",
+		"package-registry-package-identity",
+		"package-registry-package-status",
+		"package-registry-source-remote",
+		"package-registry-source-ref",
+		"package-registry-source-commit",
+		"package-registry-cache-used",
+		"package-registry-cache-stale",
+	} {
 		if err := cmd.Flags().MarkHidden(flagName); err != nil {
 			panic(err)
 		}
@@ -785,6 +853,14 @@ func readInstallPackageMetadata(cmd *cobra.Command) (installPackageMetadata, err
 	if err != nil {
 		return installPackageMetadata{}, fmt.Errorf("read --package-resolution-warning flag: %w", err)
 	}
+	registryProvenance, hasRegistryProvenance, err := readInstallRegistryProvenance(cmd)
+	if err != nil {
+		return installPackageMetadata{}, err
+	}
+	var registryProvenancePtr *orbittemplate.InstallRegistryProvenance
+	if hasRegistryProvenance {
+		registryProvenancePtr = &registryProvenance
+	}
 
 	return installPackageMetadata{
 		Name:        name,
@@ -792,7 +868,67 @@ func readInstallPackageMetadata(cmd *cobra.Command) (installPackageMetadata, err
 		LocatorKind: locatorKind,
 		Locator:     locator,
 		Warnings:    append([]string(nil), warnings...),
+		Registry:    registryProvenancePtr,
 	}, nil
+}
+
+func readInstallRegistryProvenance(cmd *cobra.Command) (orbittemplate.InstallRegistryProvenance, bool, error) {
+	requestedCoordinate, err := cmd.Flags().GetString("package-registry-requested-coordinate")
+	if err != nil {
+		return orbittemplate.InstallRegistryProvenance{}, false, fmt.Errorf("read --package-registry-requested-coordinate flag: %w", err)
+	}
+	if strings.TrimSpace(requestedCoordinate) == "" {
+		return orbittemplate.InstallRegistryProvenance{}, false, nil
+	}
+
+	stringFlags := map[string]*string{
+		"package-registry-resolved-coordinate": new(string),
+		"package-registry-resolved-version":    new(string),
+		"package-registry-remote":              new(string),
+		"package-registry-ref":                 new(string),
+		"package-registry-package-type":        new(string),
+		"package-registry-package-identity":    new(string),
+		"package-registry-package-status":      new(string),
+		"package-registry-source-remote":       new(string),
+		"package-registry-source-ref":          new(string),
+		"package-registry-source-commit":       new(string),
+	}
+	for flagName, target := range stringFlags {
+		value, readErr := cmd.Flags().GetString(flagName)
+		if readErr != nil {
+			return orbittemplate.InstallRegistryProvenance{}, false, fmt.Errorf("read --%s flag: %w", flagName, readErr)
+		}
+		*target = value
+	}
+	cacheUsed, err := cmd.Flags().GetBool("package-registry-cache-used")
+	if err != nil {
+		return orbittemplate.InstallRegistryProvenance{}, false, fmt.Errorf("read --package-registry-cache-used flag: %w", err)
+	}
+	cacheStale, err := cmd.Flags().GetBool("package-registry-cache-stale")
+	if err != nil {
+		return orbittemplate.InstallRegistryProvenance{}, false, fmt.Errorf("read --package-registry-cache-stale flag: %w", err)
+	}
+
+	provenance := orbittemplate.InstallRegistryProvenance{
+		RequestedCoordinate: strings.TrimSpace(requestedCoordinate),
+		ResolvedCoordinate:  strings.TrimSpace(*stringFlags["package-registry-resolved-coordinate"]),
+		ResolvedVersion:     strings.TrimSpace(*stringFlags["package-registry-resolved-version"]),
+		RegistryRemote:      strings.TrimSpace(*stringFlags["package-registry-remote"]),
+		RegistryRef:         strings.TrimSpace(*stringFlags["package-registry-ref"]),
+		PackageType:         strings.TrimSpace(*stringFlags["package-registry-package-type"]),
+		PackageIdentity:     strings.TrimSpace(*stringFlags["package-registry-package-identity"]),
+		PackageStatus:       strings.TrimSpace(*stringFlags["package-registry-package-status"]),
+		SourceRemote:        strings.TrimSpace(*stringFlags["package-registry-source-remote"]),
+		SourceRef:           strings.TrimSpace(*stringFlags["package-registry-source-ref"]),
+		SourceCommit:        strings.TrimSpace(*stringFlags["package-registry-source-commit"]),
+		CacheUsed:           cacheUsed,
+		CacheStale:          cacheStale,
+	}
+	if err := orbittemplate.ValidateInstallRegistryProvenance(provenance); err != nil {
+		return orbittemplate.InstallRegistryProvenance{}, false, fmt.Errorf("registry provenance: %w", err)
+	}
+
+	return provenance, true, nil
 }
 
 func allowUnresolvedBindingsFromFlags(cmd *cobra.Command) (bool, error) {
@@ -1173,6 +1309,9 @@ func emitInstallPreview(cmd *cobra.Command, harnessRoot string, preview orbittem
 	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "source_commit: %s\n", preview.Source.Commit); err != nil {
 		return fmt.Errorf("write command output: %w", err)
 	}
+	if err := emitInstallRegistryProvenance(cmd, sourcePayload.RegistryProvenance); err != nil {
+		return err
+	}
 	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "orbit_id: %s\n", preview.Source.Manifest.Template.OrbitID); err != nil {
 		return fmt.Errorf("write command output: %w", err)
 	}
@@ -1280,6 +1419,9 @@ func emitHarnessTemplateInstallPreview(
 	}
 	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "source_commit: %s\n", source.Commit); err != nil {
 		return fmt.Errorf("write command output: %w", err)
+	}
+	if err := emitInstallRegistryProvenance(cmd, source.RegistryProvenance); err != nil {
+		return err
 	}
 	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "template_kind: %s\n", installTemplateKindHarness); err != nil {
 		return fmt.Errorf("write command output: %w", err)
@@ -1422,6 +1564,9 @@ func emitHarnessTemplateInstallResult(
 	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "source_ref: %s\n", result.Preview.InstallSource.SourceRef); err != nil {
 		return fmt.Errorf("write command output: %w", err)
 	}
+	if err := emitInstallRegistryProvenance(cmd, sourcePayload.RegistryProvenance); err != nil {
+		return err
+	}
 	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "member_count: %d\n", len(result.Runtime.Members)); err != nil {
 		return fmt.Errorf("write command output: %w", err)
 	}
@@ -1492,6 +1637,9 @@ func emitInstallResult(cmd *cobra.Command, harnessRoot string, result orbittempl
 			return fmt.Errorf("write command output: %w", err)
 		}
 	}
+	if err := emitInstallRegistryProvenance(cmd, sourcePayload.RegistryProvenance); err != nil {
+		return err
+	}
 	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "member_count: %d\n", len(runtimeFile.Members)); err != nil {
 		return fmt.Errorf("write command output: %w", err)
 	}
@@ -1535,6 +1683,40 @@ func emitInstallWarnings(cmd *cobra.Command, warnings []string) error {
 	}
 	for _, warning := range warnings {
 		if _, err := fmt.Fprintln(cmd.OutOrStdout(), warning); err != nil {
+			return fmt.Errorf("write command output: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func emitInstallRegistryProvenance(cmd *cobra.Command, provenance *installRegistryProvenanceJSON) error {
+	if provenance == nil {
+		return nil
+	}
+	lines := []struct {
+		label string
+		value string
+	}{
+		{"registry.requested_coordinate", provenance.RequestedCoordinate},
+		{"registry.resolved_coordinate", provenance.ResolvedCoordinate},
+		{"registry.resolved_version", provenance.ResolvedVersion},
+		{"registry.registry_remote", provenance.RegistryRemote},
+		{"registry.registry_ref", provenance.RegistryRef},
+		{"registry.package_type", provenance.PackageType},
+		{"registry.package_identity", provenance.PackageIdentity},
+		{"registry.package_status", provenance.PackageStatus},
+		{"registry.source_remote", provenance.SourceRemote},
+		{"registry.source_ref", provenance.SourceRef},
+		{"registry.source_commit", provenance.SourceCommit},
+		{"registry.cache_used", fmt.Sprintf("%t", provenance.CacheUsed)},
+		{"registry.cache_stale", fmt.Sprintf("%t", provenance.CacheStale)},
+	}
+	for _, line := range lines {
+		if strings.TrimSpace(line.value) == "" {
+			continue
+		}
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "%s: %s\n", line.label, line.value); err != nil {
 			return fmt.Errorf("write command output: %w", err)
 		}
 	}
@@ -1631,8 +1813,31 @@ func installSourceJSONFromCommand(cmd *cobra.Command, source installSourceJSON) 
 	source.PackageCoordinate = metadata.Coordinate
 	source.PackageLocatorKind = metadata.LocatorKind
 	source.PackageLocator = metadata.Locator
+	source.RegistryProvenance = installRegistryProvenancePayload(metadata.Registry)
 
 	return source, nil
+}
+
+func installRegistryProvenancePayload(provenance *orbittemplate.InstallRegistryProvenance) *installRegistryProvenanceJSON {
+	if provenance == nil {
+		return nil
+	}
+
+	return &installRegistryProvenanceJSON{
+		RequestedCoordinate: provenance.RequestedCoordinate,
+		ResolvedCoordinate:  provenance.ResolvedCoordinate,
+		ResolvedVersion:     provenance.ResolvedVersion,
+		RegistryRemote:      provenance.RegistryRemote,
+		RegistryRef:         provenance.RegistryRef,
+		PackageType:         provenance.PackageType,
+		PackageIdentity:     provenance.PackageIdentity,
+		PackageStatus:       provenance.PackageStatus,
+		SourceRemote:        provenance.SourceRemote,
+		SourceRef:           provenance.SourceRef,
+		SourceCommit:        provenance.SourceCommit,
+		CacheUsed:           provenance.CacheUsed,
+		CacheStale:          provenance.CacheStale,
+	}
 }
 
 func resolvedInstallRef(preview orbittemplate.TemplateApplyPreview) string {

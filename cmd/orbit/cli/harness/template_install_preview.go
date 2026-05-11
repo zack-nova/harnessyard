@@ -32,6 +32,7 @@ type TemplateInstallPreviewInput struct {
 	Editor                  orbittemplate.Editor
 	RequireResolvedBindings bool
 	Now                     time.Time
+	Registry                *orbittemplate.InstallRegistryProvenance
 }
 
 // TemplateInstallPreview captures one harness template install preview plus mixed-install diagnostics.
@@ -699,7 +700,7 @@ func buildTemplateInstallMaterialization(
 	if err != nil {
 		return templateInstallMaterialization{}, err
 	}
-	bundleRecord, err := buildBundleInstallRecord(input.Source, input.InstallSource, renderedDefinitionFiles, renderedFiles, renderedRootAgentsFile, variablesSnapshot, input.Now)
+	bundleRecord, err := buildBundleInstallRecord(input.Source, input.InstallSource, renderedDefinitionFiles, renderedFiles, renderedRootAgentsFile, variablesSnapshot, input.Now, input.Registry)
 	if err != nil {
 		return templateInstallMaterialization{}, err
 	}
@@ -808,6 +809,7 @@ func buildBundleInstallRecord(
 	renderedRootAgentsFile *orbittemplate.CandidateFile,
 	variablesSnapshot *orbittemplate.InstallVariablesSnapshot,
 	now time.Time,
+	registry *orbittemplate.InstallRegistryProvenance,
 ) (BundleRecord, error) {
 	ownedPaths := make([]string, 0, len(definitionFiles)+len(renderedFiles)+1)
 	for _, file := range definitionFiles {
@@ -830,7 +832,7 @@ func buildBundleInstallRecord(
 		agentAddons = nil
 	}
 
-	return BundleRecord{
+	record := BundleRecord{
 		SchemaVersion:        bundleRecordSchemaVersion,
 		HarnessID:            source.Manifest.Template.HarnessID,
 		Template:             installSource,
@@ -845,7 +847,13 @@ func buildBundleInstallRecord(
 		OwnedPathDigests:     ownedPathDigests,
 		RootAgentsDigest:     rootAgentsDigest,
 		Variables:            variablesSnapshot,
-	}, nil
+	}
+	if registry != nil {
+		registryCopy := *registry
+		record.Registry = &registryCopy
+	}
+
+	return record, nil
 }
 
 func buildBundleAgentAddonsSnapshot(

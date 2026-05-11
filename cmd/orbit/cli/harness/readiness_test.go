@@ -123,6 +123,19 @@ func TestEvaluateRuntimeReadinessInstallBackedOrbitWithMissingRequiredBindingsIs
 			TemplateCommit: "abc123",
 		},
 		AppliedAt: now,
+		Registry: &orbittemplate.InstallRegistryProvenance{
+			RequestedCoordinate: "acme/docs@0.1.0",
+			ResolvedCoordinate:  "acme/docs@0.1.0",
+			ResolvedVersion:     "0.1.0",
+			RegistryRemote:      "https://example.com/acme/registry.git",
+			RegistryRef:         "main",
+			PackageType:         "orbit",
+			PackageIdentity:     "docs",
+			PackageStatus:       "active",
+			SourceRemote:        "https://example.com/acme/templates.git",
+			SourceRef:           "orbit-template/docs",
+			SourceCommit:        "aabbccddeeff0011223344556677889900aabbcc",
+		},
 		Variables: &orbittemplate.InstallVariablesSnapshot{
 			Declarations: map[string]bindings.VariableDeclaration{
 				"project_name": {Description: "Project name", Required: true},

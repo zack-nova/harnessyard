@@ -45,6 +45,9 @@ func newInstallCommand() *cobra.Command {
 			if err := bindPackageResolutionWarnings(cmd, resolution.Warnings); err != nil {
 				return err
 			}
+			if err := bindPackageRegistryProvenance(cmd, resolution); err != nil {
+				return err
+			}
 		} else if len(args) == 1 && shouldParseHyardPackageCoordinateArg(args[0]) {
 			coordinate, err := parseHyardPackageCoordinate(args[0])
 			if err != nil {

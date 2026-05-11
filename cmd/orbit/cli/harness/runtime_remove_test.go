@@ -64,6 +64,51 @@ func TestRemoveRuntimeMemberDeletesInfluencePathsAndDetachesInstallRecord(t *tes
 	require.Equal(t, orbittemplate.InstallRecordStatusDetached, record.Status)
 }
 
+func TestRemoveRuntimeMemberPreservesRegistryProvenanceWhenDetachingInstallRecord(t *testing.T) {
+	t.Parallel()
+
+	repo := seedRuntimeRemoveRepo(t, runtimeRemoveSeedOptions{
+		memberSource: MemberSourceInstallOrbit,
+	})
+	provenance := orbittemplate.InstallRegistryProvenance{
+		RequestedCoordinate: "acme/docs@latest",
+		ResolvedCoordinate:  "acme/docs@0.1.0",
+		ResolvedVersion:     "0.1.0",
+		RegistryRemote:      "https://example.com/acme/registry.git",
+		RegistryRef:         "main",
+		PackageType:         "orbit",
+		PackageIdentity:     "docs",
+		PackageStatus:       "active",
+		SourceRemote:        "https://example.com/acme/templates.git",
+		SourceRef:           "orbit-template/docs",
+		SourceCommit:        "aabbccddeeff0011223344556677889900aabbcc",
+		CacheUsed:           true,
+		CacheStale:          true,
+	}
+	record, err := LoadInstallRecord(repo.Root, "docs")
+	require.NoError(t, err)
+	record.Registry = &provenance
+	_, err = WriteInstallRecord(repo.Root, record)
+	require.NoError(t, err)
+	repo.AddAndCommit(t, "record registry provenance")
+
+	discovered, err := gitpkg.DiscoverRepo(context.Background(), repo.Root)
+	require.NoError(t, err)
+	_, err = RemoveRuntimeMember(
+		context.Background(),
+		discovered,
+		"docs",
+		time.Date(2026, time.April, 16, 11, 30, 0, 0, time.UTC),
+	)
+	require.NoError(t, err)
+
+	detached, err := LoadInstallRecord(repo.Root, "docs")
+	require.NoError(t, err)
+	require.Equal(t, orbittemplate.InstallRecordStatusDetached, detached.Status)
+	require.NotNil(t, detached.Registry)
+	require.Equal(t, provenance, *detached.Registry)
+}
+
 func TestUninstallRuntimeOrbitPackageDeletesInstallOwnedRuntimeFilesAndGuidance(t *testing.T) {
 	t.Parallel()
 
