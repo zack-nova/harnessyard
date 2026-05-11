@@ -809,6 +809,212 @@ func TestHyardAuditSourceRevisionDoesNotRewriteLegacyRules(t *testing.T) {
 	require.NotContains(t, string(after), "behavior:\n")
 }
 
+func TestHyardAuditOrbitTemplateRevisionReportsPassJSON(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	seedOrbitTemplateAuditRepo(t, repo, validOrbitTemplateAuditSpec())
+	repo.AddAndCommit(t, "seed installable orbit-template audit fixture")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "audit", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Status       string `json:"status"`
+		RevisionKind string `json:"revision_kind"`
+		Packages     []struct {
+			Type         string `json:"type"`
+			Name         string `json:"name"`
+			RevisionRole string `json:"revision_role"`
+			OrbitID      string `json:"orbit_id,omitempty"`
+		} `json:"packages"`
+		Findings []struct {
+			Severity string `json:"severity"`
+			Kind     string `json:"kind"`
+		} `json:"findings"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "pass", payload.Status)
+	require.Equal(t, "orbit_template", payload.RevisionKind)
+	require.Equal(t, []struct {
+		Type         string `json:"type"`
+		Name         string `json:"name"`
+		RevisionRole string `json:"revision_role"`
+		OrbitID      string `json:"orbit_id,omitempty"`
+	}{
+		{Type: "orbit", Name: "docs", RevisionRole: "template", OrbitID: "docs"},
+	}, payload.Packages)
+	require.NotNil(t, payload.Findings)
+	require.Empty(t, payload.Findings)
+	require.NoDirExists(t, filepath.Join(repo.Root, ".harness", "installs"))
+}
+
+func TestHyardAuditOrbitTemplateRevisionRejectsInvalidManifest(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	repo.WriteFile(t, ".harness/manifest.yaml", ""+
+		"schema_version: 1\n"+
+		"kind: orbit_template\n"+
+		"template:\n"+
+		"  orbit_id: docs\n"+
+		"  created_from_branch: main\n"+
+		"  created_from_commit: abc123\n"+
+		"variables: {}\n")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "audit", "--json")
+	require.Error(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Status       string `json:"status"`
+		RevisionKind string `json:"revision_kind"`
+		Findings     []struct {
+			Severity string `json:"severity"`
+			Kind     string `json:"kind"`
+			Path     string `json:"path"`
+			Message  string `json:"message"`
+		} `json:"findings"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "fail", payload.Status)
+	require.Equal(t, "none", payload.RevisionKind)
+	require.Len(t, payload.Findings, 1)
+	require.Equal(t, "fail", payload.Findings[0].Severity)
+	require.Equal(t, "manifest_schema_invalid", payload.Findings[0].Kind)
+	require.Equal(t, ".harness/manifest.yaml", payload.Findings[0].Path)
+	require.NotContains(t, payload.Findings[0].Message, repo.Root)
+	require.Contains(t, payload.Findings[0].Message, "template.created_at")
+}
+
+func TestHyardAuditOrbitTemplateRevisionRejectsInvalidHostedOrbitSpec(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	seedOrbitTemplateAuditRepo(t, repo, ""+
+		"package:\n"+
+		"  type: orbit\n"+
+		"  name: docs\n"+
+		"meta:\n"+
+		"  file: .orbit/orbits/docs.yaml\n"+
+		"content:\n"+
+		"  - name: docs-content\n"+
+		"    role: subject\n"+
+		"    paths:\n"+
+		"      include:\n"+
+		"        - docs/**\n")
+	repo.AddAndCommit(t, "seed invalid orbit-template spec audit fixture")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "audit", "--json")
+	require.Error(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Status       string `json:"status"`
+		RevisionKind string `json:"revision_kind"`
+		Findings     []struct {
+			Severity string `json:"severity"`
+			Kind     string `json:"kind"`
+			Package  string `json:"package,omitempty"`
+			Path     string `json:"path"`
+			Message  string `json:"message"`
+		} `json:"findings"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "fail", payload.Status)
+	require.Equal(t, "orbit_template", payload.RevisionKind)
+	requireAuditFinding(t, payload.Findings, "fail", "orbit_spec_schema_invalid", "docs", ".harness/orbits/docs.yaml")
+}
+
+func TestHyardAuditOrbitTemplateRevisionRejectsForbiddenPaths(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	seedOrbitTemplateAuditRepo(t, repo, validOrbitTemplateAuditSpec())
+	repo.WriteFile(t, ".harness/runtime.yaml", ""+
+		"schema_version: 1\n"+
+		"kind: harness_runtime\n"+
+		"harness:\n"+
+		"  id: workspace\n"+
+		"  created_at: 2026-05-11T00:00:00Z\n"+
+		"  updated_at: 2026-05-11T00:00:00Z\n"+
+		"members: []\n")
+	repo.AddAndCommit(t, "seed forbidden orbit-template path audit fixture")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "audit", "--json")
+	require.Error(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Status       string `json:"status"`
+		RevisionKind string `json:"revision_kind"`
+		Findings     []struct {
+			Severity string `json:"severity"`
+			Kind     string `json:"kind"`
+			Package  string `json:"package,omitempty"`
+			Path     string `json:"path"`
+			Message  string `json:"message"`
+		} `json:"findings"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "fail", payload.Status)
+	require.Equal(t, "orbit_template", payload.RevisionKind)
+	requireAuditFinding(t, payload.Findings, "fail", "orbit_template_installability_invalid", "docs", ".harness/runtime.yaml")
+}
+
+func TestHyardAuditOrbitTemplateRevisionReportsUntrackedCapabilityRootsAsWarnings(t *testing.T) {
+	t.Parallel()
+
+	repo := testutil.NewRepo(t)
+	seedOrbitTemplateAuditRepo(t, repo, ""+
+		"package:\n"+
+		"  type: orbit\n"+
+		"  name: docs\n"+
+		"meta:\n"+
+		"  file: .harness/orbits/docs.yaml\n"+
+		"capabilities:\n"+
+		"  commands:\n"+
+		"    paths:\n"+
+		"      include:\n"+
+		"        - orbit/commands/**/*.md\n"+
+		"  skills:\n"+
+		"    local:\n"+
+		"      paths:\n"+
+		"        include:\n"+
+		"          - orbit/skills/*\n"+
+		"content:\n"+
+		"  - name: docs-content\n"+
+		"    role: subject\n"+
+		"    paths:\n"+
+		"      include:\n"+
+		"        - docs/**\n")
+	repo.AddAndCommit(t, "seed orbit-template capability audit fixture")
+	repo.WriteFile(t, "orbit/commands/review.md", "Review docs.\n")
+	repo.WriteFile(t, "orbit/skills/docs-style/checklist.md", "Use docs style.\n")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "audit", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		Status       string `json:"status"`
+		RevisionKind string `json:"revision_kind"`
+		Findings     []struct {
+			Severity string `json:"severity"`
+			Kind     string `json:"kind"`
+			Package  string `json:"package,omitempty"`
+			Path     string `json:"path"`
+			Message  string `json:"message"`
+		} `json:"findings"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "warn", payload.Status)
+	require.Equal(t, "orbit_template", payload.RevisionKind)
+	requireAuditFinding(t, payload.Findings, "warn", "command_capability_path_unmatched", "docs", "orbit/commands/**/*.md")
+	requireAuditFinding(t, payload.Findings, "warn", "local_skill_capability_path_unmatched", "docs", "orbit/skills/*")
+}
+
 func TestHyardAuditGPDWLikeLegacyHarnessFixtureFailsWithStableFindings(t *testing.T) {
 	t.Parallel()
 
@@ -850,6 +1056,43 @@ func TestHyardAuditGPDWLikeLegacyHarnessFixtureFailsWithStableFindings(t *testin
 	require.Equal(t, ".harness/manifest.yaml", payload.Findings[0].Path)
 	require.NotContains(t, payload.Findings[0].Message, repo.Root)
 	require.Contains(t, payload.Findings[0].Message, "source_branch")
+}
+
+func seedOrbitTemplateAuditRepo(t *testing.T, repo *testutil.Repo, spec string) {
+	t.Helper()
+
+	repo.WriteFile(t, ".harness/manifest.yaml", ""+
+		"schema_version: 1\n"+
+		"kind: orbit_template\n"+
+		"template:\n"+
+		"  package:\n"+
+		"    type: orbit\n"+
+		"    name: docs\n"+
+		"  default_template: false\n"+
+		"  created_from_branch: main\n"+
+		"  created_from_commit: abc123\n"+
+		"  created_at: 2026-05-11T00:00:00Z\n"+
+		"variables:\n"+
+		"  project_name:\n"+
+		"    required: true\n")
+	repo.WriteFile(t, ".harness/orbits/docs.yaml", spec)
+	repo.WriteFile(t, "docs/guide.md", "$project_name guide\n")
+}
+
+func validOrbitTemplateAuditSpec() string {
+	return "" +
+		"package:\n" +
+		"  type: orbit\n" +
+		"  name: docs\n" +
+		"description: Docs orbit\n" +
+		"meta:\n" +
+		"  file: .harness/orbits/docs.yaml\n" +
+		"content:\n" +
+		"  - name: docs-content\n" +
+		"    role: subject\n" +
+		"    paths:\n" +
+		"      include:\n" +
+		"        - docs/**\n"
 }
 
 func requireAuditFinding(t *testing.T, findings []struct {
