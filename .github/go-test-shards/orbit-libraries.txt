@@ -1,0 +1,14 @@
+./cmd/orbit/cli/bindings
+./cmd/orbit/cli/branchinfo
+./cmd/orbit/cli/commands
+./cmd/orbit/cli/git
+./cmd/orbit/cli/ids
+./cmd/orbit/cli/internal/contractutil
+./cmd/orbit/cli/orbit
+./cmd/orbit/cli/packageops
+./cmd/orbit/cli/progress
+./cmd/orbit/cli/registry
+./cmd/orbit/cli/scoped
+./cmd/orbit/cli/state
+./cmd/orbit/cli/testutil
+./cmd/orbit/cli/view
