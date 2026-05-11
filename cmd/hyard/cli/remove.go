@@ -280,6 +280,7 @@ func runHyardRemoveOrbitWithResolvedRoot(cmd *cobra.Command, resolved harnesspkg
 	if err != nil {
 		return fmt.Errorf("plan %s orbit package: %w", surface.Command, err)
 	}
+	allowGlobalAgentCleanup := yes
 	confirmLocalChanges := yes
 	if dryRun {
 		output := hyardRemoveOutputFromOrbitPlan(resolved.Repo.Root, plan, true)
@@ -292,7 +293,10 @@ func runHyardRemoveOrbitWithResolvedRoot(cmd *cobra.Command, resolved harnesspkg
 	}
 	if plan.ConfirmationRequired && !yes {
 		if jsonOutput {
-			return fmt.Errorf("%s orbit --json requires --yes to delete locally changed target-owned files or --dry-run to inspect", surface.Command)
+			if len(plan.LocallyChangedPaths) > 0 && len(plan.AgentCleanup.GlobalOutputsTouched) == 0 {
+				return fmt.Errorf("%s orbit --json requires --yes to delete locally changed target-owned files or --dry-run to inspect", surface.Command)
+			}
+			return fmt.Errorf("%s orbit --json requires --yes to confirm package uninstall side effects or --dry-run to inspect", surface.Command)
 		}
 		if err := writeHyardRemoveOrbitPlan(cmd, plan, false, surface); err != nil {
 			return err
@@ -308,11 +312,12 @@ func runHyardRemoveOrbitWithResolvedRoot(cmd *cobra.Command, resolved harnesspkg
 		if !confirmed {
 			return fmt.Errorf("%s canceled for orbit package %q", surface.Command, orbitPackage)
 		}
+		allowGlobalAgentCleanup = true
 		confirmLocalChanges = true
 	}
 
 	applyResult, err := harnesspkg.ApplyUninstallRuntimeOrbitPackagePlanWithOptions(cmd.Context(), resolved.Repo, plan, time.Now().UTC(), harnesspkg.RemoveRuntimeMemberOptions{
-		AllowGlobalAgentCleanup: yes,
+		AllowGlobalAgentCleanup: allowGlobalAgentCleanup,
 		ConfirmLocalChanges:     confirmLocalChanges,
 	})
 	if err != nil {
@@ -617,6 +622,16 @@ func writeHyardRemoveOrbitPlan(cmd *cobra.Command, plan harnesspkg.RuntimeOrbitP
 		}
 		for _, risk := range plan.LocallyChangedPaths {
 			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "  - %s (%s)\n", risk.Path, risk.GitStatus); err != nil {
+				return fmt.Errorf("write orbit remove preview: %w", err)
+			}
+		}
+	}
+	if plan.AgentCleanup.Status != "" && plan.AgentCleanup.Status != harnesspkg.AgentCleanupStatusNotNeeded {
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "agent_cleanup: %s\n", plan.AgentCleanup.Status); err != nil {
+			return fmt.Errorf("write orbit remove preview: %w", err)
+		}
+		for _, path := range plan.AgentCleanup.GlobalOutputsTouched {
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "  user_level_output: %s\n", path); err != nil {
 				return fmt.Errorf("write orbit remove preview: %w", err)
 			}
 		}

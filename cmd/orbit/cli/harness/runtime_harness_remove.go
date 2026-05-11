@@ -149,7 +149,7 @@ func BuildRemoveRuntimeHarnessPackagePlanWithOptions(
 		OrbitIDs:               orbitIDs,
 		RemovedPaths:           removedPaths,
 		LocallyChangedPaths:    append([]RuntimeUninstallLocalChange(nil), locallyChangedPaths...),
-		ConfirmationRequired:   len(locallyChangedPaths) > 0,
+		ConfirmationRequired:   true,
 		RemoveRootAgents:       runtimeUninstallRemovesGuidance(guidanceMutations),
 		DeleteBundleRecord:     true,
 		CurrentOrbitRemoved:    currentRemoved,
@@ -183,7 +183,7 @@ func ApplyRemoveRuntimeHarnessPackagePlanWithOptions(
 	if agentCleanupBlocked(plan.AgentCleanup) || (agentCleanupRequiresConfirmation(plan.AgentCleanup) && !options.AllowGlobalAgentCleanup) {
 		return RemoveRuntimeHarnessPackageResult{}, fmt.Errorf("%s", agentCleanupErrorMessage(plan.AgentCleanup))
 	}
-	if plan.ConfirmationRequired && !options.ConfirmLocalChanges {
+	if len(plan.LocallyChangedPaths) > 0 && !options.ConfirmLocalChanges {
 		return RemoveRuntimeHarnessPackageResult{}, fmt.Errorf("%s", runtimeHarnessUninstallLocalChangesError(plan.HarnessID, plan.LocallyChangedPaths))
 	}
 

@@ -231,7 +231,7 @@ func BuildUninstallRuntimeOrbitPackagePlanWithOptions(
 		Runtime:               runtimeFile,
 		RemovedPaths:          removedPaths,
 		LocallyChangedPaths:   locallyChangedPaths,
-		ConfirmationRequired:  len(locallyChangedPaths) > 0,
+		ConfirmationRequired:  runtimeUninstallConfirmationRequired(locallyChangedPaths, agentCleanupPlan),
 		RemovedAgentsBlock:    runtimeUninstallRemovesGuidance(guidanceMutations),
 		CurrentOrbitRemoved:   currentIsTarget,
 		DetachedInstallRecord: false,
@@ -255,7 +255,7 @@ func ApplyUninstallRuntimeOrbitPackagePlanWithOptions(
 	if agentCleanupBlocked(plan.AgentCleanup) || (agentCleanupRequiresConfirmation(plan.AgentCleanup) && !options.AllowGlobalAgentCleanup) {
 		return RemoveRuntimeMemberResult{}, fmt.Errorf("%s", agentCleanupErrorMessage(plan.AgentCleanup))
 	}
-	if plan.ConfirmationRequired && !options.ConfirmLocalChanges {
+	if len(plan.LocallyChangedPaths) > 0 && !options.ConfirmLocalChanges {
 		return RemoveRuntimeMemberResult{}, fmt.Errorf("%s", runtimeUninstallLocalChangesError(plan.OrbitID, plan.LocallyChangedPaths))
 	}
 
@@ -924,6 +924,10 @@ func runtimeUninstallRemovesGuidance(mutations []runtimeRootGuidanceMutation) bo
 	}
 
 	return false
+}
+
+func runtimeUninstallConfirmationRequired(locallyChangedPaths []RuntimeUninstallLocalChange, agentCleanup AgentCleanupResult) bool {
+	return len(locallyChangedPaths) > 0 || len(agentCleanup.GlobalOutputsTouched) > 0
 }
 
 func locallyChangedRuntimeUninstallPaths(
