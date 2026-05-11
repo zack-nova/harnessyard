@@ -412,6 +412,7 @@ func runHyardRemoveHarnessWithResolvedRoot(cmd *cobra.Command, resolved harnessp
 	}
 
 	allowGlobalAgentCleanup := yes
+	confirmLocalChanges := yes
 	if !yes {
 		if err := writeHyardRemoveHarnessPlan(cmd, plan, false, surface); err != nil {
 			return err
@@ -428,10 +429,12 @@ func runHyardRemoveHarnessWithResolvedRoot(cmd *cobra.Command, resolved harnessp
 			return fmt.Errorf("%s canceled for harness package %q", surface.Command, harnessPackage)
 		}
 		allowGlobalAgentCleanup = true
+		confirmLocalChanges = true
 	}
 
 	result, err := harnesspkg.ApplyRemoveRuntimeHarnessPackagePlanWithOptions(cmd.Context(), resolved.Repo, plan, time.Now().UTC(), harnesspkg.RemoveRuntimeHarnessPackageOptions{
 		AllowGlobalAgentCleanup: allowGlobalAgentCleanup,
+		ConfirmLocalChanges:     confirmLocalChanges,
 	})
 	if err != nil {
 		return fmt.Errorf("%s harness package: %w", surface.Command, err)
@@ -482,6 +485,8 @@ func hyardRemoveOutputFromHarnessPlan(repoRoot string, plan harnesspkg.RemoveRun
 		RemainingMemberCount: remaining,
 		RemovedPaths:         append([]string(nil), plan.RemovedPaths...),
 		RemovedPathCount:     len(plan.RemovedPaths),
+		LocallyChangedPaths:  append([]harnesspkg.RuntimeUninstallLocalChange(nil), plan.LocallyChangedPaths...),
+		ConfirmationRequired: plan.ConfirmationRequired,
 		RemovedAgentsBlock:   plan.RemoveRootAgents,
 		DeleteBundleRecord:   plan.DeleteBundleRecord,
 		DeletedBundleRecord:  false,
@@ -527,6 +532,8 @@ func hyardRemoveOutputFromHarnessResult(repoRoot string, result harnesspkg.Remov
 		RemainingMemberCount:  len(result.Runtime.Members),
 		RemovedPaths:          append([]string(nil), result.RemovedPaths...),
 		RemovedPathCount:      len(result.RemovedPaths),
+		LocallyChangedPaths:   append([]harnesspkg.RuntimeUninstallLocalChange(nil), result.LocallyChangedPaths...),
+		ConfirmationRequired:  result.ConfirmationRequired,
 		RemovedAgentsBlock:    result.RemovedAgentsBlock,
 		DeleteBundleRecord:    result.DeletedBundleRecord,
 		DeletedBundleRecord:   result.DeletedBundleRecord,
@@ -649,6 +656,16 @@ func writeHyardRemoveHarnessPlan(cmd *cobra.Command, plan harnesspkg.RemoveRunti
 	}
 	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "delete_bundle_record: %t\n", plan.DeleteBundleRecord); err != nil {
 		return fmt.Errorf("write harness remove preview: %w", err)
+	}
+	if len(plan.LocallyChangedPaths) > 0 {
+		if _, err := fmt.Fprintln(cmd.OutOrStdout(), "Locally changed target-owned files:"); err != nil {
+			return fmt.Errorf("write harness remove preview: %w", err)
+		}
+		for _, risk := range plan.LocallyChangedPaths {
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "  - %s (%s)\n", risk.Path, risk.GitStatus); err != nil {
+				return fmt.Errorf("write harness remove preview: %w", err)
+			}
+		}
 	}
 	if plan.AgentCleanup.Status != "" && plan.AgentCleanup.Status != harnesspkg.AgentCleanupStatusNotNeeded {
 		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "agent_cleanup: %s\n", plan.AgentCleanup.Status); err != nil {

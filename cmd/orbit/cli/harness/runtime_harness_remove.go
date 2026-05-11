@@ -4,26 +4,35 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
 	gitpkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/git"
 	statepkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/state"
+	orbittemplate "github.com/zack-nova/harnessyard/cmd/orbit/cli/template"
 	viewpkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/view"
 )
 
 // RemoveRuntimeHarnessPackagePlan captures one planned harness-package removal from a runtime.
 type RemoveRuntimeHarnessPackagePlan struct {
-	HarnessID           string
-	Runtime             RuntimeFile
-	OrbitIDs            []string
-	RemovedPaths        []string
-	RemoveRootAgents    bool
-	DeleteBundleRecord  bool
-	CurrentOrbitRemoved bool
-	ShrinkPlan          BundleMemberShrinkPlan
-	AgentCleanup        AgentCleanupResult
+	HarnessID              string
+	Runtime                RuntimeFile
+	OrbitIDs               []string
+	RemovedPaths           []string
+	LocallyChangedPaths    []RuntimeUninstallLocalChange
+	ConfirmationRequired   bool
+	RemoveRootAgents       bool
+	DeleteBundleRecord     bool
+	CurrentOrbitRemoved    bool
+	ShrinkPlan             BundleMemberShrinkPlan
+	DeletePaths            []string
+	GuidanceMutations      []runtimeRootGuidanceMutation
+	BundleRecordRepoPath   string
+	InstallRecordRepoPaths []string
+	AgentCleanup           AgentCleanupResult
 }
 
 // RemoveRuntimeHarnessPackageResult captures one applied harness-package removal from a runtime.
@@ -33,6 +42,8 @@ type RemoveRuntimeHarnessPackageResult struct {
 	ManifestPath         string
 	Runtime              RuntimeFile
 	RemovedPaths         []string
+	LocallyChangedPaths  []RuntimeUninstallLocalChange
+	ConfirmationRequired bool
 	RemovedAgentsBlock   bool
 	DeletedBundleRecord  bool
 	AutoLeftCurrentOrbit bool
@@ -42,6 +53,7 @@ type RemoveRuntimeHarnessPackageResult struct {
 // RemoveRuntimeHarnessPackageOptions controls harness package remove side effects.
 type RemoveRuntimeHarnessPackageOptions struct {
 	AllowGlobalAgentCleanup bool
+	ConfirmLocalChanges     bool
 }
 
 // BuildRemoveRuntimeHarnessPackagePlan validates and previews removing all active runtime
@@ -67,11 +79,6 @@ func BuildRemoveRuntimeHarnessPackagePlanWithOptions(
 		return RemoveRuntimeHarnessPackagePlan{}, fmt.Errorf("load harness runtime: %w", err)
 	}
 
-	orbitIDs := runtimeOrbitIDsOwnedByHarness(runtimeFile, harnessID)
-	if len(orbitIDs) == 0 {
-		return RemoveRuntimeHarnessPackagePlan{}, fmt.Errorf("harness package %q has no active orbit packages in the current runtime", harnessID)
-	}
-
 	record, err := LoadBundleRecord(repo.Root, harnessID)
 	if err != nil {
 		return RemoveRuntimeHarnessPackagePlan{}, fmt.Errorf("load bundle record for harness package %q: %w", harnessID, err)
@@ -80,35 +87,26 @@ func BuildRemoveRuntimeHarnessPackagePlanWithOptions(
 	if err != nil {
 		return RemoveRuntimeHarnessPackagePlan{}, err
 	}
-	earlyCleanCheckPaths := append([]string{ManifestRepoPath(), bundleRecordPath}, record.OwnedPaths...)
-	if record.IncludesRootAgents {
-		earlyCleanCheckPaths = append(earlyCleanCheckPaths, rootAgentsPath)
-	}
-	if err := ensureRuntimeHarnessRemovePathsClean(ctx, repo.Root, harnessID, earlyCleanCheckPaths); err != nil {
-		return RemoveRuntimeHarnessPackagePlan{}, err
+
+	orbitIDs := runtimeHarnessUninstallOrbitIDs(runtimeFile, record, harnessID)
+	if len(orbitIDs) == 0 {
+		return RemoveRuntimeHarnessPackagePlan{}, fmt.Errorf("harness package %q has no included orbit packages in the current runtime", harnessID)
 	}
 
-	shrinkPlan, err := BuildBundleMemberShrinkPlan(ctx, repo.Root, record, orbitIDs)
+	deletePaths := runtimeHarnessUninstallDeletePaths(record)
+	if err := ensureRuntimeHarnessUninstallOwnershipExclusive(ctx, repo.Root, harnessID, orbitIDs, deletePaths, runtimeFile); err != nil {
+		return RemoveRuntimeHarnessPackagePlan{}, err
+	}
+	installRecordRepoPaths, err := existingRuntimeHarnessUninstallInstallRecordPaths(ctx, repo.Root, orbitIDs)
 	if err != nil {
-		return RemoveRuntimeHarnessPackagePlan{}, fmt.Errorf("build bundle remove plan for harness package %q: %w", harnessID, err)
-	}
-
-	removedPaths := append([]string(nil), shrinkPlan.DeletePaths...)
-	removedPaths = append(removedPaths, bundleRecordPath)
-	if shrinkPlan.RemoveRootAgentsBlock {
-		removedPaths = append(removedPaths, rootAgentsPath)
-	}
-	removedPaths = sortedUniqueStrings(removedPaths)
-
-	touchedPaths := append([]string{ManifestRepoPath(), bundleRecordPath}, shrinkPlan.DeletePaths...)
-	cleanCheckPaths := append([]string{ManifestRepoPath(), bundleRecordPath}, shrinkPlan.DeletePaths...)
-	if shrinkPlan.RemoveRootAgentsBlock {
-		touchedPaths = append(touchedPaths, rootAgentsPath)
-		cleanCheckPaths = append(cleanCheckPaths, rootAgentsPath)
-	}
-	if err := ensureRuntimeHarnessRemovePathsClean(ctx, repo.Root, harnessID, cleanCheckPaths); err != nil {
 		return RemoveRuntimeHarnessPackagePlan{}, err
 	}
+	guidanceMutations, err := analyzeRuntimeHarnessUninstallRootGuidance(ctx, repo.Root, harnessID)
+	if err != nil {
+		return RemoveRuntimeHarnessPackagePlan{}, err
+	}
+
+	removedPaths := plannedRuntimeHarnessUninstallRemovedPaths(deletePaths, bundleRecordPath, installRecordRepoPaths, guidanceMutations)
 
 	store, err := statepkg.NewFSStore(repo.GitDir)
 	if err != nil {
@@ -118,6 +116,9 @@ func BuildRemoveRuntimeHarnessPackagePlanWithOptions(
 	if err != nil {
 		return RemoveRuntimeHarnessPackagePlan{}, err
 	}
+	touchedPaths := append([]string{ManifestRepoPath(), bundleRecordPath}, deletePaths...)
+	touchedPaths = append(touchedPaths, installRecordRepoPaths...)
+	touchedPaths = append(touchedPaths, runtimeHarnessUninstallGuidanceMutationPaths(guidanceMutations)...)
 	hiddenPaths, err := hiddenRuntimeRemovePaths(ctx, repo.Root, touchedPaths)
 	if err != nil {
 		return RemoveRuntimeHarnessPackagePlan{}, err
@@ -130,6 +131,11 @@ func BuildRemoveRuntimeHarnessPackagePlanWithOptions(
 		)
 	}
 
+	locallyChangedPaths, err := locallyChangedRuntimeUninstallPaths(ctx, repo.Root, removedPaths)
+	if err != nil {
+		return RemoveRuntimeHarnessPackagePlan{}, err
+	}
+
 	agentCleanup, err := PlanAgentCleanupForPackageRemove(ctx, repo.Root, repo.GitDir, orbitIDs, AgentCleanupOptions{
 		AllowGlobal: options.AllowGlobalAgentCleanup,
 	})
@@ -138,15 +144,20 @@ func BuildRemoveRuntimeHarnessPackagePlanWithOptions(
 	}
 
 	return RemoveRuntimeHarnessPackagePlan{
-		HarnessID:           harnessID,
-		Runtime:             runtimeFile,
-		OrbitIDs:            orbitIDs,
-		RemovedPaths:        removedPaths,
-		RemoveRootAgents:    shrinkPlan.RemoveRootAgentsBlock,
-		DeleteBundleRecord:  shrinkPlan.DeleteBundleRecord,
-		CurrentOrbitRemoved: currentRemoved,
-		ShrinkPlan:          shrinkPlan,
-		AgentCleanup:        agentCleanup,
+		HarnessID:              harnessID,
+		Runtime:                runtimeFile,
+		OrbitIDs:               orbitIDs,
+		RemovedPaths:           removedPaths,
+		LocallyChangedPaths:    append([]RuntimeUninstallLocalChange(nil), locallyChangedPaths...),
+		ConfirmationRequired:   len(locallyChangedPaths) > 0,
+		RemoveRootAgents:       runtimeUninstallRemovesGuidance(guidanceMutations),
+		DeleteBundleRecord:     true,
+		CurrentOrbitRemoved:    currentRemoved,
+		DeletePaths:            deletePaths,
+		GuidanceMutations:      guidanceMutations,
+		BundleRecordRepoPath:   bundleRecordPath,
+		InstallRecordRepoPaths: installRecordRepoPaths,
+		AgentCleanup:           agentCleanup,
 	}, nil
 }
 
@@ -172,6 +183,9 @@ func ApplyRemoveRuntimeHarnessPackagePlanWithOptions(
 	if agentCleanupBlocked(plan.AgentCleanup) || (agentCleanupRequiresConfirmation(plan.AgentCleanup) && !options.AllowGlobalAgentCleanup) {
 		return RemoveRuntimeHarnessPackageResult{}, fmt.Errorf("%s", agentCleanupErrorMessage(plan.AgentCleanup))
 	}
+	if plan.ConfirmationRequired && !options.ConfirmLocalChanges {
+		return RemoveRuntimeHarnessPackageResult{}, fmt.Errorf("%s", runtimeHarnessUninstallLocalChangesError(plan.HarnessID, plan.LocallyChangedPaths))
+	}
 
 	store, err := statepkg.NewFSStore(repo.GitDir)
 	if err != nil {
@@ -187,10 +201,31 @@ func ApplyRemoveRuntimeHarnessPackagePlanWithOptions(
 		autoLeft = leaveResult.Left || leaveResult.StateCleared || leaveResult.ProjectionRestored
 	}
 
-	removedPaths, err := ApplyBundleMemberShrinkPlan(repo.Root, plan.ShrinkPlan)
+	removedPaths := append([]string(nil), plan.DeletePaths...)
+	if err := removeRuntimeInfluencePaths(repo.Root, plan.DeletePaths); err != nil {
+		return RemoveRuntimeHarnessPackageResult{}, err
+	}
+	removedDirs, err := cleanupEmptyRuntimeFileParentDirs(repo.Root, plan.DeletePaths)
 	if err != nil {
 		return RemoveRuntimeHarnessPackageResult{}, err
 	}
+	removedPaths = append(removedPaths, removedDirs...)
+	guidanceRemovedPaths, err := applyRuntimeUninstallRootGuidance(repo.Root, plan.GuidanceMutations)
+	if err != nil {
+		return RemoveRuntimeHarnessPackageResult{}, err
+	}
+	removedPaths = append(removedPaths, guidanceRemovedPaths...)
+	for _, installRecordRepoPath := range plan.InstallRecordRepoPaths {
+		if err := removeRepoPath(repo.Root, installRecordRepoPath, "install record"); err != nil {
+			return RemoveRuntimeHarnessPackageResult{}, err
+		}
+		removedPaths = append(removedPaths, installRecordRepoPath)
+	}
+	if err := removeRepoPath(repo.Root, plan.BundleRecordRepoPath, "bundle record"); err != nil {
+		return RemoveRuntimeHarnessPackageResult{}, err
+	}
+	removedPaths = append(removedPaths, plan.BundleRecordRepoPath)
+	removedPaths = sortedUniqueStrings(removedPaths)
 
 	removedSet := make(map[string]struct{}, len(plan.OrbitIDs))
 	for _, orbitID := range plan.OrbitIDs {
@@ -228,11 +263,203 @@ func ApplyRemoveRuntimeHarnessPackagePlanWithOptions(
 		ManifestPath:         manifestPath,
 		Runtime:              runtimeFile,
 		RemovedPaths:         appendAgentCleanupRemovedPaths(removedPaths, agentCleanup),
-		RemovedAgentsBlock:   plan.RemoveRootAgents,
-		DeletedBundleRecord:  plan.DeleteBundleRecord,
+		LocallyChangedPaths:  append([]RuntimeUninstallLocalChange(nil), plan.LocallyChangedPaths...),
+		ConfirmationRequired: plan.ConfirmationRequired,
+		RemovedAgentsBlock:   len(guidanceRemovedPaths) > 0,
+		DeletedBundleRecord:  true,
 		AutoLeftCurrentOrbit: autoLeft,
 		AgentCleanup:         agentCleanup,
 	}, nil
+}
+
+func runtimeHarnessUninstallOrbitIDs(runtimeFile RuntimeFile, record BundleRecord, harnessID string) []string {
+	orbitIDs := append([]string(nil), record.MemberIDs...)
+	orbitIDs = append(orbitIDs, runtimeOrbitIDsOwnedByHarness(runtimeFile, harnessID)...)
+
+	return sortedUniqueStrings(orbitIDs)
+}
+
+func runtimeHarnessUninstallDeletePaths(record BundleRecord) []string {
+	deletePaths := make([]string, 0, len(record.OwnedPaths))
+	for _, path := range record.OwnedPaths {
+		if isRootGuidancePath(path) {
+			continue
+		}
+		deletePaths = append(deletePaths, path)
+	}
+
+	return sortedUniqueStrings(deletePaths)
+}
+
+func existingRuntimeHarnessUninstallInstallRecordPaths(
+	ctx context.Context,
+	repoRoot string,
+	orbitIDs []string,
+) ([]string, error) {
+	paths := make([]string, 0, len(orbitIDs))
+	for _, orbitID := range orbitIDs {
+		repoPath, err := InstallRecordRepoPath(orbitID)
+		if err != nil {
+			return nil, fmt.Errorf("build install record path for included orbit package %q: %w", orbitID, err)
+		}
+		exists, err := repoPathExistsWorktreeOrHEAD(ctx, repoRoot, repoPath)
+		if err != nil {
+			return nil, fmt.Errorf("check install record for included orbit package %q: %w", orbitID, err)
+		}
+		if !exists {
+			continue
+		}
+		paths = append(paths, repoPath)
+	}
+
+	return sortedUniqueStrings(paths), nil
+}
+
+func repoPathExistsWorktreeOrHEAD(ctx context.Context, repoRoot string, repoPath string) (bool, error) {
+	filename := filepath.Join(repoRoot, filepath.FromSlash(repoPath))
+	if _, err := os.Stat(filename); err == nil {
+		return true, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return false, fmt.Errorf("stat %s: %w", repoPath, err)
+	}
+
+	exists, err := gitpkg.PathExistsAtRev(ctx, repoRoot, "HEAD", repoPath)
+	if err != nil {
+		if strings.Contains(err.Error(), "unknown revision") || strings.Contains(err.Error(), "ambiguous argument 'HEAD'") {
+			return false, nil
+		}
+		return false, fmt.Errorf("check %s at HEAD: %w", repoPath, err)
+	}
+
+	return exists, nil
+}
+
+func analyzeRuntimeHarnessUninstallRootGuidance(
+	ctx context.Context,
+	repoRoot string,
+	harnessID string,
+) ([]runtimeRootGuidanceMutation, error) {
+	targets := []struct {
+		path      string
+		container string
+	}{
+		{path: rootAgentsPath, container: "root AGENTS.md"},
+		{path: rootHumansPath, container: "root HUMANS.md"},
+		{path: rootBootstrapPath, container: "root BOOTSTRAP.md"},
+	}
+	mutations := make([]runtimeRootGuidanceMutation, 0, len(targets))
+	for _, target := range targets {
+		data, err := gitpkg.ReadTrackedFileWorktreeOrHEAD(ctx, repoRoot, target.path)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return nil, fmt.Errorf("read %s: %w", target.container, err)
+		}
+		updated, removed, err := orbittemplate.RemoveRuntimeGuidanceOwnerBlockData(data, orbittemplate.OwnerKindHarness, harnessID, target.container)
+		if err != nil {
+			return nil, fmt.Errorf("remove %s block: %w", target.container, err)
+		}
+		if !removed {
+			continue
+		}
+		mutations = append(mutations, runtimeRootGuidanceMutation{
+			Path:         target.path,
+			Container:    target.container,
+			RemovedBlock: true,
+			DeleteFile:   len(updated) == 0,
+			UpdatedData:  updated,
+		})
+	}
+
+	return mutations, nil
+}
+
+func plannedRuntimeHarnessUninstallRemovedPaths(
+	deletePaths []string,
+	bundleRecordRepoPath string,
+	installRecordRepoPaths []string,
+	guidanceMutations []runtimeRootGuidanceMutation,
+) []string {
+	removedPaths := append([]string(nil), deletePaths...)
+	removedPaths = append(removedPaths, bundleRecordRepoPath)
+	removedPaths = append(removedPaths, installRecordRepoPaths...)
+	removedPaths = append(removedPaths, runtimeHarnessUninstallGuidanceMutationPaths(guidanceMutations)...)
+
+	return sortedUniqueStrings(removedPaths)
+}
+
+func runtimeHarnessUninstallGuidanceMutationPaths(mutations []runtimeRootGuidanceMutation) []string {
+	paths := make([]string, 0, len(mutations))
+	for _, mutation := range mutations {
+		if mutation.RemovedBlock {
+			paths = append(paths, mutation.Path)
+		}
+	}
+
+	return sortedUniqueStrings(paths)
+}
+
+func ensureRuntimeHarnessUninstallOwnershipExclusive(
+	ctx context.Context,
+	repoRoot string,
+	harnessID string,
+	orbitIDs []string,
+	deletePaths []string,
+	runtimeFile RuntimeFile,
+) error {
+	targetSet := stringSet(orbitIDs)
+	plansByOrbitID, err := loadRuntimeRemovePlans(ctx, repoRoot, runtimeFile)
+	if err != nil {
+		return fmt.Errorf("resolve active runtime references for harness package uninstall: %w", err)
+	}
+	for _, path := range deletePaths {
+		for otherOrbitID, otherPlan := range plansByOrbitID {
+			if targetSet[otherOrbitID] {
+				continue
+			}
+			if runtimeRemovePathShared(path, otherPlan.Plan.ProjectionPaths) {
+				return fmt.Errorf(
+					"cannot uninstall harness package %q: delete candidate %q is still referenced by active package %q",
+					harnessID,
+					path,
+					otherOrbitID,
+				)
+			}
+		}
+	}
+
+	deletePathSet := stringSet(deletePaths)
+	for _, member := range runtimeFile.Members {
+		if targetSet[member.OrbitID] {
+			continue
+		}
+		ownedPaths, err := runtimeUninstallActivePackageOwnedPaths(ctx, repoRoot, member)
+		if err != nil {
+			return fmt.Errorf("resolve package ownership scope for active package %q: %w", member.OrbitID, err)
+		}
+		for _, path := range ownedPaths {
+			if !deletePathSet[path] {
+				continue
+			}
+			return fmt.Errorf(
+				"cannot uninstall harness package %q: delete candidate %q is still owned by active package %q",
+				harnessID,
+				path,
+				member.OrbitID,
+			)
+		}
+	}
+
+	return nil
+}
+
+func runtimeHarnessUninstallLocalChangesError(harnessID string, risks []RuntimeUninstallLocalChange) string {
+	return fmt.Sprintf(
+		"uninstall harness package %q requires --yes to delete locally changed target-owned files: %s; use --dry-run to inspect",
+		harnessID,
+		strings.Join(formatRuntimeUninstallLocalChanges(risks), ", "),
+	)
 }
 
 func runtimeOrbitIDsOwnedByHarness(runtimeFile RuntimeFile, harnessID string) []string {
@@ -246,36 +473,6 @@ func runtimeOrbitIDsOwnedByHarness(runtimeFile RuntimeFile, harnessID string) []
 	sort.Strings(orbitIDs)
 
 	return orbitIDs
-}
-
-func ensureRuntimeHarnessRemovePathsClean(ctx context.Context, repoRoot string, harnessID string, touchedPaths []string) error {
-	statusEntries, err := gitpkg.WorktreeStatus(ctx, repoRoot)
-	if err != nil {
-		return fmt.Errorf("load harness package remove worktree status: %w", err)
-	}
-
-	statusByPath := make(map[string]string, len(statusEntries))
-	for _, entry := range statusEntries {
-		statusByPath[entry.Path] = entry.Code
-	}
-
-	dirtyPaths := make([]string, 0)
-	for _, path := range sortedUniqueStrings(touchedPaths) {
-		code, ok := statusByPath[path]
-		if !ok {
-			continue
-		}
-		dirtyPaths = append(dirtyPaths, fmt.Sprintf("%s (%s)", path, code))
-	}
-	if len(dirtyPaths) == 0 {
-		return nil
-	}
-
-	return fmt.Errorf(
-		"cannot remove harness package %q with uncommitted changes on touched paths: %s",
-		harnessID,
-		strings.Join(dirtyPaths, ", "),
-	)
 }
 
 func currentOrbitInSet(store statepkg.FSStore, orbitIDs []string) (bool, error) {

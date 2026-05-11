@@ -1109,22 +1109,70 @@ func TestHyardRemoveHarnessJSONApplyRequiresYes(t *testing.T) {
 	require.ErrorContains(t, err, "remove harness --json requires --yes or --dry-run")
 }
 
-func TestHyardRemoveHarnessFailsClosedWithDirtyTouchedPath(t *testing.T) {
+func TestHyardRemoveHarnessDryRunJSONReportsLocallyChangedOwnedFile(t *testing.T) {
 	t.Parallel()
 
 	runtimeRoot, harnessID := cloneHyardHarnessRuntime(t)
 	require.NoError(t, os.WriteFile(filepath.Join(runtimeRoot, "docs", "guide.md"), []byte("dirty guide\n"), 0o644))
 
-	stdout, stderr, err := executeHyardCLI(t, runtimeRoot, "remove", "harness", harnessID, "--yes")
-	require.Error(t, err)
-	require.Empty(t, stdout)
+	stdout, stderr, err := executeHyardCLI(t, runtimeRoot, "remove", "harness", harnessID, "--dry-run", "--json")
+	require.NoError(t, err)
 	require.Empty(t, stderr)
-	require.ErrorContains(t, err, `cannot remove harness package "`+harnessID+`" with uncommitted changes on touched paths`)
-	require.ErrorContains(t, err, "docs/guide.md")
+
+	var payload struct {
+		TargetType           string                        `json:"target_type"`
+		HarnessPackage       string                        `json:"harness_package"`
+		DryRun               bool                          `json:"dry_run"`
+		RemovedPaths         []string                      `json:"removed_paths"`
+		LocallyChangedPaths  []hyardLocalChangeRiskPayload `json:"locally_changed_paths"`
+		ConfirmationRequired bool                          `json:"confirmation_required"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "harness", payload.TargetType)
+	require.Equal(t, harnessID, payload.HarnessPackage)
+	require.True(t, payload.DryRun)
+	require.Contains(t, payload.RemovedPaths, "docs/guide.md")
+	risk := requireHyardGuideLocalChangeRisk(t, payload.LocallyChangedPaths, "M")
+	require.True(t, risk.Tracked)
+	require.False(t, risk.Staged)
+	require.True(t, payload.ConfirmationRequired)
+	require.Equal(t, "dirty guide\n", readRepoFile(t, runtimeRoot, "docs/guide.md"))
 
 	runtimeFile, err := harnesspkg.LoadRuntimeFile(runtimeRoot)
 	require.NoError(t, err)
 	require.Len(t, runtimeFile.Members, 1)
+}
+
+func TestHyardRemoveHarnessYesConfirmsLocallyChangedOwnedFileDeletion(t *testing.T) {
+	t.Parallel()
+
+	runtimeRoot, harnessID := cloneHyardHarnessRuntime(t)
+	require.NoError(t, os.WriteFile(filepath.Join(runtimeRoot, "docs", "guide.md"), []byte("dirty guide\n"), 0o644))
+
+	stdout, stderr, err := executeHyardCLI(t, runtimeRoot, "remove", "harness", harnessID, "--yes", "--json")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		TargetType           string                        `json:"target_type"`
+		HarnessPackage       string                        `json:"harness_package"`
+		DryRun               bool                          `json:"dry_run"`
+		RemovedPaths         []string                      `json:"removed_paths"`
+		LocallyChangedPaths  []hyardLocalChangeRiskPayload `json:"locally_changed_paths"`
+		ConfirmationRequired bool                          `json:"confirmation_required"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, "harness", payload.TargetType)
+	require.Equal(t, harnessID, payload.HarnessPackage)
+	require.False(t, payload.DryRun)
+	require.Contains(t, payload.RemovedPaths, "docs/guide.md")
+	requireHyardGuideLocalChangeRisk(t, payload.LocallyChangedPaths, "M")
+	require.True(t, payload.ConfirmationRequired)
+	require.NoFileExists(t, filepath.Join(runtimeRoot, "docs", "guide.md"))
+
+	runtimeFile, err := harnesspkg.LoadRuntimeFile(runtimeRoot)
+	require.NoError(t, err)
+	require.Empty(t, runtimeFile.Members)
 }
 
 func requireHyardGuideLocalChangeRisk(
