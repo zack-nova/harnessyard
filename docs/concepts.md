@@ -56,6 +56,12 @@ to installable package locators. Namespaced handles such as `acme/docs`,
 `docs`, can be installed through `hyard install`; examples may still use
 explicit Git locators when no registry entry is available.
 
+Package Handle Coordinates are case-insensitive and use
+`namespace/name[@version-or-tag]` or curated `name[@version-or-tag]` syntax.
+They are not npm-style `@namespace/name`. Bare handles are curated aliases, and
+`latest` is an explicit registry dist-tag rather than a Git branch or inferred
+newest version.
+
 ## Views
 
 Run View is the default runtime-user presentation. It keeps authoring scaffolds
@@ -102,6 +108,9 @@ display alias or separate Package Identity.
 Runtime users install and uninstall packages in a Harness Runtime:
 
 ```bash
+hyard install <namespace>/<name>
+hyard install <namespace>/<name>@<semver>
+hyard install <curated-name>
 hyard install <package-source>
 hyard uninstall orbit <orbit-package>
 hyard uninstall harness <harness-package>
