@@ -54,6 +54,7 @@ func NewRootCommand() *cobra.Command {
 		newRemoveCommand(),
 		newStartCommand(),
 		newPublishCommand(),
+		newRegistryCommand(),
 		newPrepareCommand(),
 		newBootstrapCommand(),
 		newOrbitCommand(),
