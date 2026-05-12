@@ -86,6 +86,33 @@ func TestLoadManifestRejectsMissingRequiredFlag(t *testing.T) {
 	require.ErrorContains(t, err, "variables.project_name.required")
 }
 
+func TestLoadManifestRejectsSensitiveDefault(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := t.TempDir()
+	filename := filepath.Join(repoRoot, ".orbit", "template.yaml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(filename), 0o755))
+	require.NoError(t, os.WriteFile(filename, []byte(""+
+		"schema_version: 1\n"+
+		"kind: template\n"+
+		"template:\n"+
+		"  orbit_id: docs\n"+
+		"  default_template: false\n"+
+		"  created_from_branch: main\n"+
+		"  created_from_commit: abc123\n"+
+		"  created_at: 2026-03-21T10:00:00Z\n"+
+		"variables:\n"+
+		"  github_token:\n"+
+		"    required: true\n"+
+		"    sensitive: true\n"+
+		"    default: ghp_secret\n"), 0o600))
+
+	_, err := LoadManifest(repoRoot)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "variables.github_token")
+	require.ErrorContains(t, err, "sensitive variables must not define default")
+}
+
 func TestLoadManifestAllowsEmptyVariablesMap(t *testing.T) {
 	t.Parallel()
 

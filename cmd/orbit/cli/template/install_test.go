@@ -184,6 +184,35 @@ func TestWriteAndLoadInstallRecordRoundTripWithEmptyVariableSnapshot(t *testing.
 	require.Equal(t, input, loaded)
 }
 
+func TestLoadInstallRecordRejectsSensitiveDefaultDeclaration(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := t.TempDir()
+	filename := filepath.Join(repoRoot, ".orbit", "installs", "docs.yaml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(filename), 0o755))
+	require.NoError(t, os.WriteFile(filename, []byte(""+
+		"schema_version: 1\n"+
+		"orbit_id: docs\n"+
+		"template:\n"+
+		"  source_kind: local_branch\n"+
+		"  source_repo: \"\"\n"+
+		"  source_ref: orbit-template/docs\n"+
+		"  template_commit: abc123\n"+
+		"applied_at: 2026-03-21T10:30:00Z\n"+
+		"variables:\n"+
+		"  declarations:\n"+
+		"    github_token:\n"+
+		"      required: true\n"+
+		"      sensitive: true\n"+
+		"      default: ghp_secret\n"+
+		"  resolved_at_apply: {}\n"), 0o600))
+
+	_, err := LoadInstallRecord(repoRoot, "docs")
+	require.Error(t, err)
+	require.ErrorContains(t, err, "declarations.github_token")
+	require.ErrorContains(t, err, "sensitive variables must not define default")
+}
+
 func TestLoadInstallRecordRejectsMismatchedOrbitID(t *testing.T) {
 	t.Parallel()
 

@@ -105,6 +105,26 @@ func TestHyardVarsDoctorReportsRuntimeBindingDiagnostics(t *testing.T) {
 	require.Contains(t, varsDiagnosticKeys(payload.Warnings), "undeclared_binding:orphan_binding")
 }
 
+func TestHyardVarsDoctorRejectsSensitiveInlineBindingWithoutLeakingValue(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardVarsInstallRuntime(t, map[string]bindings.VariableDeclaration{
+		"github_token": {Description: "GitHub token", Required: true, Sensitive: true},
+	})
+	repo.WriteFile(t, ".harness/vars.yaml", ""+
+		"schema_version: 2\n"+
+		"variables:\n"+
+		"  github_token:\n"+
+		"    value: ghp_secret\n")
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "vars", "doctor")
+	require.Error(t, err)
+	require.Empty(t, stderr)
+	require.Contains(t, stdout, "status: error\n")
+	require.Contains(t, stdout, "sensitive_value_source github_token")
+	require.NotContains(t, stdout, "ghp_secret")
+}
+
 func TestHyardVarsExplainReportsTextAndJSON(t *testing.T) {
 	lockHyardProcessEnv(t)
 	t.Setenv("GITHUB_TOKEN", "ghp_secret")

@@ -103,11 +103,7 @@ func ExplainRuntimeBinding(ctx context.Context, input RuntimeBindingExplainInput
 	result.SelectedScope = selected.SelectedScope
 	if selected.Resolved {
 		result.Status = RuntimeBindingExplainStatusResolved
-		if result.Sensitive {
-			result.Value = "<redacted>"
-		} else {
-			result.Value = selected.Value
-		}
+		result.Value = bindings.RedactRuntimeBindingValue(selected.Value, result.Sensitive)
 	}
 
 	return result, nil

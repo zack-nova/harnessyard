@@ -113,6 +113,26 @@ func TestResolveRuntimeBindingSelectsEmptyInlineValue(t *testing.T) {
 	require.Empty(t, resolution.Value)
 }
 
+func TestResolveRuntimeBindingRejectsSensitiveDefault(t *testing.T) {
+	t.Parallel()
+
+	defaultValue := "ghp_secret"
+	_, err := ResolveRuntimeBinding(RuntimeBindingInput{
+		Name: "github_token",
+		Declaration: VariableDeclaration{
+			Required:  true,
+			Sensitive: true,
+			Default:   &defaultValue,
+		},
+		VarsFile: VarsFile{
+			SchemaVersion: VarsSchemaVersion,
+			Variables:     map[string]VariableBinding{},
+		},
+	})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "sensitive variables must not define default")
+}
+
 func TestResolveRuntimeBindingValueSources(t *testing.T) {
 	t.Parallel()
 
