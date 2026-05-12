@@ -784,7 +784,7 @@ func applyTemplatePreview(repoRoot string, preview TemplateApplyPreview, overwri
 func loadOptionalBindingsFile(filename string) (bindings.VarsFile, error) {
 	if strings.TrimSpace(filename) == "" {
 		return bindings.VarsFile{
-			SchemaVersion: 1,
+			SchemaVersion: bindings.VarsSchemaVersion,
 			Variables:     map[string]bindings.VariableBinding{},
 		}, nil
 	}
@@ -805,7 +805,7 @@ func loadOptionalBindingsFile(filename string) (bindings.VarsFile, error) {
 
 func loadOptionalRepoVarsFile(ctx context.Context, repoRoot string) (bindings.VarsFile, bool, error) {
 	empty := bindings.VarsFile{
-		SchemaVersion: 1,
+		SchemaVersion: bindings.VarsSchemaVersion,
 		Variables:     map[string]bindings.VariableBinding{},
 	}
 	if _, err := os.Stat(runtimeVarsPath(repoRoot)); err == nil {
@@ -910,7 +910,7 @@ func planResolvedBindingsWrite(
 	}
 
 	planned := bindings.VarsFile{
-		SchemaVersion: 1,
+		SchemaVersion: bindings.VarsSchemaVersion,
 		Variables:     merged,
 	}
 	if len(scopedMerged) > 0 {

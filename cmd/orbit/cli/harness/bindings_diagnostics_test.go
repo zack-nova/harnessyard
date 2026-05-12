@@ -31,7 +31,7 @@ func TestInspectMissingBindingsMarksObservedOptionalPlaceholder(t *testing.T) {
 	})
 	require.NoError(t, err)
 	_, err = WriteVarsFile(repoRoot, bindings.VarsFile{
-		SchemaVersion: 1,
+		SchemaVersion: bindings.VarsSchemaVersion,
 		Variables:     map[string]bindings.VariableBinding{},
 	})
 	require.NoError(t, err)
@@ -93,7 +93,7 @@ func TestInspectMissingBindingsReportsSnapshotlessInstallRecord(t *testing.T) {
 	})
 	require.NoError(t, err)
 	_, err = WriteVarsFile(repoRoot, bindings.VarsFile{
-		SchemaVersion: 1,
+		SchemaVersion: bindings.VarsSchemaVersion,
 		Variables:     map[string]bindings.VariableBinding{},
 	})
 	require.NoError(t, err)
@@ -142,7 +142,7 @@ func TestInspectMissingBindingsTreatsExplicitEmptySnapshotAsZeroVariableContract
 	})
 	require.NoError(t, err)
 	_, err = WriteVarsFile(repoRoot, bindings.VarsFile{
-		SchemaVersion: 1,
+		SchemaVersion: bindings.VarsSchemaVersion,
 		Variables:     map[string]bindings.VariableBinding{},
 	})
 	require.NoError(t, err)

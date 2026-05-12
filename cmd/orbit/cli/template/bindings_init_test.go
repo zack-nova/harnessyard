@@ -29,7 +29,7 @@ func TestBuildLocalBindingsInitPreviewReturnsManifestBackedSkeleton(t *testing.T
 	}, preview.Source)
 	require.Equal(t, "docs", preview.Manifest.Template.OrbitID)
 	require.Equal(t, bindings.VarsFile{
-		SchemaVersion: 1,
+		SchemaVersion: bindings.VarsSchemaVersion,
 		Variables: map[string]bindings.VariableBinding{
 			"project_name": {
 				Value:       "",
@@ -60,7 +60,7 @@ func TestBuildRemoteBindingsInitPreviewReturnsRemoteSkeleton(t *testing.T) {
 		TemplateCommit: strings.TrimSpace(sourceRepo.Run(t, "rev-parse", sourceRef)),
 	}, preview.Source)
 	require.Equal(t, bindings.VarsFile{
-		SchemaVersion: 1,
+		SchemaVersion: bindings.VarsSchemaVersion,
 		Variables: map[string]bindings.VariableBinding{
 			"project_name": {
 				Value:       "",

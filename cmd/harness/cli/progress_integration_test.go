@@ -44,7 +44,7 @@ func TestHarnessBindingsApplyPlainProgressPreservesJSONStdout(t *testing.T) {
 
 	repo := seedInstalledHarnessProgressRepo(t)
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Filled Orbit\n")
@@ -98,7 +98,7 @@ func TestHarnessBindingsPlanPlainProgressPreservesJSONStdout(t *testing.T) {
 		{
 			OrbitID: "docs",
 			VarsYAML: "" +
-				"schema_version: 1\n" +
+				"schema_version: 2\n" +
 				"variables:\n" +
 				"  project_name:\n" +
 				"    value: Orbit\n" +
@@ -110,7 +110,7 @@ func TestHarnessBindingsPlanPlainProgressPreservesJSONStdout(t *testing.T) {
 		{
 			OrbitID: "cmd",
 			VarsYAML: "" +
-				"schema_version: 1\n" +
+				"schema_version: 2\n" +
 				"variables:\n" +
 				"  project_name:\n" +
 				"    value: Orbit\n" +
@@ -123,7 +123,7 @@ func TestHarnessBindingsPlanPlainProgressPreservesJSONStdout(t *testing.T) {
 			},
 		},
 	}, ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -169,7 +169,7 @@ func seedInstalledHarnessProgressRepo(t *testing.T) *testutil.Repo {
 		{
 			OrbitID: "docs",
 			VarsYAML: "" +
-				"schema_version: 1\n" +
+				"schema_version: 2\n" +
 				"variables:\n" +
 				"  project_name:\n" +
 				"    value: Orbit\n" +

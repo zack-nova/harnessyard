@@ -23,7 +23,7 @@ func TestTemplateSaveCreatesTemplateBranch(t *testing.T) {
 	t.Parallel()
 
 	repo := seedTemplateSaveRepo(t, ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -63,7 +63,7 @@ func TestTemplateSaveCreatesTemplateBranchWithSharedAgentsPayload(t *testing.T) 
 	t.Parallel()
 
 	repo := seedTemplateSaveRepo(t, ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -114,7 +114,7 @@ func TestTemplateSaveSkipsProjectionVisibleFilesAndAgents(t *testing.T) {
 	t.Parallel()
 
 	repo := seedTemplateSaveRepo(t, ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -181,7 +181,7 @@ func TestTemplateSaveDryRunDoesNotWriteBranch(t *testing.T) {
 	t.Parallel()
 
 	repo := seedTemplateSaveRepo(t, ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -243,7 +243,7 @@ func TestTemplateSaveUsesZeroCommitProvenanceWithoutCommittedHead(t *testing.T) 
 	t.Parallel()
 
 	repo := seedUncommittedTemplateSaveRepo(t, ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -277,7 +277,7 @@ func TestTemplateSaveFailsClosedOnDetachedHeadRuntimeRevision(t *testing.T) {
 	t.Parallel()
 
 	repo := seedTemplateSaveRepo(t, ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n")
@@ -295,7 +295,7 @@ func TestTemplateSaveFailsClosedOnDriftedMemberHints(t *testing.T) {
 	t.Parallel()
 
 	repo := seedTemplateSaveRepo(t, ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -327,7 +327,7 @@ func TestTemplateSaveRejectsUntrackedMemberPayloadReferencedByTruth(t *testing.T
 	t.Parallel()
 
 	repo := seedTemplateSaveRepo(t, ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -360,7 +360,7 @@ func TestTemplateSaveAllowsInSyncMemberHints(t *testing.T) {
 	t.Parallel()
 
 	repo := seedTemplateSaveRepo(t, ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -394,7 +394,7 @@ func TestTemplateSaveDryRunWarnsWhenRuntimeAgentsLacksCurrentOrbitMarker(t *test
 	t.Parallel()
 
 	repo := seedTemplateSaveRepo(t, ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -427,7 +427,7 @@ func TestTemplateSaveDryRunSupportsJSONOutput(t *testing.T) {
 	t.Parallel()
 
 	repo := seedTemplateSaveRepo(t, ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -492,7 +492,7 @@ func TestTemplateSaveDryRunJSONIncludesAmbiguitySummary(t *testing.T) {
 	t.Parallel()
 
 	repo := seedTemplateSaveRepo(t, ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  product_name:\n"+
 		"    value: Orbit\n"+
@@ -524,7 +524,7 @@ func TestTemplateSaveSupportsJSONOutput(t *testing.T) {
 	t.Parallel()
 
 	repo := seedTemplateSaveRepo(t, ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -557,7 +557,7 @@ func TestTemplateSaveDefaultFlagOnlyAffectsManifestMetadata(t *testing.T) {
 	t.Parallel()
 
 	repo := seedTemplateSaveRepo(t, ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n")
@@ -574,7 +574,7 @@ func TestTemplateSaveFailsWhenTargetBranchExistsWithoutOverwrite(t *testing.T) {
 	t.Parallel()
 
 	repo := seedTemplateSaveRepo(t, ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n")
@@ -591,7 +591,7 @@ func TestTemplateSaveDryRunFailsClosedOnAmbiguity(t *testing.T) {
 	t.Parallel()
 
 	repo := seedTemplateSaveRepo(t, ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  product_name:\n"+
 		"    value: Orbit\n"+
@@ -614,7 +614,7 @@ func TestTemplateSaveUsesInstallRecordSourceRefAsDefaultWritebackTarget(t *testi
 	t.Parallel()
 
 	repo := seedTemplateSaveRepo(t, ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -648,7 +648,7 @@ func TestTemplateSaveRequiresExplicitTargetForManualRuntimeMembersEvenWithInstal
 	t.Parallel()
 
 	repo := seedTemplateSaveRepo(t, ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -666,7 +666,7 @@ func TestTemplateSaveRequiresExplicitTargetForBundleInstalledRuntimeMembers(t *t
 	t.Parallel()
 
 	repo := seedTemplateSaveRepo(t, ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -692,7 +692,7 @@ func TestTemplateSaveDryRunUsesInstallRecordSourceRefAsDefaultWritebackTarget(t 
 	t.Parallel()
 
 	repo := seedTemplateSaveRepo(t, ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -727,7 +727,7 @@ func TestTemplateSaveReadsHiddenTrackedFilesFromHEAD(t *testing.T) {
 		"include:\n"+
 		"  - docs/**\n")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n")
@@ -752,7 +752,7 @@ func TestTemplateSaveReadsHiddenTrackedFilesFromHEAD(t *testing.T) {
 
 func TestTemplateSaveEditTemplateWritesEditedTemplateWithoutMutatingRuntimeWorktree(t *testing.T) {
 	repo := seedTemplateSaveRepo(t, ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -786,7 +786,7 @@ func TestTemplateSaveEditTemplateWritesEditedTemplateWithoutMutatingRuntimeWorkt
 
 func TestTemplateSaveEditTemplatePreservesExecutableFileMode(t *testing.T) {
 	repo := seedTemplateSaveRepo(t, ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables: {}\n")
 	repo.WriteFile(t, "docs/build.sh", "#!/bin/sh\necho orbit\n")
 	require.NoError(t, os.Chmod(filepath.Join(repo.Root, "docs", "build.sh"), 0o755))
@@ -808,7 +808,7 @@ func TestTemplateSaveEditTemplatePreservesExecutableFileMode(t *testing.T) {
 
 func TestTemplateSaveEditTemplateSupportsQuotedEditorCommandWithSpacedPath(t *testing.T) {
 	repo := seedTemplateSaveRepo(t, ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -851,7 +851,7 @@ func TestTemplateSaveFailsOnCapabilityOwnedMemberOverlap(t *testing.T) {
 	t.Parallel()
 
 	repo := seedTemplateSaveRepo(t, ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables: {}\n")
 	repo.WriteFile(t, ".harness/orbits/docs.yaml", ""+
 		"id: docs\n"+
@@ -1048,7 +1048,7 @@ func seedTemplateSaveOutOfRangeSkillRepo(t *testing.T) *testutil.Repo {
 		"        - extras/**\n")
 	writeTestRuntimeManifest(t, repo, "docs")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables: {}\n")
 	repo.WriteFile(t, "docs/guide.md", "Orbit guide\n")
 	repo.WriteFile(t, "declared-skills/docs-style/SKILL.md", ""+

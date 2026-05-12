@@ -21,7 +21,7 @@ func TestBindingsInitLocalBranchWritesSkeletonToStdout(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, stderr)
 	require.Equal(t, ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"    project_name:\n"+
 		"        value: \"\"\n"+
@@ -70,7 +70,7 @@ func TestBindingsInitRemoteGitWritesOutputFileAndJSON(t *testing.T) {
 	require.Equal(t, "orbit-template/docs", payload.Source.Ref)
 	require.NotEmpty(t, payload.Source.Commit)
 	require.Equal(t, outputPath, payload.OutputPath)
-	require.Equal(t, 1, payload.Bindings.SchemaVersion)
+	require.Equal(t, bindings.VarsSchemaVersion, payload.Bindings.SchemaVersion)
 	require.Empty(t, payload.Bindings.Variables["project_name"].Value)
 	require.Equal(t, "Product title", payload.Bindings.Variables["project_name"].Description)
 
@@ -79,7 +79,7 @@ func TestBindingsInitRemoteGitWritesOutputFileAndJSON(t *testing.T) {
 	parsed, err := bindings.ParseVarsData(outputData)
 	require.NoError(t, err)
 	require.Equal(t, bindings.VarsFile{
-		SchemaVersion: 1,
+		SchemaVersion: bindings.VarsSchemaVersion,
 		Variables: map[string]bindings.VariableBinding{
 			"project_name": {
 				Value:       "",

@@ -16,7 +16,7 @@ func TestBuildRootAgentsTemplateFileAppliesWholeFileReplacementAndStripsRuntimeM
 
 	repo := testutil.NewRepo(t)
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -76,7 +76,7 @@ func TestBuildRootAgentsTemplateFileReturnsEmptyWhenRootAgentsMissing(t *testing
 
 	repo := testutil.NewRepo(t)
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables: {}\n")
 	repo.AddAndCommit(t, "seed runtime repo without root agents")
 

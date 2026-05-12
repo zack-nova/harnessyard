@@ -56,7 +56,7 @@ func TestBuildBindingsPlanMergesPreviewsAndPrefillsRepoValues(t *testing.T) {
 			},
 		},
 	}, bindings.VarsFile{
-		SchemaVersion: 1,
+		SchemaVersion: bindings.VarsSchemaVersion,
 		Variables: map[string]bindings.VariableBinding{
 			"project_name": {
 				Value:       "Orbit",
@@ -83,7 +83,7 @@ func TestBuildBindingsPlanMergesPreviewsAndPrefillsRepoValues(t *testing.T) {
 	require.Equal(t, []string{"binary_name"}, result.MissingRequired)
 	require.Equal(t, []string{"project_name"}, result.ReusedValues)
 	require.Equal(t, bindings.VarsFile{
-		SchemaVersion: 1,
+		SchemaVersion: bindings.VarsSchemaVersion,
 		Variables: map[string]bindings.VariableBinding{
 			"binary_name": {
 				Value:       "",
@@ -134,7 +134,7 @@ func TestBuildBindingsPlanNamespacesVariableDescriptionConflict(t *testing.T) {
 			},
 		},
 	}, bindings.VarsFile{
-		SchemaVersion: 1,
+		SchemaVersion: bindings.VarsSchemaVersion,
 		Variables: map[string]bindings.VariableBinding{
 			"project_name": {
 				Value:       "Orbit",
@@ -212,7 +212,7 @@ func TestBuildBindingsPlanPreservesUnrelatedExistingBindings(t *testing.T) {
 			},
 		},
 	}, bindings.VarsFile{
-		SchemaVersion: 1,
+		SchemaVersion: bindings.VarsSchemaVersion,
 		Variables: map[string]bindings.VariableBinding{
 			"github_token": {
 				Value:       "${{ secrets.GITHUB_TOKEN }}",
@@ -239,7 +239,7 @@ func TestBuildBindingsPlanPreservesUnrelatedExistingBindings(t *testing.T) {
 	require.Equal(t, []string{"binary_name"}, result.MissingRequired)
 	require.Equal(t, []string{"project_name"}, result.ReusedValues)
 	require.Equal(t, bindings.VarsFile{
-		SchemaVersion: 1,
+		SchemaVersion: bindings.VarsSchemaVersion,
 		Variables: map[string]bindings.VariableBinding{
 			"binary_name": {
 				Value:       "",

@@ -438,7 +438,7 @@ func TestOrbitBriefBackfillWritesCurrentOrbitBlockToHostedSpec(t *testing.T) {
 		"members: []\n")
 
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Acme\n")
@@ -560,7 +560,7 @@ func TestOrbitBriefBackfillReportsSkippedStatusWhenHostedTruthAlreadyMatches(t *
 		"  updated_at: 2026-04-07T00:00:00Z\n"+
 		"members: []\n")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Acme\n")
@@ -4113,7 +4113,7 @@ func seedBriefBackfillRevisionRepo(t *testing.T, revisionKind string) *testutil.
 	}
 
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Acme\n")
@@ -4186,7 +4186,7 @@ func seedBriefMaterializeRevisionRepo(t *testing.T, revisionKind string, agentsT
 	}
 
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Acme\n")

@@ -20,7 +20,7 @@ func TestBuildRemoteTemplateApplyPreviewExplicitRefUsesSingleFetchFastPath(t *te
 	runtimeRepo := seedRemoteApplyRuntimeRepo(t)
 	bindingsPath := filepath.Join(runtimeRepo.Root, "apply-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Remote Orbit\n"), 0o600))

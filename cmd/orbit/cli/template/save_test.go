@@ -34,7 +34,7 @@ func TestBuildTemplateSavePreviewBuildsManifestAndTemplateTree(t *testing.T) {
 		"include:\n"+
 		"  - docs/**\n")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -119,7 +119,7 @@ func TestBuildTemplateSavePreviewCollectsAmbiguities(t *testing.T) {
 		"include:\n"+
 		"  - docs/**\n")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  product_name:\n"+
 		"    value: Orbit\n"+
@@ -167,7 +167,7 @@ func TestBuildTemplateSavePreviewIgnoresNonMarkdownVariableSyntax(t *testing.T) 
 		"  - docs/**\n"+
 		"  - schema/**\n")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n")
@@ -237,7 +237,7 @@ func TestBuildTemplateSavePreviewKeepsAgentsTemplateInCompanionSpecAndSkipsRootA
 		"      include:\n"+
 		"        - docs/**\n")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -338,7 +338,7 @@ func TestBuildTemplateSavePreviewSkipsRuntimeGuidanceExportsAndWarns(t *testing.
 		"    include_orbit_description: true\n"+
 		"    materialize_agents_from_meta: true\n")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -410,7 +410,7 @@ func TestBuildTemplateSavePreviewIncludesCapabilityAssetsAndKeepsCapabilitiesInC
 		"      include:\n"+
 		"        - docs/**\n")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n")
@@ -484,7 +484,7 @@ func TestBuildTemplateSavePreviewRejectsHostedCapabilitySkillRootMissingSkillMD(
 		"      include:\n"+
 		"        - docs/**\n")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables: {}\n")
 	repo.WriteFile(t, "docs/guide.md", "Orbit guide\n")
 	repo.WriteFile(t, "orbit/skills/docs-style/checklist.md", "Use Orbit style guide.\n")
@@ -518,7 +518,7 @@ func TestBuildTemplateSavePreviewSkipsEmptySharedAgentsPayload(t *testing.T) {
 		"include:\n"+
 		"  - docs/**\n")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n")
@@ -565,7 +565,7 @@ func TestBuildTemplateSavePreviewSkipsProjectionVisibleFilesAndAgents(t *testing
 		"include:\n"+
 		"  - docs/**\n")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -614,7 +614,7 @@ func TestBuildTemplateSavePreviewSkipsProjectionVisibleFilesFromManifestVariable
 		"include:\n"+
 		"  - docs/**\n")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -650,7 +650,7 @@ func TestSaveTemplateBranchFailsClosedOnAmbiguity(t *testing.T) {
 		"include:\n"+
 		"  - docs/**\n")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  product_name:\n"+
 		"    value: Orbit\n"+
@@ -693,7 +693,7 @@ func TestSaveTemplateBranchWritesTemplateBranch(t *testing.T) {
 		"include:\n"+
 		"  - docs/**\n")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n")
@@ -739,7 +739,7 @@ func TestSaveTemplateBranchPreservesExecutableFileMode(t *testing.T) {
 		"include:\n"+
 		"  - docs/**\n")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables: {}\n")
 	repo.WriteFile(t, "docs/build.sh", "#!/bin/sh\necho orbit\n")
 	require.NoError(t, os.Chmod(filepath.Join(repo.Root, "docs", "build.sh"), 0o755))
@@ -777,7 +777,7 @@ func TestBuildTemplateSavePreviewEditTemplateRegeneratesManifestWithoutMutatingR
 		"include:\n"+
 		"  - docs/**\n")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -861,7 +861,7 @@ func TestBuildTemplateSavePreviewEditTemplateAllowsEditingSharedAgentsPayloadWit
 		"include:\n"+
 		"  - docs/**\n")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -928,7 +928,7 @@ func TestBuildTemplateSavePreviewEditTemplateFailsWhenDefinitionIsRemoved(t *tes
 		"include:\n"+
 		"  - docs/**\n")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n")

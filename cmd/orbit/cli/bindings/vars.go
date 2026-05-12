@@ -15,8 +15,9 @@ import (
 )
 
 const (
-	varsRelativePath          = ".orbit/vars.yaml"
-	varsSchemaVersion         = 1
+	varsRelativePath          = ".harness/vars.yaml"
+	VarsSchemaVersion         = 2
+	varsSchemaVersion         = VarsSchemaVersion
 	variablesFieldName        = "variables"
 	scopedVariablesFieldName  = "scoped_variables"
 	scopedVariablesNestedName = "variables"
@@ -36,8 +37,15 @@ type ScopedVariableBindings struct {
 
 // VariableBinding stores a concrete string value and optional description.
 type VariableBinding struct {
-	Value       string `yaml:"value"`
-	Description string `yaml:"description,omitempty"`
+	Value       string       `yaml:"value,omitempty"`
+	ValueFrom   *ValueSource `yaml:"value_from,omitempty"`
+	Description string       `yaml:"description,omitempty"`
+}
+
+// ValueSource stores one explicit source for a Runtime Binding value.
+type ValueSource struct {
+	Env  string `yaml:"env,omitempty"`
+	File string `yaml:"file,omitempty"`
 }
 
 // ScopedVariablesForNamespace returns the variable map for one namespace, if present.
@@ -63,24 +71,27 @@ type rawScopedVariableBindings struct {
 }
 
 type rawVariableBinding struct {
-	Value       *string `yaml:"value"`
-	Description *string `yaml:"description"`
+	Value       *string         `yaml:"value"`
+	ValueFrom   *rawValueSource `yaml:"value_from"`
+	Description *string         `yaml:"description"`
+	NotMapping  bool            `yaml:"-"`
 }
 
-// UnmarshalYAML accepts both the canonical mapping form and a scalar shorthand.
+type rawValueSource struct {
+	Env        *string `yaml:"env"`
+	File       *string `yaml:"file"`
+	NotMapping bool    `yaml:"-"`
+}
+
+// UnmarshalYAML records scalar shorthand so validation can report the binding path.
 func (raw *rawVariableBinding) UnmarshalYAML(node *yaml.Node) error {
 	switch node.Kind {
 	case yaml.ScalarNode:
-		if node.Tag == "!!null" {
-			return nil
-		}
-
-		value := node.Value
-		raw.Value = &value
-		raw.Description = nil
+		raw.NotMapping = true
 		return nil
 	case yaml.MappingNode:
 		var value *string
+		var valueFrom *rawValueSource
 		var description *string
 		for index := 0; index < len(node.Content); index += 2 {
 			key := node.Content[index].Value
@@ -93,6 +104,12 @@ func (raw *rawVariableBinding) UnmarshalYAML(node *yaml.Node) error {
 					return fmt.Errorf("decode value: %w", err)
 				}
 				value = &decoded
+			case "value_from":
+				var decoded rawValueSource
+				if err := valueNode.Decode(&decoded); err != nil {
+					return fmt.Errorf("decode value_from: %w", err)
+				}
+				valueFrom = &decoded
 			case "description":
 				var decoded string
 				if err := valueNode.Decode(&decoded); err != nil {
@@ -105,19 +122,61 @@ func (raw *rawVariableBinding) UnmarshalYAML(node *yaml.Node) error {
 		}
 
 		raw.Value = value
+		raw.ValueFrom = valueFrom
 		raw.Description = description
+		raw.NotMapping = false
 		return nil
 	default:
 		return fmt.Errorf("cannot unmarshal %s into bindings.rawVariableBinding", node.ShortTag())
 	}
 }
 
-// VarsPath returns the absolute path to .orbit/vars.yaml.
+// UnmarshalYAML records invalid source shapes so validation can report the binding path.
+func (raw *rawValueSource) UnmarshalYAML(node *yaml.Node) error {
+	switch node.Kind {
+	case yaml.ScalarNode:
+		raw.NotMapping = true
+		return nil
+	case yaml.MappingNode:
+		var env *string
+		var file *string
+		for index := 0; index < len(node.Content); index += 2 {
+			key := node.Content[index].Value
+			valueNode := node.Content[index+1]
+
+			switch key {
+			case "env":
+				var decoded string
+				if err := valueNode.Decode(&decoded); err != nil {
+					return fmt.Errorf("decode env: %w", err)
+				}
+				env = &decoded
+			case "file":
+				var decoded string
+				if err := valueNode.Decode(&decoded); err != nil {
+					return fmt.Errorf("decode file: %w", err)
+				}
+				file = &decoded
+			default:
+				return fmt.Errorf("field %q not found in type bindings.rawValueSource", key)
+			}
+		}
+
+		raw.Env = env
+		raw.File = file
+		raw.NotMapping = false
+		return nil
+	default:
+		return fmt.Errorf("cannot unmarshal %s into bindings.rawValueSource", node.ShortTag())
+	}
+}
+
+// VarsPath returns the absolute path to .harness/vars.yaml.
 func VarsPath(repoRoot string) string {
 	return filepath.Join(repoRoot, filepath.FromSlash(varsRelativePath))
 }
 
-// LoadVarsFile reads, decodes, and validates the bindings file at the fixed Phase 2 host path.
+// LoadVarsFile reads, decodes, and validates the bindings file at the canonical Runtime Bindings path.
 func LoadVarsFile(repoRoot string) (VarsFile, error) {
 	return LoadVarsFileAtPath(VarsPath(repoRoot))
 }
@@ -138,7 +197,7 @@ func LoadVarsFileAtPath(filename string) (VarsFile, error) {
 	return file, nil
 }
 
-// LoadVarsFileWorktreeOrHEAD reads the bindings file from the fixed Phase 2 host path.
+// LoadVarsFileWorktreeOrHEAD reads the bindings file from the canonical Runtime Bindings path.
 func LoadVarsFileWorktreeOrHEAD(ctx context.Context, repoRoot string) (VarsFile, error) {
 	return LoadVarsFileWorktreeOrHEADAtRepoPath(ctx, repoRoot, varsRelativePath)
 }
@@ -160,7 +219,7 @@ func LoadVarsFileWorktreeOrHEADAtRepoPath(ctx context.Context, repoRoot string, 
 	return file, nil
 }
 
-// ParseVarsData decodes and validates .orbit/vars.yaml bytes.
+// ParseVarsData decodes and validates Runtime Bindings bytes.
 func ParseVarsData(data []byte) (VarsFile, error) {
 	var raw rawVarsFile
 	if err := contractutil.DecodeKnownFields(data, &raw); err != nil {
@@ -197,6 +256,9 @@ func ValidateVarsFile(file VarsFile) error {
 		if err := contractutil.ValidateVariableName(name); err != nil {
 			return fmt.Errorf("variables.%s: %w", name, err)
 		}
+		if err := validateVariableBinding(fmt.Sprintf("variables.%s", name), file.Variables[name]); err != nil {
+			return err
+		}
 	}
 	for _, namespace := range contractutil.SortedKeys(file.ScopedVariables) {
 		if err := ids.ValidateOrbitID(namespace); err != nil {
@@ -210,13 +272,19 @@ func ValidateVarsFile(file VarsFile) error {
 			if err := contractutil.ValidateVariableName(name); err != nil {
 				return fmt.Errorf("%s.%s.%s.%s: %w", scopedVariablesFieldName, namespace, scopedVariablesNestedName, name, err)
 			}
+			if err := validateVariableBinding(
+				fmt.Sprintf("%s.%s.%s.%s", scopedVariablesFieldName, namespace, scopedVariablesNestedName, name),
+				scoped.Variables[name],
+			); err != nil {
+				return err
+			}
 		}
 	}
 
 	return nil
 }
 
-// WriteVarsFile validates and writes the bindings file at the fixed Phase 2 host path.
+// WriteVarsFile validates and writes the bindings file at the canonical Runtime Bindings path.
 func WriteVarsFile(repoRoot string, file VarsFile) (string, error) {
 	return WriteVarsFileAtPath(VarsPath(repoRoot), file)
 }
@@ -299,18 +367,77 @@ func (raw rawVarsFile) toVarsFile() (VarsFile, error) {
 }
 
 func (raw rawVariableBinding) toVariableBinding(prefix string) (VariableBinding, error) {
-	if raw.Value == nil {
-		return VariableBinding{}, fmt.Errorf("%s.value must be present", prefix)
+	if raw.NotMapping {
+		return VariableBinding{}, fmt.Errorf("%s must be a mapping with value or value_from", prefix)
+	}
+	if (raw.Value == nil) == (raw.ValueFrom == nil) {
+		return VariableBinding{}, fmt.Errorf("%s must set exactly one of value or value_from", prefix)
 	}
 
-	binding := VariableBinding{
-		Value: *raw.Value,
+	binding := VariableBinding{}
+	if raw.Value != nil {
+		binding.Value = *raw.Value
+	} else {
+		valueFrom, err := raw.ValueFrom.toValueSource(prefix + ".value_from")
+		if err != nil {
+			return VariableBinding{}, err
+		}
+		binding.ValueFrom = &valueFrom
 	}
 	if raw.Description != nil {
 		binding.Description = *raw.Description
 	}
 
 	return binding, nil
+}
+
+func (raw rawValueSource) toValueSource(prefix string) (ValueSource, error) {
+	if raw.NotMapping {
+		return ValueSource{}, fmt.Errorf("%s must be a mapping with env or file", prefix)
+	}
+
+	hasEnv := raw.Env != nil
+	hasFile := raw.File != nil
+	if hasEnv == hasFile {
+		return ValueSource{}, fmt.Errorf("%s must set exactly one of env or file", prefix)
+	}
+	if hasEnv {
+		if strings.TrimSpace(*raw.Env) == "" {
+			return ValueSource{}, fmt.Errorf("%s.env must not be blank", prefix)
+		}
+		return ValueSource{Env: *raw.Env}, nil
+	}
+	if strings.TrimSpace(*raw.File) == "" {
+		return ValueSource{}, fmt.Errorf("%s.file must not be blank", prefix)
+	}
+	return ValueSource{File: *raw.File}, nil
+}
+
+func validateVariableBinding(prefix string, binding VariableBinding) error {
+	if binding.ValueFrom == nil {
+		return nil
+	}
+	if binding.Value != "" {
+		return fmt.Errorf("%s must set exactly one of value or value_from", prefix)
+	}
+
+	return validateValueSource(prefix+".value_from", *binding.ValueFrom)
+}
+
+func validateValueSource(prefix string, source ValueSource) error {
+	hasEnv := source.Env != ""
+	hasFile := source.File != ""
+	if hasEnv == hasFile {
+		return fmt.Errorf("%s must set exactly one of env or file", prefix)
+	}
+	if hasEnv && strings.TrimSpace(source.Env) == "" {
+		return fmt.Errorf("%s.env must not be blank", prefix)
+	}
+	if hasFile && strings.TrimSpace(source.File) == "" {
+		return fmt.Errorf("%s.file must not be blank", prefix)
+	}
+
+	return nil
 }
 
 func varsFileNode(file VarsFile) *yaml.Node {
@@ -320,12 +447,7 @@ func varsFileNode(file VarsFile) *yaml.Node {
 	variables := contractutil.MappingNode()
 	for _, name := range contractutil.SortedKeys(file.Variables) {
 		binding := file.Variables[name]
-		bindingNode := contractutil.MappingNode()
-		contractutil.AppendMapping(bindingNode, "value", contractutil.StringNode(binding.Value))
-		if binding.Description != "" {
-			contractutil.AppendMapping(bindingNode, "description", contractutil.StringNode(binding.Description))
-		}
-		contractutil.AppendMapping(variables, name, bindingNode)
+		contractutil.AppendMapping(variables, name, variableBindingNode(binding))
 	}
 
 	contractutil.AppendMapping(root, variablesFieldName, variables)
@@ -337,12 +459,7 @@ func varsFileNode(file VarsFile) *yaml.Node {
 			variablesNode := contractutil.MappingNode()
 			for _, name := range contractutil.SortedKeys(scoped.Variables) {
 				binding := scoped.Variables[name]
-				bindingNode := contractutil.MappingNode()
-				contractutil.AppendMapping(bindingNode, "value", contractutil.StringNode(binding.Value))
-				if binding.Description != "" {
-					contractutil.AppendMapping(bindingNode, "description", contractutil.StringNode(binding.Description))
-				}
-				contractutil.AppendMapping(variablesNode, name, bindingNode)
+				contractutil.AppendMapping(variablesNode, name, variableBindingNode(binding))
 			}
 			contractutil.AppendMapping(namespaceNode, scopedVariablesNestedName, variablesNode)
 			contractutil.AppendMapping(scopedVariables, namespace, namespaceNode)
@@ -351,4 +468,30 @@ func varsFileNode(file VarsFile) *yaml.Node {
 	}
 
 	return root
+}
+
+func variableBindingNode(binding VariableBinding) *yaml.Node {
+	bindingNode := contractutil.MappingNode()
+	if binding.ValueFrom != nil {
+		contractutil.AppendMapping(bindingNode, "value_from", valueSourceNode(*binding.ValueFrom))
+	} else {
+		contractutil.AppendMapping(bindingNode, "value", contractutil.StringNode(binding.Value))
+	}
+	if binding.Description != "" {
+		contractutil.AppendMapping(bindingNode, "description", contractutil.StringNode(binding.Description))
+	}
+
+	return bindingNode
+}
+
+func valueSourceNode(source ValueSource) *yaml.Node {
+	sourceNode := contractutil.MappingNode()
+	if source.Env != "" {
+		contractutil.AppendMapping(sourceNode, "env", contractutil.StringNode(source.Env))
+	}
+	if source.File != "" {
+		contractutil.AppendMapping(sourceNode, "file", contractutil.StringNode(source.File))
+	}
+
+	return sourceNode
 }

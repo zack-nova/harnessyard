@@ -413,7 +413,7 @@ func seedTemplateSaveRepo(t *testing.T) *testutil.Repo {
 		"include:\n"+
 		"  - docs/**\n")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -460,7 +460,7 @@ func seedUncommittedTemplateSaveRepo(t *testing.T) *testutil.Repo {
 		"include:\n"+
 		"  - docs/**\n")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+

@@ -278,7 +278,7 @@ func loadOptionalBindingsDiagnosticsVars(ctx context.Context, repoRoot string) (
 	}
 	if errors.Is(err, os.ErrNotExist) {
 		return bindings.VarsFile{
-			SchemaVersion: 1,
+			SchemaVersion: bindings.VarsSchemaVersion,
 			Variables:     map[string]bindings.VariableBinding{},
 		}, nil
 	}

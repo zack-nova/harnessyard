@@ -39,7 +39,7 @@ func TestApplyLocalTemplateSnapshotsAgentAddonsWithoutNativeActivation(t *testin
 
 	bindingsPath := filepath.Join(repo.Root, "apply-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Applied Orbit\n"), 0o600))
