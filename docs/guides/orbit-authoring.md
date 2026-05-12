@@ -112,18 +112,22 @@ Use root guidance files as package templates and runtime entry points:
 - `README.md` summarizes source/package purpose and routes readers.
 
 Write the orbit's `AGENTS.md` guidance as a thin runtime entry point, not as a
-mandatory full-doc reading list. A good orbit agents guide has:
+mandatory full-doc reading list. Prefer a user-facing title such as
+`# Design Memory Workflow`; avoid package-id style
+titles, and boilerplate like "this repository installs...".
 
-- always-on boundaries: product identity, state model, and dangerous actions
-  that are unsafe to miss on any run
+A good orbit agents guide starts with one purpose sentence, then uses only the
+sections that carry runtime value:
+
 - task-triggered reading: deeper docs grouped by the work that needs them,
   such as implementation, testing, release surface, issue flow, or design memory
-- workflow entry points: skill or process triggers that point to the owning
-  docs instead of copying the full state machine into `AGENTS.md`
+- always-on boundaries: product identity, state model, and dangerous actions
+  that are unsafe to miss on any run
 
 Prefer "read this when the task touches X" over "read every file before every
 task." Keep detailed procedures in linked docs, local skills, prompt commands,
-or `BOOTSTRAP.md` when the procedure is initialization-only.
+or `BOOTSTRAP.md` when the procedure is initialization-only. Remove
+self-referential guidance such as "read this file first" when the structure already makes that clear.
 
 Use local skills when an agent needs a reusable runtime workflow. A skill file
 owns trigger conditions, workflow steps, tool usage, and completion reporting.
@@ -214,6 +218,7 @@ The user-facing publication path is `hyard publish orbit <package>`.
 
 - The orbit has one objective, one scope boundary, and one done probe.
 - `AGENTS.md` is an entry point, not a full manual.
+- `AGENTS.md` starts with direct purpose, not install boilerplate.
 - `AGENTS.md` uses task-triggered reading instead of making every run pre-read
   the whole orbit documentation set.
 - Only hard safety and product boundaries are always-on; detailed workflow
@@ -235,6 +240,7 @@ The user-facing publication path is `hyard publish orbit <package>`.
 - Publishing with uncommitted `.harness/*` truth.
 - Treating markerless Run View guidance as authored Orbit Package truth.
 - Turning `AGENTS.md` into a mandatory full documentation reading list.
+- Keeping `AGENTS.md` boilerplate that only describes how `AGENTS.md` works.
 - Putting capability-owned skill or command paths into ordinary content members.
 - Keeping old authoring references as runtime rules.
 - Adding templates that no bootstrap, install, or runtime consumer reads.
