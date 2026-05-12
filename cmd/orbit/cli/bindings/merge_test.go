@@ -166,6 +166,42 @@ func TestMergeTreatsBlankValuesAsMissing(t *testing.T) {
 	require.Empty(t, result.Unresolved)
 }
 
+func TestMergeUsesDeclarationDefaultsBeforeReportingRequiredUnresolved(t *testing.T) {
+	t.Parallel()
+
+	defaultURL := "https://docs.example.test"
+	result, err := Merge(MergeInput{
+		Declared: map[string]VariableDeclaration{
+			"docs_url": {
+				Description: "Documentation URL",
+				Required:    true,
+				Default:     &defaultURL,
+			},
+			"project_name": {
+				Description: "Project name",
+				Required:    true,
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, map[string]ResolvedBinding{
+		"docs_url": {
+			Value:       "https://docs.example.test",
+			Description: "Documentation URL",
+			Required:    true,
+			Source:      SourceDefault,
+		},
+	}, result.Resolved)
+	require.Equal(t, []UnresolvedBinding{
+		{
+			Name:        "project_name",
+			Description: "Project name",
+			Required:    true,
+		},
+	}, result.Unresolved)
+}
+
 func TestMergePrefersScopedBindingsAndRecordsNamespaces(t *testing.T) {
 	t.Parallel()
 

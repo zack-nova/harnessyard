@@ -97,6 +97,50 @@ func TestBuildBindingsPlanMergesPreviewsAndPrefillsRepoValues(t *testing.T) {
 	}, result.Bindings)
 }
 
+func TestBuildBindingsPlanRespectsDefaultsAndSensitiveDeclarations(t *testing.T) {
+	t.Parallel()
+
+	defaultURL := "https://docs.example.test"
+	preview := orbittemplate.BindingsInitPreview{
+		Source: orbittemplate.Source{
+			SourceKind:     orbittemplate.InstallSourceKindLocalBranch,
+			SourceRef:      "orbit-template/docs",
+			TemplateCommit: "abc123",
+		},
+		Manifest: orbittemplate.Manifest{
+			SchemaVersion: 1,
+			Kind:          orbittemplate.TemplateKind,
+			Template: orbittemplate.Metadata{
+				OrbitID:           "docs",
+				CreatedFromBranch: "main",
+				CreatedFromCommit: "abc123",
+				CreatedAt:         time.Date(2026, time.April, 9, 10, 0, 0, 0, time.UTC),
+			},
+			Variables: map[string]orbittemplate.VariableSpec{
+				"docs_url":     {Description: "Documentation URL", Required: true, Default: &defaultURL},
+				"github_token": {Description: "GitHub token", Required: true, Sensitive: true},
+				"project_name": {Description: "Product title", Required: true},
+			},
+		},
+	}
+
+	result, err := BuildBindingsPlanWithOptions([]orbittemplate.BindingsInitPreview{preview}, bindings.VarsFile{}, BindingsPlanOptions{})
+	require.NoError(t, err)
+	require.Equal(t, bindings.VarsSchemaVersion, result.Bindings.SchemaVersion)
+	require.Equal(t, []string{"project_name"}, result.MissingRequired)
+	require.Empty(t, result.Bindings.Variables["docs_url"].Value)
+	require.NotNil(t, result.Bindings.Variables["github_token"].ValueFrom)
+	require.Equal(t, "GITHUB_TOKEN", result.Bindings.Variables["github_token"].ValueFrom.Env)
+
+	withDefaults, err := BuildBindingsPlanWithOptions([]orbittemplate.BindingsInitPreview{preview}, bindings.VarsFile{}, BindingsPlanOptions{
+		MaterializeDefaults: true,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "https://docs.example.test", withDefaults.Bindings.Variables["docs_url"].Value)
+	require.NotNil(t, withDefaults.Bindings.Variables["github_token"].ValueFrom)
+	require.Equal(t, "GITHUB_TOKEN", withDefaults.Bindings.Variables["github_token"].ValueFrom.Env)
+}
+
 func TestBuildBindingsPlanNamespacesVariableDescriptionConflict(t *testing.T) {
 	t.Parallel()
 

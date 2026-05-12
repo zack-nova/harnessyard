@@ -1,12 +1,17 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/zack-nova/harnessyard/cmd/orbit/cli/bindings"
 	harnesspkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/harness"
+	orbittemplate "github.com/zack-nova/harnessyard/cmd/orbit/cli/template"
 )
 
 type varsDoctorExitError struct {
@@ -30,6 +35,14 @@ type varsValidateOutput struct {
 	Valid bool   `json:"valid"`
 }
 
+type varsInitOutput struct {
+	Path            string   `json:"path"`
+	Source          string   `json:"source"`
+	VariableCount   int      `json:"variable_count"`
+	MissingRequired []string `json:"missing_required,omitempty"`
+	ReusedValues    []string `json:"reused_values,omitempty"`
+}
+
 func newVarsCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "vars",
@@ -40,6 +53,7 @@ func newVarsCommand() *cobra.Command {
 	}
 
 	cmd.AddCommand(
+		newVarsInitCommand(),
 		newVarsPathCommand(),
 		newVarsValidateCommand(),
 		newVarsDoctorCommand(),
@@ -47,6 +61,125 @@ func newVarsCommand() *cobra.Command {
 	)
 
 	return cmd
+}
+
+func newVarsInitCommand() *cobra.Command {
+	var outputPath string
+	var requestedRef string
+	var materializeDefaults bool
+
+	cmd := &cobra.Command{
+		Use:   "init <package-source>",
+		Short: "Generate a Runtime Bindings skeleton",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			workingDir, err := hyardWorkingDirFromCommand(cmd)
+			if err != nil {
+				return err
+			}
+			resolved, err := harnesspkg.ResolveRoot(cmd.Context(), workingDir)
+			if err != nil {
+				return fmt.Errorf("resolve harness root: %w", err)
+			}
+
+			preview, err := buildVarsInitPreview(cmd, resolved.Repo.Root, args[0], requestedRef)
+			if err != nil {
+				return err
+			}
+			repoVars, err := loadVarsInitExistingFile(resolved.Repo.Root)
+			if err != nil {
+				return err
+			}
+			result, err := harnesspkg.BuildBindingsPlanWithOptions([]orbittemplate.BindingsInitPreview{preview}, repoVars, harnesspkg.BindingsPlanOptions{
+				MaterializeDefaults: materializeDefaults,
+			})
+			if err != nil {
+				return fmt.Errorf("build Runtime Bindings skeleton: %w", err)
+			}
+
+			destination := resolveVarsInitOutputPath(resolved.Repo.Root, outputPath)
+			if _, err := bindings.WriteVarsFileAtPath(destination, result.Bindings); err != nil {
+				return fmt.Errorf("write Runtime Bindings skeleton: %w", err)
+			}
+
+			jsonOutput, err := wantHyardJSON(cmd)
+			if err != nil {
+				return err
+			}
+			if jsonOutput {
+				return emitHyardJSON(cmd, varsInitOutput{
+					Path:            outputPath,
+					Source:          args[0],
+					VariableCount:   len(result.Bindings.Variables),
+					MissingRequired: result.MissingRequired,
+					ReusedValues:    result.ReusedValues,
+				})
+			}
+
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "wrote Runtime Bindings skeleton to %s\n", outputPath); err != nil {
+				return fmt.Errorf("write command output: %w", err)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&outputPath, "out", harnesspkg.VarsRepoPath(), "Runtime Bindings output path")
+	cmd.Flags().StringVar(&requestedRef, "ref", "", "Git ref to read when package-source is a remote repository")
+	cmd.Flags().BoolVar(&materializeDefaults, "defaults", false, "Materialize declaration defaults as inline values")
+	addHyardJSONFlag(cmd)
+
+	return cmd
+}
+
+func buildVarsInitPreview(cmd *cobra.Command, repoRoot string, source string, requestedRef string) (orbittemplate.BindingsInitPreview, error) {
+	preview, localErr := orbittemplate.BuildLocalBindingsInitPreview(cmd.Context(), orbittemplate.LocalBindingsInitInput{
+		RepoRoot:  repoRoot,
+		SourceRef: source,
+	})
+	if localErr == nil {
+		return preview, nil
+	}
+
+	preview, remoteErr := orbittemplate.BuildRemoteBindingsInitPreview(cmd.Context(), orbittemplate.RemoteBindingsInitInput{
+		RepoRoot:     repoRoot,
+		RemoteURL:    source,
+		RequestedRef: requestedRef,
+	})
+	if remoteErr == nil {
+		return preview, nil
+	}
+
+	return orbittemplate.BindingsInitPreview{}, fmt.Errorf(
+		"resolve package source %q: %w",
+		source,
+		errors.Join(
+			fmt.Errorf("local branch: %w", localErr),
+			fmt.Errorf("remote source: %w", remoteErr),
+		),
+	)
+}
+
+func loadVarsInitExistingFile(repoRoot string) (bindings.VarsFile, error) {
+	if _, err := os.Stat(harnesspkg.VarsPath(repoRoot)); err == nil {
+		file, err := harnesspkg.LoadVarsFile(repoRoot)
+		if err != nil {
+			return bindings.VarsFile{}, fmt.Errorf("load %s: %w", harnesspkg.VarsRepoPath(), err)
+		}
+		return file, nil
+	} else if !os.IsNotExist(err) {
+		return bindings.VarsFile{}, fmt.Errorf("stat %s: %w", harnesspkg.VarsRepoPath(), err)
+	}
+
+	return bindings.VarsFile{
+		SchemaVersion: bindings.VarsSchemaVersion,
+		Variables:     map[string]bindings.VariableBinding{},
+	}, nil
+}
+
+func resolveVarsInitOutputPath(repoRoot string, outputPath string) string {
+	if filepath.IsAbs(outputPath) {
+		return filepath.Clean(outputPath)
+	}
+	return filepath.Join(repoRoot, filepath.FromSlash(outputPath))
 }
 
 func newVarsDoctorCommand() *cobra.Command {

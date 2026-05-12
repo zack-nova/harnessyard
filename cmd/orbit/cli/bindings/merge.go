@@ -17,6 +17,7 @@ const (
 	SourceRepoVarsScoped     MergeSource = "repo_vars_scoped"
 	SourceInteractive        MergeSource = "interactive"
 	SourceEditor             MergeSource = "editor"
+	SourceDefault            MergeSource = "default"
 )
 
 // VariableDeclaration is the template manifest metadata needed for merge decisions.
@@ -131,6 +132,14 @@ func Merge(input MergeInput) (MergeResult, error) {
 				Description: description,
 				Required:    declaration.Required,
 				Source:      fillSource,
+				Namespace:   namespace,
+			}
+		case declaration.Default != nil:
+			result.Resolved[name] = ResolvedBinding{
+				Value:       *declaration.Default,
+				Description: description,
+				Required:    declaration.Required,
+				Source:      SourceDefault,
 				Namespace:   namespace,
 			}
 		case declaration.Required:
