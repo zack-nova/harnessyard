@@ -212,6 +212,12 @@ func (raw rawTemplateMemberSnapshotData) toTemplateMemberSnapshotData() (Templat
 		if rawSpec.Description != nil {
 			spec.Description = *rawSpec.Description
 		}
+		if rawSpec.Sensitive != nil {
+			spec.Sensitive = *rawSpec.Sensitive
+		}
+		if rawSpec.Default != nil {
+			spec.Default = rawSpec.Default
+		}
 		data.Variables[name] = spec
 	}
 
@@ -246,6 +252,12 @@ func templateMemberSnapshotNode(snapshot TemplateMemberSnapshot) *yaml.Node {
 			contractutil.AppendMapping(specNode, "description", contractutil.StringNode(spec.Description))
 		}
 		contractutil.AppendMapping(specNode, "required", contractutil.BoolNode(spec.Required))
+		if spec.Sensitive {
+			contractutil.AppendMapping(specNode, "sensitive", contractutil.BoolNode(spec.Sensitive))
+		}
+		if spec.Default != nil {
+			contractutil.AppendMapping(specNode, "default", contractutil.StringNode(*spec.Default))
+		}
 		contractutil.AppendMapping(variablesNode, name, specNode)
 	}
 	contractutil.AppendMapping(snapshotNode, "variables", variablesNode)

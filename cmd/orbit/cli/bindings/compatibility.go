@@ -30,6 +30,18 @@ func MergeVariableDeclaration(name string, current VariableDeclaration, next Var
 	}
 
 	current.Required = current.Required || next.Required
+	current.Sensitive = current.Sensitive || next.Sensitive
+	switch {
+	case current.Default == nil:
+		current.Default = next.Default
+	case next.Default == nil:
+	case *current.Default == *next.Default:
+	default:
+		return VariableDeclaration{}, fmt.Errorf("variable conflict for %q", name)
+	}
+	if current.Sensitive && current.Default != nil {
+		return VariableDeclaration{}, fmt.Errorf("variable conflict for %q", name)
+	}
 
 	return current, nil
 }

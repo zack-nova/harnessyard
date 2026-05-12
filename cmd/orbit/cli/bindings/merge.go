@@ -23,6 +23,8 @@ const (
 type VariableDeclaration struct {
 	Description string
 	Required    bool
+	Sensitive   bool
+	Default     *string
 }
 
 // MergeInput is the pure-data input contract for the bindings merge engine.

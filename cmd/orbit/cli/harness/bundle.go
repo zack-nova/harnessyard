@@ -73,6 +73,8 @@ type rawBundleVariablesSnapshot struct {
 type rawBundleVariableDeclaration struct {
 	Description *string `yaml:"description"`
 	Required    *bool   `yaml:"required"`
+	Sensitive   *bool   `yaml:"sensitive"`
+	Default     *string `yaml:"default"`
 }
 
 type rawBundleVariableBinding struct {
@@ -408,6 +410,12 @@ func (raw rawBundleVariablesSnapshot) toInstallVariablesSnapshot() (orbittemplat
 		}
 		if declaration.Description != nil {
 			next.Description = *declaration.Description
+		}
+		if declaration.Sensitive != nil {
+			next.Sensitive = *declaration.Sensitive
+		}
+		if declaration.Default != nil {
+			next.Default = declaration.Default
 		}
 		snapshot.Declarations[name] = next
 	}

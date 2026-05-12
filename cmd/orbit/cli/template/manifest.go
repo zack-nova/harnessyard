@@ -45,8 +45,10 @@ type Metadata struct {
 
 // VariableSpec captures manifest-level variable metadata only.
 type VariableSpec struct {
-	Description string `yaml:"description,omitempty"`
-	Required    bool   `yaml:"required"`
+	Description string  `yaml:"description,omitempty"`
+	Required    bool    `yaml:"required"`
+	Sensitive   bool    `yaml:"sensitive,omitempty"`
+	Default     *string `yaml:"default,omitempty"`
 }
 
 // SharedFileSpec captures the minimal V0.2 shared-file declaration contract.
@@ -76,6 +78,8 @@ type rawTemplateMetadata struct {
 type rawVariableSpec struct {
 	Description *string `yaml:"description"`
 	Required    *bool   `yaml:"required"`
+	Sensitive   *bool   `yaml:"sensitive"`
+	Default     *string `yaml:"default"`
 }
 
 type rawSharedFileSpec struct {
@@ -233,6 +237,12 @@ func manifestVariablesNode(variables map[string]VariableSpec) *yaml.Node {
 			contractutil.AppendMapping(specNode, "description", contractutil.StringNode(spec.Description))
 		}
 		contractutil.AppendMapping(specNode, "required", contractutil.BoolNode(spec.Required))
+		if spec.Sensitive {
+			contractutil.AppendMapping(specNode, "sensitive", contractutil.BoolNode(spec.Sensitive))
+		}
+		if spec.Default != nil {
+			contractutil.AppendMapping(specNode, "default", contractutil.StringNode(*spec.Default))
+		}
 		contractutil.AppendMapping(node, name, specNode)
 	}
 
@@ -275,6 +285,12 @@ func (raw rawManifest) toManifest() (Manifest, error) {
 		}
 		if rawSpec.Description != nil {
 			spec.Description = *rawSpec.Description
+		}
+		if rawSpec.Sensitive != nil {
+			spec.Sensitive = *rawSpec.Sensitive
+		}
+		if rawSpec.Default != nil {
+			spec.Default = rawSpec.Default
 		}
 
 		manifest.Variables[name] = spec
@@ -341,6 +357,12 @@ func manifestNode(manifest Manifest) *yaml.Node {
 			contractutil.AppendMapping(specNode, "description", contractutil.StringNode(spec.Description))
 		}
 		contractutil.AppendMapping(specNode, "required", contractutil.BoolNode(spec.Required))
+		if spec.Sensitive {
+			contractutil.AppendMapping(specNode, "sensitive", contractutil.BoolNode(spec.Sensitive))
+		}
+		if spec.Default != nil {
+			contractutil.AppendMapping(specNode, "default", contractutil.StringNode(*spec.Default))
+		}
 		contractutil.AppendMapping(variables, name, specNode)
 	}
 	contractutil.AppendMapping(root, manifestVariablesField, variables)

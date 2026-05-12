@@ -177,6 +177,8 @@ func buildInstalledTemplateBindingsPreviewFromRecord(
 		declared[name] = bindings.VariableDeclaration{
 			Description: spec.Description,
 			Required:    spec.Required,
+			Sensitive:   spec.Sensitive,
+			Default:     spec.Default,
 		}
 	}
 	runtimeNamespaces, err := resolveRuntimeInstallVariableNamespaces(repoRoot, record.OrbitID, declared, runtimeInstallOrbitIDs)

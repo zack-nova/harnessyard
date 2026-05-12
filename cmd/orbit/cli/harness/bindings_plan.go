@@ -66,6 +66,8 @@ func BuildBindingsPlan(
 				Declaration: bindings.VariableDeclaration{
 					Description: next.Description,
 					Required:    next.Required,
+					Sensitive:   next.Sensitive,
+					Default:     next.Default,
 				},
 			})
 		}
