@@ -40,6 +40,28 @@ assert_not_contains() {
   fi
 }
 
+assert_text_contains() {
+  text=$1
+  expected=$2
+
+  if ! printf '%s\n' "$text" | grep -Fq "$expected"; then
+    echo "expected text to contain: $expected" >&2
+    printf '%s\n' "$text" >&2
+    exit 1
+  fi
+}
+
+assert_text_not_contains() {
+  text=$1
+  unexpected=$2
+
+  if printf '%s\n' "$text" | grep -Fq "$unexpected"; then
+    echo "expected text to not contain: $unexpected" >&2
+    printf '%s\n' "$text" >&2
+    exit 1
+  fi
+}
+
 assert_pinned_semver() {
   value=$1
 
@@ -47,6 +69,25 @@ assert_pinned_semver() {
     echo "expected pinned semver, got: $value" >&2
     exit 1
   fi
+}
+
+toml_section() {
+  section=$1
+  file=$2
+
+  awk -v section="$section" '
+    $0 == section {
+      in_section = 1
+      print
+      next
+    }
+    in_section && /^\[/ {
+      exit
+    }
+    in_section {
+      print
+    }
+  ' "$file"
 }
 
 ci_workflow="$repo_root/.github/workflows/ci.yml"
@@ -79,7 +120,31 @@ assert_contains "$shell_validation" "sh ./scripts/test_run_view_guidance_docs.sh
 assert_contains "$renovate_config" '"mise"'
 assert_contains "$renovate_config" '"golangci-lint"'
 
+check_task=$(toml_section "[tasks.check]" "$mise_config")
+ci_task=$(toml_section "[tasks.ci]" "$mise_config")
+
+assert_text_contains "$check_task" "description = \"Run fast local feedback checks with cached Go tests\""
+assert_text_contains "$check_task" "{ task = \"lint\" }"
+assert_text_contains "$check_task" "{ task = \"test:go\" }"
+assert_text_not_contains "$check_task" "test:go:ci"
+
+assert_text_contains "$ci_task" "description = \"Run full strict CI-local validation\""
+assert_text_contains "$ci_task" "{ task = \"lint\" }"
+assert_text_contains "$ci_task" "{ task = \"test:go:ci\" }"
+assert_text_contains "$ci_task" "{ task = \"vuln\" }"
+assert_text_contains "$ci_task" "{ task = \"test:scripts\" }"
+
 assert_contains "$contributor_testing" "mise run fix"
+assert_contains "$contributor_testing" "mise run check"
 assert_contains "$contributor_testing" "mise run ci"
+assert_contains "$contributor_testing" "fast local feedback loop"
+assert_contains "$contributor_testing" "cached Go tests"
+assert_contains "$contributor_testing" "full strict validation"
+assert_contains "$contributor_testing" "sh ./scripts/test_release_surface_hyard.sh"
+
 assert_contains "$maintainer_testing" "mise run fix"
+assert_contains "$maintainer_testing" "mise run check"
 assert_contains "$maintainer_testing" "mise run ci"
+assert_contains "$maintainer_testing" "fast local feedback loop"
+assert_contains "$maintainer_testing" "cached Go tests"
+assert_contains "$maintainer_testing" "full strict validation"
