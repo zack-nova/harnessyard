@@ -106,6 +106,7 @@ func NewInstallBatchCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			allowUnresolvedPreview := allowUnresolvedBindings || dryRun
 			interactive, err := cmd.Flags().GetBool("interactive")
 			if err != nil {
 				return fmt.Errorf("read --interactive flag: %w", err)
@@ -148,7 +149,7 @@ func NewInstallBatchCommand() *cobra.Command {
 					sourceArg,
 					bindingsPath,
 					overwriteExisting,
-					allowUnresolvedBindings,
+					allowUnresolvedPreview,
 					interactive,
 					prompter,
 					editorMode,
@@ -243,7 +244,8 @@ func NewInstallBatchCommand() *cobra.Command {
 	cmd.Flags().String("bindings", "", "Path to an explicit bindings YAML file")
 	cmd.Flags().Bool("overwrite-existing", false, "Allow overwriting an existing install-backed orbit and removing stale install-owned files")
 	cmd.Flags().Bool("allow-unresolved-bindings", false, "Compatibility no-op: unresolved required bindings are preserved by default")
-	cmd.Flags().Bool("strict-bindings", false, "Fail when required bindings are unresolved instead of preserving placeholders")
+	cmd.Flags().Bool("strict-bindings", false, "Compatibility no-op: strict binding resolution is the default")
+	hideInstallBindingCompatibilityFlags(cmd)
 	cmd.Flags().Bool("dry-run", false, "Preview harness install without writing files")
 	addProgressFlag(cmd)
 	cmd.Flags().Bool("interactive", false, "Prompt for missing bindings interactively")
@@ -293,7 +295,7 @@ func buildOrbitInstallBatchCandidate(
 		}
 		preview, err := orbittemplate.BuildTemplateApplyPreview(cmd.Context(), previewInput)
 		if err != nil {
-			return orbitInstallBatchCandidate{}, fmt.Errorf("build harness install preview: %w", err)
+			return orbitInstallBatchCandidate{}, installPreviewError("build harness install preview", sourceArg, err)
 		}
 		if err := validateBatchTargetState(repoRoot, preview.Source.Manifest.Template.OrbitID, overwriteExisting); err != nil {
 			return orbitInstallBatchCandidate{}, err
@@ -319,7 +321,7 @@ func buildOrbitInstallBatchCandidate(
 	}
 	preview, err := orbittemplate.BuildRemoteTemplateApplyPreview(cmd.Context(), previewInput)
 	if err != nil {
-		return orbitInstallBatchCandidate{}, fmt.Errorf("build harness install preview: %w", err)
+		return orbitInstallBatchCandidate{}, installPreviewError("build harness install preview", sourceArg, err)
 	}
 	if err := validateBatchTargetState(repoRoot, preview.Source.Manifest.Template.OrbitID, overwriteExisting); err != nil {
 		return orbitInstallBatchCandidate{}, err

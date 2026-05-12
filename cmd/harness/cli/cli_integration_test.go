@@ -3561,7 +3561,7 @@ func TestHarnessCheckTextOutputAggregatesUnresolvedBindings(t *testing.T) {
 
 	repo := seedHarnessInstallRepo(t)
 
-	_, _, err := executeHarnessCLI(t, repo.Root, "install", "orbit-template/docs")
+	_, _, err := executeHarnessCLI(t, repo.Root, "install", "orbit-template/docs", "--allow-unresolved-bindings")
 	require.NoError(t, err)
 
 	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "check")
@@ -6541,7 +6541,7 @@ func TestHarnessInstallTextOutputContract(t *testing.T) {
 		"next_step: hyard orbit show docs intent=inspect orbit entry contract\n", stdout)
 }
 
-func TestHarnessInstallDefaultsToUnresolvedBindingsAndPlaceholderRuntime(t *testing.T) {
+func TestHarnessInstallFailsClosedForMissingBindingsByDefault(t *testing.T) {
 	t.Parallel()
 
 	repo := seedHarnessInstallRepo(t)
@@ -6553,54 +6553,18 @@ func TestHarnessInstallDefaultsToUnresolvedBindingsAndPlaceholderRuntime(t *test
 		"orbit-template/docs",
 		"--json",
 	)
-	require.NoError(t, err)
+	require.Error(t, err)
+	require.Empty(t, stdout)
 	require.Empty(t, stderr)
-
-	var payload struct {
-		HarnessRoot  string   `json:"harness_root"`
-		OrbitID      string   `json:"orbit_id"`
-		WrittenPaths []string `json:"written_paths"`
-		Warnings     []string `json:"warnings"`
-		Readiness    struct {
-			Status    string `json:"status"`
-			NextSteps []struct {
-				Command string `json:"command"`
-			} `json:"next_steps"`
-		} `json:"readiness"`
-	}
-	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
-	require.Equal(t, repo.Root, payload.HarnessRoot)
-	require.Equal(t, "docs", payload.OrbitID)
-	require.Contains(t, payload.WrittenPaths, ".harness/orbits/docs.yaml")
-	require.Contains(t, payload.WrittenPaths, ".harness/installs/docs.yaml")
-	require.NotContains(t, payload.WrittenPaths, ".harness/vars.yaml")
-	require.Equal(t, []string{
-		"install kept template variables unresolved: project_name",
-	}, payload.Warnings)
-	require.Equal(t, "usable", payload.Readiness.Status)
-	require.Contains(t, readinessCommandsFromPayload(payload.Readiness.NextSteps), "hyard plumbing harness bindings missing --all --json")
-
-	guideData, err := os.ReadFile(filepath.Join(repo.Root, "docs", "guide.md"))
-	require.NoError(t, err)
-	require.Equal(t, "{{ vars.project_name }} guide\n", string(guideData))
-
-	record, err := harnesspkg.LoadInstallRecord(repo.Root, "docs")
-	require.NoError(t, err)
-	require.NotNil(t, record.Variables)
-	require.Equal(t, map[string]bindings.VariableDeclaration{
-		"project_name": {
-			Description: "Product title",
-			Required:    true,
-		},
-	}, record.Variables.Declarations)
-	require.Empty(t, record.Variables.ResolvedAtApply)
-	require.Equal(t, []string{"project_name"}, record.Variables.UnresolvedAtApply)
-
-	_, err = os.Stat(filepath.Join(repo.Root, ".harness", "vars.yaml"))
-	require.ErrorIs(t, err, os.ErrNotExist)
+	require.ErrorContains(t, err, "missing required bindings: project_name")
+	require.ErrorContains(t, err, "hyard vars init orbit-template/docs --out .harness/vars.yaml")
+	require.ErrorContains(t, err, "hyard install orbit-template/docs --bindings .harness/vars.yaml")
+	require.NoFileExists(t, filepath.Join(repo.Root, "docs", "guide.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, ".harness", "installs", "docs.yaml"))
+	require.NoFileExists(t, filepath.Join(repo.Root, ".harness", "vars.yaml"))
 }
 
-func TestHarnessInstallTreatsBlankRepoVarAsUnresolved(t *testing.T) {
+func TestHarnessInstallFailsClosedForBlankRepoVar(t *testing.T) {
 	t.Parallel()
 
 	repo := seedHarnessInstallRepo(t)
@@ -6618,20 +6582,49 @@ func TestHarnessInstallTreatsBlankRepoVarAsUnresolved(t *testing.T) {
 		"orbit-template/docs",
 		"--json",
 	)
-	require.NoError(t, err)
+	require.Error(t, err)
+	require.Empty(t, stdout)
 	require.Empty(t, stderr)
+	require.ErrorContains(t, err, "missing required bindings: project_name")
+	require.ErrorContains(t, err, "hyard vars init orbit-template/docs --out .harness/vars.yaml")
+	require.ErrorContains(t, err, "hyard install orbit-template/docs --bindings .harness/vars.yaml")
+	require.NoFileExists(t, filepath.Join(repo.Root, "docs", "guide.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, ".harness", "installs", "docs.yaml"))
+}
 
-	var payload struct {
-		Warnings []string `json:"warnings"`
-	}
-	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
-	require.Equal(t, []string{
-		"install kept template variables unresolved: project_name",
-	}, payload.Warnings)
+func TestHarnessInstallFailsClosedForUnsafeTemplateReference(t *testing.T) {
+	t.Parallel()
 
-	guideData, err := os.ReadFile(filepath.Join(repo.Root, "docs", "guide.md"))
-	require.NoError(t, err)
-	require.Equal(t, "{{ vars.project_name }} guide\n", string(guideData))
+	repo := seedHarnessInstallRepo(t)
+	runtimeBranch := strings.TrimSpace(repo.Run(t, "branch", "--show-current"))
+	repo.Run(t, "checkout", "orbit-template/docs")
+	repo.WriteFile(t, "docs/guide.md", "{{ secrets.project_name }} guide\n")
+	repo.AddAndCommit(t, "add unsafe package template reference")
+	repo.Run(t, "checkout", runtimeBranch)
+	bindingsPath := filepath.Join(repo.Root, "install-bindings.yaml")
+	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
+		"schema_version: 2\n"+
+		"variables:\n"+
+		"  project_name:\n"+
+		"    value: Installed Orbit\n"), 0o600))
+
+	stdout, stderr, err := executeHarnessCLI(
+		t,
+		repo.Root,
+		"install",
+		"orbit-template/docs",
+		"--bindings",
+		bindingsPath,
+		"--json",
+	)
+	require.Error(t, err)
+	require.Empty(t, stdout)
+	require.Empty(t, stderr)
+	require.ErrorContains(t, err, `unsupported Package Template Reference namespace "secrets"`)
+	require.ErrorContains(t, err, "hyard vars init orbit-template/docs --out .harness/vars.yaml")
+	require.ErrorContains(t, err, "hyard install orbit-template/docs --bindings .harness/vars.yaml")
+	require.NoFileExists(t, filepath.Join(repo.Root, "docs", "guide.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, ".harness", "installs", "docs.yaml"))
 }
 
 func TestHarnessInstallStrictBindingsFailsOnMissingBindings(t *testing.T) {
@@ -7094,7 +7087,7 @@ func TestHarnessInstallBatchRollsBackSharedVarsAndEarlierItemsWhenLaterInstallFa
 	}
 }
 
-func TestHarnessInstallBatchDefaultsToUnresolvedBindingsAndWarnings(t *testing.T) {
+func TestHarnessInstallBatchFailsClosedForMissingBindingsByDefault(t *testing.T) {
 	t.Parallel()
 
 	repo := seedHarnessBatchInstallRepo(t, []bindingsPlanTemplateSpec{
@@ -7136,42 +7129,17 @@ func TestHarnessInstallBatchDefaultsToUnresolvedBindingsAndWarnings(t *testing.T
 		"orbit-template/cmd",
 		"--json",
 	)
-	require.NoError(t, err)
+	require.Error(t, err)
+	require.Empty(t, stdout)
 	require.Empty(t, stderr)
-
-	var payload struct {
-		HarnessRoot  string   `json:"harness_root"`
-		ItemCount    int      `json:"item_count"`
-		OrbitIDs     []string `json:"orbit_ids"`
-		MemberCount  int      `json:"member_count"`
-		WarningCount int      `json:"warning_count"`
-		Items        []struct {
-			OrbitID  string   `json:"orbit_id"`
-			Warnings []string `json:"warnings"`
-		} `json:"items"`
-	}
-	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
-	require.Equal(t, repo.Root, payload.HarnessRoot)
-	require.Equal(t, 2, payload.ItemCount)
-	require.ElementsMatch(t, []string{"docs", "cmd"}, payload.OrbitIDs)
-	require.Equal(t, 2, payload.MemberCount)
-	require.Equal(t, 2, payload.WarningCount)
-	require.Len(t, payload.Items, 2)
-	require.Equal(t, "docs", payload.Items[0].OrbitID)
-	require.Equal(t, []string{"install kept template variables unresolved: project_name"}, payload.Items[0].Warnings)
-	require.Equal(t, "cmd", payload.Items[1].OrbitID)
-	require.Equal(t, []string{"install kept template variables unresolved: binary_name, project_name"}, payload.Items[1].Warnings)
-
-	docsData, err := os.ReadFile(filepath.Join(repo.Root, "docs", "guide.md"))
-	require.NoError(t, err)
-	require.Equal(t, "{{ vars.project_name }} guide\n", string(docsData))
-
-	cmdData, err := os.ReadFile(filepath.Join(repo.Root, "cmd", "README.md"))
-	require.NoError(t, err)
-	require.Equal(t, "Run {{ vars.project_name }} as `{{ vars.binary_name }}`.\n", string(cmdData))
-
-	_, err = os.Stat(filepath.Join(repo.Root, ".harness", "vars.yaml"))
-	require.ErrorIs(t, err, os.ErrNotExist)
+	require.ErrorContains(t, err, "missing required bindings: project_name")
+	require.ErrorContains(t, err, "hyard vars init orbit-template/docs --out .harness/vars.yaml")
+	require.ErrorContains(t, err, "hyard install orbit-template/docs --bindings .harness/vars.yaml")
+	require.NoFileExists(t, filepath.Join(repo.Root, "docs", "guide.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, "cmd", "README.md"))
+	require.NoFileExists(t, filepath.Join(repo.Root, ".harness", "installs", "docs.yaml"))
+	require.NoFileExists(t, filepath.Join(repo.Root, ".harness", "installs", "cmd.yaml"))
+	require.NoFileExists(t, filepath.Join(repo.Root, ".harness", "vars.yaml"))
 }
 
 func TestHarnessInstallBatchStrictBindingsFailsOnMissingBindings(t *testing.T) {
