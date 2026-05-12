@@ -38,8 +38,8 @@ func TestBuildRootAgentsTemplateFileAppliesWholeFileReplacementAndStripsRuntimeM
 	require.Equal(t, &orbittemplate.CandidateFile{
 		Path: "AGENTS.md",
 		Content: []byte("" +
-			"# Rules for $project_name\n" +
-			"Use $project_name docs at $service_url\n" +
+			"# Rules for {{ vars.project_name }}\n" +
+			"Use {{ vars.project_name }} docs at {{ vars.service_url }}\n" +
 			"<!-- keep this comment -->\n"),
 		Mode: gitpkg.FileModeRegular,
 	}, result.File)

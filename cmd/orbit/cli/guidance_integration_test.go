@@ -21,9 +21,9 @@ func TestOrbitGuidanceMaterializeAllWritesAllRootArtifacts(t *testing.T) {
 	t.Parallel()
 
 	repo := seedOrbitGuidanceRevisionRepo(t,
-		"You are the $project_name docs orbit.\nKeep release notes current.\n",
-		"Run the $project_name docs workflow.\n",
-		"Bootstrap the $project_name docs orbit.\n",
+		"You are the {{ vars.project_name }} docs orbit.\nKeep release notes current.\n",
+		"Run the {{ vars.project_name }} docs workflow.\n",
+		"Bootstrap the {{ vars.project_name }} docs orbit.\n",
 		nil,
 	)
 
@@ -72,7 +72,7 @@ func TestOrbitGuidanceMaterializeAllSkipsMissingAuthoredTruthByDefault(t *testin
 	t.Parallel()
 
 	repo := seedOrbitGuidanceRevisionRepo(t,
-		"You are the $project_name docs orbit.\nKeep release notes current.\n",
+		"You are the {{ vars.project_name }} docs orbit.\nKeep release notes current.\n",
 		"",
 		"",
 		nil,
@@ -152,7 +152,7 @@ func TestOrbitGuidanceMaterializeTextOutputUsesNeutralProcessedHeadline(t *testi
 	t.Parallel()
 
 	repo := seedOrbitGuidanceRevisionRepo(t,
-		"You are the $project_name docs orbit.\n",
+		"You are the {{ vars.project_name }} docs orbit.\n",
 		"",
 		"",
 		nil,
@@ -171,7 +171,7 @@ func TestOrbitGuidanceMaterializeDefaultsToSourceBranchOrbitBeforeStaleCurrentOr
 	t.Parallel()
 
 	repo := seedOrbitGuidanceRevisionRepo(t,
-		"You are the $project_name docs orbit.\n",
+		"You are the {{ vars.project_name }} docs orbit.\n",
 		"",
 		"",
 		nil,
@@ -199,7 +199,7 @@ func TestOrbitGuidanceMaterializeDefaultsToSourceBranchOrbitBeforeStaleCurrentOr
 
 	agentsData, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
 	require.NoError(t, err)
-	require.Contains(t, string(agentsData), "You are the $project_name docs orbit.\n")
+	require.Contains(t, string(agentsData), "You are the {{ vars.project_name }} docs orbit.\n")
 }
 
 func TestOrbitGuidanceBackfillDefaultsToOrbitTemplateBranchOrbit(t *testing.T) {
@@ -237,7 +237,7 @@ func TestOrbitGuidanceBackfillDefaultsToOrbitTemplateBranchOrbit(t *testing.T) {
 	spec, err := orbitpkg.LoadHostedOrbitSpec(context.Background(), repo.Root, "docs")
 	require.NoError(t, err)
 	require.NotNil(t, spec.Meta)
-	require.Equal(t, "You are the $project_name docs orbit.\n", spec.Meta.AgentsTemplate)
+	require.Equal(t, "You are the {{ vars.project_name }} docs orbit.\n", spec.Meta.AgentsTemplate)
 }
 
 func TestOrbitGuidanceMaterializeRejectsMissingBootstrapTruthWithoutSeedEmpty(t *testing.T) {
@@ -270,7 +270,7 @@ func TestOrbitGuidanceMaterializeStrictAllFailsBeforeWritingPartialArtifacts(t *
 	t.Parallel()
 
 	repo := seedOrbitGuidanceRevisionRepo(t,
-		"You are the $project_name docs orbit.\nKeep release notes current.\n",
+		"You are the {{ vars.project_name }} docs orbit.\nKeep release notes current.\n",
 		"",
 		"",
 		nil,
@@ -294,9 +294,9 @@ func TestOrbitGuidanceMaterializeAllSkipsCompletedBootstrapByDefault(t *testing.
 	t.Parallel()
 
 	repo := seedOrbitGuidanceRevisionRepo(t,
-		"You are the $project_name docs orbit.\n",
-		"Run the $project_name docs workflow.\n",
-		"Bootstrap the $project_name docs orbit.\n",
+		"You are the {{ vars.project_name }} docs orbit.\n",
+		"Run the {{ vars.project_name }} docs workflow.\n",
+		"Bootstrap the {{ vars.project_name }} docs orbit.\n",
 		nil,
 	)
 	store, err := statepkg.NewFSStore(repo.GitDir(t))
@@ -346,7 +346,7 @@ func TestOrbitGuidanceMaterializeCheckReportsSeedEmptyEligibility(t *testing.T) 
 	t.Parallel()
 
 	repo := seedOrbitGuidanceRevisionRepo(t,
-		"You are the $project_name docs orbit.\n",
+		"You are the {{ vars.project_name }} docs orbit.\n",
 		"",
 		"",
 		nil,
@@ -464,9 +464,9 @@ func TestOrbitGuidanceMaterializeSeedEmptyCreatesEditableBlocksThatBackfillAllTe
 	spec, err := orbitpkg.LoadHostedOrbitSpec(context.Background(), repo.Root, "docs")
 	require.NoError(t, err)
 	require.NotNil(t, spec.Meta)
-	require.Equal(t, "You are the $project_name docs orbit.\nKeep release notes current.\n", spec.Meta.AgentsTemplate)
-	require.Equal(t, "Run the $project_name docs workflow.\n", spec.Meta.HumansTemplate)
-	require.Equal(t, "Bootstrap the $project_name docs orbit.\n", spec.Meta.BootstrapTemplate)
+	require.Equal(t, "You are the {{ vars.project_name }} docs orbit.\nKeep release notes current.\n", spec.Meta.AgentsTemplate)
+	require.Equal(t, "Run the {{ vars.project_name }} docs workflow.\n", spec.Meta.HumansTemplate)
+	require.Equal(t, "Bootstrap the {{ vars.project_name }} docs orbit.\n", spec.Meta.BootstrapTemplate)
 }
 
 func TestOrbitGuidanceMaterializeSeedEmptyAppendsMissingBlockToExistingArtifact(t *testing.T) {
@@ -603,7 +603,7 @@ func TestOrbitGuidanceBackfillAllDoesNotPersistEmptySeededTemplates(t *testing.T
 func TestOrbitGuidanceBackfillAgentsReportsSkippedWhenHostedTemplateAlreadyMatches(t *testing.T) {
 	t.Parallel()
 
-	repo := seedOrbitGuidanceRevisionRepo(t, "You are the $project_name docs orbit.\nKeep release notes current.\n", "", "", map[string]string{
+	repo := seedOrbitGuidanceRevisionRepo(t, "You are the {{ vars.project_name }} docs orbit.\nKeep release notes current.\n", "", "", map[string]string{
 		"AGENTS.md": "" +
 			"Workspace overview.\n" +
 			"<!-- orbit:begin workflow=\"docs\" -->\n" +
@@ -680,9 +680,9 @@ func TestOrbitGuidanceBackfillAllWritesAllHostedTemplates(t *testing.T) {
 	spec, err := orbitpkg.LoadHostedOrbitSpec(context.Background(), repo.Root, "docs")
 	require.NoError(t, err)
 	require.NotNil(t, spec.Meta)
-	require.Equal(t, "You are the $project_name docs orbit.\nKeep release notes current.\n", spec.Meta.AgentsTemplate)
-	require.Equal(t, "Run the $project_name docs workflow.\n", spec.Meta.HumansTemplate)
-	require.Equal(t, "Bootstrap the $project_name docs orbit.\n", spec.Meta.BootstrapTemplate)
+	require.Equal(t, "You are the {{ vars.project_name }} docs orbit.\nKeep release notes current.\n", spec.Meta.AgentsTemplate)
+	require.Equal(t, "Run the {{ vars.project_name }} docs workflow.\n", spec.Meta.HumansTemplate)
+	require.Equal(t, "Bootstrap the {{ vars.project_name }} docs orbit.\n", spec.Meta.BootstrapTemplate)
 }
 
 func TestOrbitGuidanceBackfillAllSkipsMissingBootstrapRootArtifact(t *testing.T) {
@@ -732,8 +732,8 @@ func TestOrbitGuidanceBackfillAllSkipsMissingBootstrapRootArtifact(t *testing.T)
 	spec, err := orbitpkg.LoadHostedOrbitSpec(context.Background(), repo.Root, "docs")
 	require.NoError(t, err)
 	require.NotNil(t, spec.Meta)
-	require.Equal(t, "You are the $project_name docs orbit.\nKeep release notes current.\n", spec.Meta.AgentsTemplate)
-	require.Equal(t, "Run the $project_name docs workflow.\n", spec.Meta.HumansTemplate)
+	require.Equal(t, "You are the {{ vars.project_name }} docs orbit.\nKeep release notes current.\n", spec.Meta.AgentsTemplate)
+	require.Equal(t, "Run the {{ vars.project_name }} docs workflow.\n", spec.Meta.HumansTemplate)
 	require.Equal(t, "Keep existing bootstrap truth.\n", spec.Meta.BootstrapTemplate)
 }
 
@@ -777,7 +777,7 @@ func TestOrbitGuidanceBackfillAllSkipsMissingBlocksWithoutHostedTruth(t *testing
 	require.NoError(t, err)
 	require.NotNil(t, spec.Meta)
 	require.Empty(t, spec.Meta.AgentsTemplate)
-	require.Equal(t, "Run the $project_name docs workflow.\n", spec.Meta.HumansTemplate)
+	require.Equal(t, "Run the {{ vars.project_name }} docs workflow.\n", spec.Meta.HumansTemplate)
 	require.Empty(t, spec.Meta.BootstrapTemplate)
 }
 
@@ -827,7 +827,7 @@ func TestOrbitGuidanceBackfillBootstrapFailsWhenRootArtifactMissing(t *testing.T
 func TestOrbitGuidanceBackfillEmptyBootstrapBlockRemovesHostedTemplate(t *testing.T) {
 	t.Parallel()
 
-	repo := seedOrbitGuidanceRevisionRepo(t, "", "", "Bootstrap the $project_name docs orbit.\n", map[string]string{
+	repo := seedOrbitGuidanceRevisionRepo(t, "", "", "Bootstrap the {{ vars.project_name }} docs orbit.\n", map[string]string{
 		"BOOTSTRAP.md": "" +
 			"Workspace overview.\n" +
 			"<!-- orbit:begin workflow=\"docs\" -->\n" +
@@ -852,7 +852,7 @@ func TestOrbitGuidanceBackfillEmptyBootstrapBlockRemovesHostedTemplate(t *testin
 func TestOrbitGuidanceBackfillCheckReportsBootstrapBackfillAllowedWhenInSync(t *testing.T) {
 	t.Parallel()
 
-	repo := seedOrbitGuidanceRevisionRepo(t, "", "", "Bootstrap the $project_name docs orbit.\n", map[string]string{
+	repo := seedOrbitGuidanceRevisionRepo(t, "", "", "Bootstrap the {{ vars.project_name }} docs orbit.\n", map[string]string{
 		"BOOTSTRAP.md": "" +
 			"Workspace overview.\n" +
 			"<!-- orbit:begin workflow=\"docs\" -->\n" +
@@ -883,7 +883,7 @@ func TestOrbitGuidanceBackfillCheckReportsBootstrapBackfillAllowedWhenInSync(t *
 func TestOrbitGuidanceMaterializeRejectsCompletedBootstrapInRuntime(t *testing.T) {
 	t.Parallel()
 
-	repo := seedOrbitGuidanceRevisionRepo(t, "", "", "Bootstrap the $project_name docs orbit.\n", nil)
+	repo := seedOrbitGuidanceRevisionRepo(t, "", "", "Bootstrap the {{ vars.project_name }} docs orbit.\n", nil)
 	store, err := statepkg.NewFSStore(repo.GitDir(t))
 	require.NoError(t, err)
 	require.NoError(t, store.WriteRuntimeStateSnapshot(statepkg.RuntimeStateSnapshot{
@@ -905,7 +905,7 @@ func TestOrbitGuidanceMaterializeRejectsCompletedBootstrapInRuntime(t *testing.T
 func TestOrbitGuidanceBackfillRejectsCompletedBootstrapInRuntime(t *testing.T) {
 	t.Parallel()
 
-	repo := seedOrbitGuidanceRevisionRepo(t, "", "", "Bootstrap the $project_name docs orbit.\n", map[string]string{
+	repo := seedOrbitGuidanceRevisionRepo(t, "", "", "Bootstrap the {{ vars.project_name }} docs orbit.\n", map[string]string{
 		"BOOTSTRAP.md": "" +
 			"Workspace overview.\n" +
 			"<!-- orbit:begin workflow=\"docs\" -->\n" +

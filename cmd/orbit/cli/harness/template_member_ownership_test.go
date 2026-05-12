@@ -310,7 +310,7 @@ func TestAnalyzeTemplateMemberOwnershipRejectsSnapshotVariableManifestDrift(t *t
 				Snapshot: TemplateMemberSnapshotData{
 					ExportedPaths: []string{"docs/guide.md"},
 					FileDigests: map[string]string{
-						"docs/guide.md": contentDigest([]byte("$project_name guide\n")),
+						"docs/guide.md": contentDigest([]byte("{{ vars.project_name }} guide\n")),
 					},
 					Variables: map[string]TemplateVariableSpec{
 						"wrong_name": {Required: true},
@@ -319,7 +319,7 @@ func TestAnalyzeTemplateMemberOwnershipRejectsSnapshotVariableManifestDrift(t *t
 			},
 		},
 		Files: []orbittemplate.CandidateFile{
-			{Path: "docs/guide.md", Content: []byte("$project_name guide\n")},
+			{Path: "docs/guide.md", Content: []byte("{{ vars.project_name }} guide\n")},
 		},
 	}
 

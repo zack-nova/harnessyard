@@ -196,7 +196,7 @@ func TestBuildTemplateSavePreviewIgnoresNonMarkdownVariableSyntax(t *testing.T) 
 		},
 		{
 			Path:    "docs/guide.md",
-			Content: []byte("$project_name guide\n"),
+			Content: []byte("{{ vars.project_name }} guide\n"),
 			Mode:    gitpkg.FileModeRegular,
 		},
 		{

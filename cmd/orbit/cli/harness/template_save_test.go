@@ -44,7 +44,7 @@ func TestBuildTemplateSavePreviewIncludesMemberSnapshotFiles(t *testing.T) {
 		Snapshot: TemplateMemberSnapshotData{
 			ExportedPaths: []string{"docs/guide.md"},
 			FileDigests: map[string]string{
-				"docs/guide.md": contentDigest([]byte("$project_name guide\n")),
+				"docs/guide.md": contentDigest([]byte("{{ vars.project_name }} guide\n")),
 			},
 			Variables: map[string]TemplateVariableSpec{
 				"project_name": {
@@ -75,7 +75,7 @@ func TestBuildTemplateSavePreviewIncludesRootHumansGuidance(t *testing.T) {
 	require.Contains(t, preview.FilePaths(), "HUMANS.md")
 	require.Equal(t, RootGuidanceMetadata{Humans: true}, preview.Manifest.Template.RootGuidance)
 	humansFile := requireTemplateSaveFile(t, preview.Files, "HUMANS.md")
-	require.Equal(t, "Workspace notes for $project_name\n\nHelp humans operate $project_name\n", string(humansFile.Content))
+	require.Equal(t, "Workspace notes for {{ vars.project_name }}\n\nHelp humans operate {{ vars.project_name }}\n", string(humansFile.Content))
 }
 
 func TestBuildTemplateSavePreviewIncludesPendingRootBootstrapGuidance(t *testing.T) {
@@ -116,7 +116,7 @@ func TestBuildTemplateSavePreviewIncludesPendingRootBootstrapGuidance(t *testing
 	require.Contains(t, preview.FilePaths(), "BOOTSTRAP.md")
 	require.Equal(t, RootGuidanceMetadata{Bootstrap: true}, preview.Manifest.Template.RootGuidance)
 	bootstrapFile := requireTemplateSaveFile(t, preview.Files, "BOOTSTRAP.md")
-	require.Equal(t, "Workspace bootstrap for $project_name\n\nBootstrap $project_name for humans\n", string(bootstrapFile.Content))
+	require.Equal(t, "Workspace bootstrap for {{ vars.project_name }}\n\nBootstrap {{ vars.project_name }} for humans\n", string(bootstrapFile.Content))
 }
 
 func TestBuildTemplateSavePreviewSkipsCompletedRootBootstrapGuidance(t *testing.T) {
@@ -216,7 +216,7 @@ func TestBuildTemplateSavePreviewIncludesCompletedRootBootstrapWhenRequested(t *
 	require.True(t, preview.Manifest.Template.RootGuidance.Bootstrap)
 
 	bootstrapFile := requireTemplateSaveFile(t, preview.Files, "BOOTSTRAP.md")
-	require.Equal(t, "Workspace bootstrap for $project_name\n\nBootstrap $project_name for humans\n", string(bootstrapFile.Content))
+	require.Equal(t, "Workspace bootstrap for {{ vars.project_name }}\n\nBootstrap {{ vars.project_name }} for humans\n", string(bootstrapFile.Content))
 }
 
 func TestBuildTemplateSavePreviewSnapshotTracksEditedFiles(t *testing.T) {

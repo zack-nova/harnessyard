@@ -237,7 +237,7 @@ func TestTemplateApplyRemoteAutoSelectsUniqueDefaultTemplate(t *testing.T) {
 
 	apiData, err := os.ReadFile(filepath.Join(runtimeRepo.Root, "api", "openapi.yaml"))
 	require.NoError(t, err)
-	require.Equal(t, "Orbit api\n", string(apiData))
+	require.Equal(t, "Remote Default Orbit api\n", string(apiData))
 
 	installData, err := os.ReadFile(filepath.Join(runtimeRepo.Root, ".harness", "installs", "api.yaml"))
 	require.NoError(t, err)

@@ -127,7 +127,7 @@ func TestBuildBundleMemberShrinkPlanIgnoresSnapshotRootGuidancePaths(t *testing.
 		"  file_digests:\n"+
 		"    BOOTSTRAP.md: "+contentDigest([]byte("Bootstrap guidance\n"))+"\n"+
 		"    HUMANS.md: "+contentDigest([]byte("Human guidance\n"))+"\n"+
-		"    docs/guide.md: "+contentDigest([]byte("Docs $project_name guide\n"))+"\n"+
+		"    docs/guide.md: "+contentDigest([]byte("Docs {{ vars.project_name }} guide\n"))+"\n"+
 		"  variables:\n"+
 		"    project_name:\n"+
 		"      description: Project name\n"+

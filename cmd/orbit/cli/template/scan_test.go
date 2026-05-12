@@ -153,3 +153,32 @@ func TestScanVariablesIgnoresNonMarkdownFiles(t *testing.T) {
 	require.Empty(t, result.Undeclared)
 	require.Empty(t, result.Unused)
 }
+
+func TestScanVariablesCollectsPackageTemplateReferencesAcrossTextFiles(t *testing.T) {
+	t.Parallel()
+
+	result := ScanVariables(
+		[]CandidateFile{
+			{
+				Path:    "config/app.txt",
+				Content: []byte("Project {{ vars.project_name }}\n"),
+			},
+			{
+				Path:    "docs/guide.md",
+				Content: []byte("Service {{ vars.service_url }}\nToken ${{ secrets.GITHUB_TOKEN }}\n"),
+			},
+		},
+		map[string]VariableSpec{
+			"project_name": {
+				Required: true,
+			},
+			"service_url": {
+				Required: true,
+			},
+		},
+	)
+
+	require.Equal(t, []string{"project_name", "service_url"}, result.Referenced)
+	require.Empty(t, result.Undeclared)
+	require.Empty(t, result.Unused)
+}

@@ -20,11 +20,11 @@ func TestHarnessInstallDryRunPreviewIncludesScopedGuidanceArtifacts(t *testing.T
 
 	repo := seedHarnessInstallGuidanceRepo(t, []installGuidanceTemplateSpec{{
 		OrbitID:           "docs",
-		AgentsTemplate:    "You are the $project_name docs orbit.\n",
-		HumansTemplate:    "Run the $project_name docs workflow.\n",
-		BootstrapTemplate: "Bootstrap the $project_name docs orbit.\n",
+		AgentsTemplate:    "You are the {{ vars.project_name }} docs orbit.\n",
+		HumansTemplate:    "Run the {{ vars.project_name }} docs workflow.\n",
+		BootstrapTemplate: "Bootstrap the {{ vars.project_name }} docs orbit.\n",
 		Files: map[string]string{
-			"docs/guide.md": "$project_name guide\n",
+			"docs/guide.md": "{{ vars.project_name }} guide\n",
 		},
 	}})
 	bindingsPath := writeHarnessInstallGuidanceBindings(t, repo.Root)
@@ -48,7 +48,7 @@ func TestHarnessInstallDryRunPreviewIncludesDescriptionBackedAgentsArtifact(t *t
 	repo := seedHarnessInstallGuidanceRepo(t, []installGuidanceTemplateSpec{{
 		OrbitID: "docs",
 		Files: map[string]string{
-			"docs/guide.md": "$project_name guide\n",
+			"docs/guide.md": "{{ vars.project_name }} guide\n",
 		},
 	}})
 	bindingsPath := writeHarnessInstallGuidanceBindings(t, repo.Root)
@@ -71,11 +71,11 @@ func TestHarnessInstallAutoComposesScopedGuidanceArtifacts(t *testing.T) {
 
 	repo := seedHarnessInstallGuidanceRepo(t, []installGuidanceTemplateSpec{{
 		OrbitID:           "docs",
-		AgentsTemplate:    "You are the $project_name docs orbit.\n",
-		HumansTemplate:    "Run the $project_name docs workflow.\n",
-		BootstrapTemplate: "Bootstrap the $project_name docs orbit.\n",
+		AgentsTemplate:    "You are the {{ vars.project_name }} docs orbit.\n",
+		HumansTemplate:    "Run the {{ vars.project_name }} docs workflow.\n",
+		BootstrapTemplate: "Bootstrap the {{ vars.project_name }} docs orbit.\n",
 		Files: map[string]string{
-			"docs/guide.md": "$project_name guide\n",
+			"docs/guide.md": "{{ vars.project_name }} guide\n",
 		},
 	}})
 	bindingsPath := writeHarnessInstallGuidanceBindings(t, repo.Root)
@@ -113,7 +113,7 @@ func TestHarnessInstallAutoComposesDescriptionBackedAgentsAndKeepsHarnessCheckCl
 	repo := seedHarnessInstallGuidanceRepo(t, []installGuidanceTemplateSpec{{
 		OrbitID: "docs",
 		Files: map[string]string{
-			"docs/guide.md": "$project_name guide\n",
+			"docs/guide.md": "{{ vars.project_name }} guide\n",
 		},
 	}})
 	bindingsPath := writeHarnessInstallGuidanceBindings(t, repo.Root)
@@ -146,16 +146,16 @@ func TestHarnessInstallScopedGuidanceWarnsOnUnresolvedMarkedGuidanceDrift(t *tes
 	repo := seedHarnessInstallGuidanceRepo(t, []installGuidanceTemplateSpec{
 		{
 			OrbitID:        "cmd",
-			HumansTemplate: "Run the $project_name cmd workflow.\n",
+			HumansTemplate: "Run the {{ vars.project_name }} cmd workflow.\n",
 			Files: map[string]string{
-				"cmd/README.md": "$project_name cmd guide\n",
+				"cmd/README.md": "{{ vars.project_name }} cmd guide\n",
 			},
 		},
 		{
 			OrbitID:        "docs",
-			HumansTemplate: "Run the $project_name docs workflow.\n",
+			HumansTemplate: "Run the {{ vars.project_name }} docs workflow.\n",
 			Files: map[string]string{
-				"docs/guide.md": "$project_name docs guide\n",
+				"docs/guide.md": "{{ vars.project_name }} docs guide\n",
 			},
 		},
 	})
@@ -195,9 +195,9 @@ func TestHarnessInstallOverwriteExistingOverwritesTouchedGuidanceDrift(t *testin
 
 	repo := seedHarnessInstallGuidanceRepo(t, []installGuidanceTemplateSpec{{
 		OrbitID:        "docs",
-		HumansTemplate: "Run the $project_name docs workflow.\n",
+		HumansTemplate: "Run the {{ vars.project_name }} docs workflow.\n",
 		Files: map[string]string{
-			"docs/guide.md": "$project_name docs guide\n",
+			"docs/guide.md": "{{ vars.project_name }} docs guide\n",
 		},
 	}})
 	bindingsPath := writeHarnessInstallGuidanceBindings(t, repo.Root)
@@ -232,19 +232,19 @@ func TestHarnessInstallBatchAutoComposesScopedGuidanceArtifacts(t *testing.T) {
 	repo := seedHarnessInstallGuidanceRepo(t, []installGuidanceTemplateSpec{
 		{
 			OrbitID:           "docs",
-			AgentsTemplate:    "You are the $project_name docs orbit.\n",
-			HumansTemplate:    "Run the $project_name docs workflow.\n",
-			BootstrapTemplate: "Bootstrap the $project_name docs orbit.\n",
+			AgentsTemplate:    "You are the {{ vars.project_name }} docs orbit.\n",
+			HumansTemplate:    "Run the {{ vars.project_name }} docs workflow.\n",
+			BootstrapTemplate: "Bootstrap the {{ vars.project_name }} docs orbit.\n",
 			Files: map[string]string{
-				"docs/guide.md": "$project_name docs guide\n",
+				"docs/guide.md": "{{ vars.project_name }} docs guide\n",
 			},
 		},
 		{
 			OrbitID:        "cmd",
-			AgentsTemplate: "Use $project_name cmd release flow.\n",
-			HumansTemplate: "Run the $project_name cmd workflow.\n",
+			AgentsTemplate: "Use {{ vars.project_name }} cmd release flow.\n",
+			HumansTemplate: "Run the {{ vars.project_name }} cmd workflow.\n",
 			Files: map[string]string{
-				"cmd/README.md": "$project_name cmd guide\n",
+				"cmd/README.md": "{{ vars.project_name }} cmd guide\n",
 			},
 		},
 	})
@@ -283,23 +283,23 @@ func TestHarnessInstallBatchScopedGuidanceWarnsOnUnresolvedMarkedGuidanceDrift(t
 	repo := seedHarnessInstallGuidanceRepo(t, []installGuidanceTemplateSpec{
 		{
 			OrbitID:        "cmd",
-			HumansTemplate: "Run the $project_name cmd workflow.\n",
+			HumansTemplate: "Run the {{ vars.project_name }} cmd workflow.\n",
 			Files: map[string]string{
-				"cmd/README.md": "$project_name cmd guide\n",
+				"cmd/README.md": "{{ vars.project_name }} cmd guide\n",
 			},
 		},
 		{
 			OrbitID:        "docs",
-			HumansTemplate: "Run the $project_name docs workflow.\n",
+			HumansTemplate: "Run the {{ vars.project_name }} docs workflow.\n",
 			Files: map[string]string{
-				"docs/guide.md": "$project_name docs guide\n",
+				"docs/guide.md": "{{ vars.project_name }} docs guide\n",
 			},
 		},
 		{
 			OrbitID:        "ops",
-			HumansTemplate: "Run the $project_name ops workflow.\n",
+			HumansTemplate: "Run the {{ vars.project_name }} ops workflow.\n",
 			Files: map[string]string{
-				"ops/runbook.md": "$project_name ops runbook\n",
+				"ops/runbook.md": "{{ vars.project_name }} ops runbook\n",
 			},
 		},
 	})
@@ -341,16 +341,16 @@ func TestHarnessInstallBatchOverwriteExistingOverwritesTouchedGuidanceDrift(t *t
 	repo := seedHarnessInstallGuidanceRepo(t, []installGuidanceTemplateSpec{
 		{
 			OrbitID:        "docs",
-			HumansTemplate: "Run the $project_name docs workflow.\n",
+			HumansTemplate: "Run the {{ vars.project_name }} docs workflow.\n",
 			Files: map[string]string{
-				"docs/guide.md": "$project_name docs guide\n",
+				"docs/guide.md": "{{ vars.project_name }} docs guide\n",
 			},
 		},
 		{
 			OrbitID:        "ops",
-			HumansTemplate: "Run the $project_name ops workflow.\n",
+			HumansTemplate: "Run the {{ vars.project_name }} ops workflow.\n",
 			Files: map[string]string{
-				"ops/runbook.md": "$project_name ops runbook\n",
+				"ops/runbook.md": "{{ vars.project_name }} ops runbook\n",
 			},
 		},
 	})

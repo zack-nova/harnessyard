@@ -15,7 +15,7 @@ func TestOrbitBriefMaterializeCheckReportsStructuredOnlyWithoutWritingContainer(
 	t.Parallel()
 
 	repo := seedBriefMaterializeRevisionRepo(t, "runtime", ""+
-		"You are the $project_name docs orbit.\n"+
+		"You are the {{ vars.project_name }} docs orbit.\n"+
 		"Keep release notes current.\n",
 		"",
 	)
@@ -37,7 +37,7 @@ func TestOrbitBriefMaterializeCheckReportsInSyncJSON(t *testing.T) {
 	t.Parallel()
 
 	repo := seedBriefMaterializeRevisionRepo(t, "runtime", ""+
-		"You are the $project_name docs orbit.\n"+
+		"You are the {{ vars.project_name }} docs orbit.\n"+
 		"Keep release notes current.\n",
 		""+
 			"Workspace overview.\n"+
@@ -82,7 +82,7 @@ func TestOrbitBriefMaterializeCheckReportsDriftedWithoutWriting(t *testing.T) {
 	t.Parallel()
 
 	repo := seedBriefMaterializeRevisionRepo(t, "orbit_template", ""+
-		"You are the $project_name docs orbit.\n"+
+		"You are the {{ vars.project_name }} docs orbit.\n"+
 		"Keep release notes current.\n",
 		""+
 			"Workspace overview.\n"+
@@ -113,7 +113,7 @@ func TestOrbitBriefMaterializeCheckReportsInvalidContainer(t *testing.T) {
 	t.Parallel()
 
 	repo := seedBriefMaterializeRevisionRepo(t, "source", ""+
-		"You are the $project_name docs orbit.\n",
+		"You are the {{ vars.project_name }} docs orbit.\n",
 		""+
 			"Workspace overview.\n"+
 			"<!-- orbit:begin workflow=\"docs\" -->\n"+
@@ -164,7 +164,7 @@ func TestOrbitBriefMaterializeCheckReportsMissingTruthAndRecoverableBackfillJSON
 func TestOrbitBriefMaterializeCheckRejectsPlainRevision(t *testing.T) {
 	t.Parallel()
 
-	repo := seedBriefMaterializeRevisionRepo(t, "", "You are the $project_name docs orbit.\n", "")
+	repo := seedBriefMaterializeRevisionRepo(t, "", "You are the {{ vars.project_name }} docs orbit.\n", "")
 
 	stdout, stderr, err := executeCLI(t, repo.Root, "brief", "materialize", "--orbit", "docs", "--check")
 	require.Error(t, err)

@@ -650,7 +650,7 @@ func buildRenderedTemplateInstallPayload(
 		renderValues[name] = resolved.Value
 	}
 
-	renderedFiles, err := renderTemplateInstallFiles(ordinaryFiles, renderValues, !input.RequireResolvedBindings)
+	renderedFiles, err := renderTemplateInstallFiles(ordinaryFiles, renderValues, declared, !input.RequireResolvedBindings)
 	if err != nil {
 		return nil, nil, nil, nil, nil, nil, fmt.Errorf("render harness template files: %w", err)
 	}
@@ -659,6 +659,7 @@ func buildRenderedTemplateInstallPayload(
 		renderedAgentsFiles, err := renderTemplateInstallFiles(
 			[]orbittemplate.CandidateFile{*rootAgentsFile},
 			renderValues,
+			declared,
 			!input.RequireResolvedBindings,
 		)
 		if err != nil {
@@ -1004,16 +1005,17 @@ func sortedBundleShrinkPlanKeys(plans map[string]BundleMemberShrinkPlan) []strin
 func renderTemplateInstallFiles(
 	files []orbittemplate.CandidateFile,
 	renderValues map[string]string,
+	declared map[string]bindings.VariableDeclaration,
 	allowUnresolved bool,
 ) ([]orbittemplate.CandidateFile, error) {
 	if allowUnresolved {
-		rendered, err := orbittemplate.RenderTemplateFilesAllowingUnresolved(files, renderValues)
+		rendered, err := orbittemplate.RenderTemplateFilesWithDeclarationsAllowingUnresolved(files, renderValues, declared)
 		if err != nil {
 			return nil, fmt.Errorf("render relaxed template files: %w", err)
 		}
 		return rendered, nil
 	}
-	rendered, err := orbittemplate.RenderTemplateFiles(files, renderValues)
+	rendered, err := orbittemplate.RenderTemplateFilesWithDeclarations(files, renderValues, declared)
 	if err != nil {
 		return nil, fmt.Errorf("render strict template files: %w", err)
 	}

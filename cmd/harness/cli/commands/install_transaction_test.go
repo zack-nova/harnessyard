@@ -34,7 +34,7 @@ func TestInstallOverwriteRollsBackWhenCleanupFails(t *testing.T) {
 
 	runtimeBranch := strings.TrimSpace(repo.Run(t, "branch", "--show-current"))
 	repo.Run(t, "checkout", "orbit-template/docs")
-	repo.WriteFile(t, "docs/reference.md", "$project_name reference\n")
+	repo.WriteFile(t, "docs/reference.md", "{{ vars.project_name }} reference\n")
 	repo.Run(t, "rm", "-f", "docs/guide.md")
 	repo.AddAndCommit(t, "update template branch contents")
 	repo.Run(t, "checkout", runtimeBranch)
@@ -108,7 +108,7 @@ func TestInstallBatchOverwriteRollsBackWhenCleanupFails(t *testing.T) {
 
 	runtimeBranch := strings.TrimSpace(repo.Run(t, "branch", "--show-current"))
 	repo.Run(t, "checkout", "orbit-template/docs")
-	repo.WriteFile(t, "docs/reference.md", "$project_name reference\n")
+	repo.WriteFile(t, "docs/reference.md", "{{ vars.project_name }} reference\n")
 	repo.Run(t, "rm", "-f", "docs/guide.md")
 	repo.AddAndCommit(t, "update template branch contents for batch overwrite")
 	repo.Run(t, "checkout", runtimeBranch)

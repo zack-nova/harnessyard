@@ -615,12 +615,14 @@ func buildTemplateApplyPreviewFromSourceWithLocalInputs(
 
 	renderedFiles, err := renderTemplateFilesWithOptions(source.Files, renderValues, renderTemplateOptions{
 		AllowUnresolved: allowUnresolvedBindings,
+		Declared:        declared,
 	})
 	if err != nil {
 		return TemplateApplyPreview{}, fmt.Errorf("render template files: %w", err)
 	}
 	renderedSharedAgentsFile, hasSharedAgents, err := renderSharedAgentsPayloadWithOptions(source, renderValues, renderTemplateOptions{
 		AllowUnresolved: allowUnresolvedBindings,
+		Declared:        declared,
 	})
 	if err != nil {
 		return TemplateApplyPreview{}, fmt.Errorf("render shared AGENTS payload: %w", err)

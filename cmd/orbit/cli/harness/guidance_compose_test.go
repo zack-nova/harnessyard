@@ -74,14 +74,14 @@ func seedRuntimeGuidanceComposeRepo(t *testing.T) *testutil.Repo {
 	docsSpec, err := orbitpkg.DefaultHostedMemberSchemaSpec("docs")
 	require.NoError(t, err)
 	require.NotNil(t, docsSpec.Meta)
-	docsSpec.Meta.HumansTemplate = "Run the $project_name docs workflow.\n"
+	docsSpec.Meta.HumansTemplate = "Run the {{ vars.project_name }} docs workflow.\n"
 	_, err = orbitpkg.WriteHostedOrbitSpec(repo.Root, docsSpec)
 	require.NoError(t, err)
 
 	cmdSpec, err := orbitpkg.DefaultHostedMemberSchemaSpec("cmd")
 	require.NoError(t, err)
 	require.NotNil(t, cmdSpec.Meta)
-	cmdSpec.Meta.HumansTemplate = "Run the $project_name cmd workflow.\n"
+	cmdSpec.Meta.HumansTemplate = "Run the {{ vars.project_name }} cmd workflow.\n"
 	_, err = orbitpkg.WriteHostedOrbitSpec(repo.Root, cmdSpec)
 	require.NoError(t, err)
 

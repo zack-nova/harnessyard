@@ -230,7 +230,7 @@ func TestTemplateApplyDefaultsToUnresolvedBindings(t *testing.T) {
 
 	guideData, err := os.ReadFile(filepath.Join(repo.Root, "docs", "guide.md"))
 	require.NoError(t, err)
-	require.Equal(t, "$project_name guide\n", string(guideData))
+	require.Equal(t, "{{ vars.project_name }} guide\n", string(guideData))
 }
 
 func TestTemplateApplyStrictBindingsFailsOnMissingBindings(t *testing.T) {
@@ -545,7 +545,7 @@ func seedTemplateApplyRepoWithSharedAgents(t *testing.T) *testutil.Repo {
 		"meta:\n"+
 		"  file: .orbit/orbits/docs.yaml\n"+
 		"  agents_template: |\n"+
-		"    Docs orbit for $project_name\n"+
+		"    Docs orbit for {{ vars.project_name }}\n"+
 		"  include_in_projection: true\n"+
 		"  include_in_write: true\n"+
 		"  include_in_export: true\n"+
@@ -556,7 +556,7 @@ func seedTemplateApplyRepoWithSharedAgents(t *testing.T) *testutil.Repo {
 		"    paths:\n"+
 		"      include:\n"+
 		"        - docs/**\n")
-	repo.WriteFile(t, "docs/guide.md", "$project_name guide\n")
+	repo.WriteFile(t, "docs/guide.md", "{{ vars.project_name }} guide\n")
 	repo.AddAndCommit(t, "seed template branch with structured brief")
 	repo.Run(t, "checkout", currentBranch)
 

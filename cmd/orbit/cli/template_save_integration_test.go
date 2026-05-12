@@ -74,7 +74,7 @@ func TestTemplateSaveCreatesTemplateBranchWithSharedAgentsPayload(t *testing.T) 
 		"meta:\n"+
 		"  file: .harness/orbits/docs.yaml\n"+
 		"  agents_template: |\n"+
-		"    Docs orbit for $project_name\n"+
+		"    Docs orbit for {{ vars.project_name }}\n"+
 		"  include_in_projection: true\n"+
 		"  include_in_write: true\n"+
 		"  include_in_export: true\n"+
@@ -103,7 +103,7 @@ func TestTemplateSaveCreatesTemplateBranchWithSharedAgentsPayload(t *testing.T) 
 	require.NoError(t, err)
 	require.Contains(t, string(agentsData), "file: .harness/orbits/docs.yaml")
 	require.Contains(t, string(agentsData), "agents_template: |")
-	require.Contains(t, string(agentsData), "Docs orbit for $project_name")
+	require.Contains(t, string(agentsData), "Docs orbit for {{ vars.project_name }}")
 
 	branchManifestData, err := gitpkg.ReadFileAtRev(context.Background(), repo.Root, "orbit-template/docs", ".harness/manifest.yaml")
 	require.NoError(t, err)
@@ -747,7 +747,7 @@ func TestTemplateSaveReadsHiddenTrackedFilesFromHEAD(t *testing.T) {
 
 	hiddenData, err := gitpkg.ReadFileAtRev(context.Background(), repo.Root, "orbit-template/docs", "docs/hidden.md")
 	require.NoError(t, err)
-	require.Equal(t, "$project_name hidden\n", string(hiddenData))
+	require.Equal(t, "{{ vars.project_name }} hidden\n", string(hiddenData))
 }
 
 func TestTemplateSaveEditTemplateWritesEditedTemplateWithoutMutatingRuntimeWorktree(t *testing.T) {
@@ -764,7 +764,7 @@ func TestTemplateSaveEditTemplateWritesEditedTemplateWithoutMutatingRuntimeWorkt
 	editorScript := filepath.Join(repo.Root, "edit-template.sh")
 	require.NoError(t, os.WriteFile(editorScript, []byte(""+
 		"#!/bin/sh\n"+
-		"printf '%s\\n' '$project_name guide at $service_url' > \"$1/docs/guide.md\"\n"), 0o755))
+		"printf '%s\\n' '{{ vars.project_name }} guide at {{ vars.service_url }}' > \"$1/docs/guide.md\"\n"), 0o755))
 	t.Setenv("EDITOR", editorScript)
 
 	_, _, err := executeCLI(t, repo.Root, "template", "save", "docs", "--to", "orbit-template/docs", "--edit-template")
@@ -776,7 +776,7 @@ func TestTemplateSaveEditTemplateWritesEditedTemplateWithoutMutatingRuntimeWorkt
 
 	templateData, err := gitpkg.ReadFileAtRev(context.Background(), repo.Root, "orbit-template/docs", "docs/guide.md")
 	require.NoError(t, err)
-	require.Equal(t, "$project_name guide at $service_url\n", string(templateData))
+	require.Equal(t, "{{ vars.project_name }} guide at {{ vars.service_url }}\n", string(templateData))
 
 	manifestData, err := gitpkg.ReadFileAtRev(context.Background(), repo.Root, "orbit-template/docs", ".harness/manifest.yaml")
 	require.NoError(t, err)
@@ -822,7 +822,7 @@ func TestTemplateSaveEditTemplateSupportsQuotedEditorCommandWithSpacedPath(t *te
 		"if [ \"$1\" != \"--mode\" ] || [ \"$2\" != \"template edit\" ]; then\n"+
 		"  exit 17\n"+
 		"fi\n"+
-		"printf '%s\\n' '$project_name hardening guide' > \"$3/docs/guide.md\"\n"), 0o755))
+		"printf '%s\\n' '{{ vars.project_name }} hardening guide' > \"$3/docs/guide.md\"\n"), 0o755))
 	t.Setenv("EDITOR", "\""+editorScript+"\" --mode \"template edit\"")
 
 	_, _, err := executeCLI(t, repo.Root, "template", "save", "docs", "--to", "orbit-template/docs", "--edit-template")
@@ -830,7 +830,7 @@ func TestTemplateSaveEditTemplateSupportsQuotedEditorCommandWithSpacedPath(t *te
 
 	templateData, err := gitpkg.ReadFileAtRev(context.Background(), repo.Root, "orbit-template/docs", "docs/guide.md")
 	require.NoError(t, err)
-	require.Equal(t, "$project_name hardening guide\n", string(templateData))
+	require.Equal(t, "{{ vars.project_name }} hardening guide\n", string(templateData))
 }
 
 func TestTemplateSaveFailsClosedOnOutOfRangeLocalSkillsWithoutFlags(t *testing.T) {

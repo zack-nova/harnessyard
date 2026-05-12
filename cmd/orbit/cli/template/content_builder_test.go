@@ -71,7 +71,7 @@ func TestBuildTemplateContentFiltersForbiddenPathsAndAddsCompanionDefinition(t *
 		},
 		{
 			Path:    "docs/guide.md",
-			Content: []byte("$project_name guide\n"),
+			Content: []byte("{{ vars.project_name }} guide\n"),
 			Mode:    gitpkg.FileModeRegular,
 		},
 	}, result.Files)
@@ -128,7 +128,7 @@ func TestBuildTemplateContentReadsHiddenTrackedFilesFromHEAD(t *testing.T) {
 		},
 		{
 			Path:    "docs/hidden.md",
-			Content: []byte("$project_name hidden\n"),
+			Content: []byte("{{ vars.project_name }} hidden\n"),
 			Mode:    gitpkg.FileModeRegular,
 		},
 	}, result.Files)
