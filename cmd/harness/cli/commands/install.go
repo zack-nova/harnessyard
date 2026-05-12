@@ -757,7 +757,7 @@ func NewInstallCommand() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().String("bindings", "", "Path to an explicit bindings YAML file")
+	cmd.Flags().String("bindings", "", "Path to a Runtime Bindings YAML file")
 	cmd.Flags().String("ref", "", "Select one template branch explicitly when installing from an external Git source")
 	cmd.Flags().Bool("overwrite-existing", false, "Allow overwriting an existing install-backed orbit and removing stale install-owned files")
 	cmd.Flags().StringSlice("override", nil, "Explicitly transfer ownership of one or more existing orbit members from another install unit")

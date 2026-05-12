@@ -136,14 +136,14 @@ bindings YAML schema.
 The public Runtime Bindings document starts at `schema_version: 2`. It supports
 inline `value` bindings and explicit `value_from.env` or `value_from.file`
 sources. Scoped Bindings use `scoped_variables.<namespace>.variables`, where the
-namespace is the installed package or orbit namespace. Pre-release schema `1`
-documents and scalar shorthand are not part of the public configuration
+namespace is the installed package or orbit namespace. Earlier pre-release
+Runtime Bindings document shapes are not part of the public configuration
 contract. Package-owned runtime files reference Package Variables with
 `{{ vars.<name> }}`; `vars` is the only initial template namespace, and
-unsupported namespaces fail rendering. Pre-release `$name` shorthand is not part
-of the public template contract. Rendering is strict: unsupported namespaces,
-unknown `vars.*` references, unresolved declared variables, and malformed
-Harness Yard template syntax block package-owned runtime writes. GitHub Actions
+unsupported namespaces fail rendering. Earlier shorthand template references are
+not part of the public template contract. Rendering is strict: unsupported
+namespaces, unknown `vars.*` references, unresolved declared variables, and
+malformed Harness Yard template syntax block package-owned runtime writes. GitHub Actions
 `${{ ... }}` expressions are not Harness Yard template references. Sensitive
 Package Variables may only use `value_from.env` in the initial public contract;
 inline `value` and `value_from.file` are rejected for sensitive declarations,
@@ -151,7 +151,7 @@ and sensitive declarations may not define defaults.
 Declaration defaults are fallbacks, not Runtime Bindings; they satisfy required
 variables only when no scoped or global binding is present. Required Package
 Variables are strict by default: missing Runtime Bindings block package
-installation instead of writing unresolved placeholders. Interactive installs
+installation before package-owned runtime files are written. Interactive installs
 may prompt for missing required Runtime Bindings and persist them to
 `.harness/vars.yaml`; non-interactive installs fail with `hyard vars init`
 recovery guidance.

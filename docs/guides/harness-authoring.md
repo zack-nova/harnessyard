@@ -140,8 +140,27 @@ owned bindings usually belong in:
 Install packages with explicit bindings when variables are required:
 
 ```bash
+hyard vars init acme/docs --out .harness/vars.yaml
 hyard install <package-source> --bindings .harness/vars.yaml
 ```
+
+Runtime Bindings use schema `2`:
+
+```yaml
+schema_version: 2
+variables:
+  project_name:
+    value: Harness Yard Docs
+  github_token:
+    value_from:
+      env: GITHUB_TOKEN
+```
+
+Package Variables are referenced from package-owned runtime files with strict
+`{{ vars.project_name }}` Package Template References. Declaration defaults
+satisfy required Package Variables without writing a Runtime Binding unless the
+user explicitly asks `hyard vars init --defaults` to materialize defaults.
+Sensitive Package Variables should use `value_from.env`.
 
 Zero variables is a complete contract. Do not add placeholder bindings just to
 make a file look complete.

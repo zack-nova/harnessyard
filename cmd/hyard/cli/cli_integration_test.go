@@ -534,6 +534,8 @@ func TestHyardHelpShowsUserLayerHeadlineAndPlumbingEntry(t *testing.T) {
 	require.Contains(t, stdout, "status")
 	require.Contains(t, stdout, "agent")
 	require.Contains(t, stdout, "guide")
+	require.Contains(t, stdout, "vars")
+	require.Contains(t, stdout, "hyard vars init docs --out .harness/vars.yaml")
 	require.Contains(t, stdout, "plumbing")
 	require.NotContains(t, stdout, "framework")
 }

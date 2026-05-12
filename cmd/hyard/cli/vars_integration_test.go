@@ -27,6 +27,23 @@ func TestHyardVarsPathReportsCanonicalRuntimeBindingsPath(t *testing.T) {
 	require.Equal(t, ".harness/vars.yaml\n", stdout)
 }
 
+func TestHyardVarsHelpTeachesPublicRuntimeBindingsSurface(t *testing.T) {
+	t.Parallel()
+
+	stdout, stderr, err := executeHyardCLI(t, t.TempDir(), "vars", "--help")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+	require.Contains(t, stdout, "Runtime Bindings")
+	require.Contains(t, stdout, ".harness/vars.yaml")
+	require.Contains(t, stdout, "schema_version: 2")
+	require.Contains(t, stdout, "hyard vars init <package-source>")
+	require.Contains(t, stdout, "{{ vars.<name> }}")
+	require.NotContains(t, stdout, ".orbit/vars.yaml")
+	require.NotContains(t, stdout, "$name")
+	require.NotContains(t, stdout, "--strict-bindings")
+	require.NotContains(t, stdout, "--allow-unresolved-bindings")
+}
+
 func TestHyardVarsValidateAcceptsSchema2RuntimeBindings(t *testing.T) {
 	t.Parallel()
 

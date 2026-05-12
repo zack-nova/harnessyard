@@ -543,6 +543,10 @@ func TestHyardInstallHelpShowsYankedOverride(t *testing.T) {
 	require.Empty(t, stderr)
 	require.Contains(t, stdout, "--allow-yanked")
 	require.Contains(t, stdout, "yanked")
+	require.Contains(t, stdout, "--bindings string")
+	require.Contains(t, stdout, "Runtime Bindings YAML file")
+	require.NotContains(t, stdout, "--strict-bindings")
+	require.NotContains(t, stdout, "--allow-unresolved-bindings")
 }
 
 type packageHandleInstallFixture struct {
