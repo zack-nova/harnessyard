@@ -106,6 +106,42 @@ func BuildOrbitEntryCandidate(ctx context.Context, input EntryCandidateInput) (E
 	return candidate, nil
 }
 
+// BuildHarnessEntryCandidate validates and builds one Harness Package registry entry candidate.
+func BuildHarnessEntryCandidate(ctx context.Context, input EntryCandidateInput) (EntryCandidate, error) {
+	normalized, err := normalizeEntryCandidateInput(input, ids.PackageTypeHarness)
+	if err != nil {
+		return EntryCandidate{}, err
+	}
+
+	candidate := EntryCandidate{
+		SchemaVersion:   EntryCandidateSchemaVersion,
+		TargetPath:      normalized.TargetPath,
+		Submittable:     strings.TrimSpace(normalized.SourceRemote) != "",
+		PackageType:     ids.PackageTypeHarness,
+		PackageIdentity: normalized.PackageIdentity,
+		PackageHandle:   normalized.coordinate.Handle(),
+		Version:         normalized.coordinate.Version,
+		PackageStatus:   string(normalized.PackageStatus),
+		Source: EntryCandidateSource{
+			Remote: strings.TrimSpace(normalized.SourceRemote),
+			Ref:    strings.TrimSpace(normalized.SourceRef),
+		},
+	}
+
+	if candidate.Submittable {
+		if err := validateRemoteHarnessEntryCandidate(ctx, normalized, &candidate); err != nil {
+			return EntryCandidate{}, err
+		}
+		return candidate, nil
+	}
+
+	if err := validateLocalHarnessEntryCandidate(ctx, normalized, &candidate); err != nil {
+		return EntryCandidate{}, err
+	}
+
+	return candidate, nil
+}
+
 // MarshalEntryCandidate returns the stable YAML representation of a registry entry candidate.
 func MarshalEntryCandidate(candidate EntryCandidate) ([]byte, error) {
 	data, err := contractutil.EncodeYAMLDocument(entryCandidateNode(candidate))
@@ -202,10 +238,60 @@ func normalizeEntryCandidatePackageIdentity(raw string, packageType string, vers
 }
 
 func validateRemoteOrbitEntryCandidate(ctx context.Context, input normalizedEntryCandidateInput, candidate *EntryCandidate) error {
+	manifest, err := validateRemoteEntryCandidateSource(ctx, input, candidate)
+	if err != nil {
+		return err
+	}
+
+	if err := validateOrbitEntryCandidateManifestIdentity(manifest, input.PackageIdentity, input.coordinate.Version); err != nil {
+		return fmt.Errorf("validate package identity match: %w", err)
+	}
+	candidate.Validation.PackageIdentityMatch = EntryCandidateValidationCheck{
+		OK:     true,
+		Detail: fmt.Sprintf("remote orbit template package matches %s", input.PackageIdentity),
+	}
+
+	if err := validateOrbitEntryCandidateInstallPreview(ctx, remoteEntryCandidateSource(input), input.SourceRef, input.Now); err != nil {
+		return fmt.Errorf("validate installability: %w", err)
+	}
+	candidate.Validation.InstallPreview = EntryCandidateValidationCheck{
+		OK:     true,
+		Detail: "existing orbit template install preview path succeeded",
+	}
+
+	return nil
+}
+
+func validateRemoteHarnessEntryCandidate(ctx context.Context, input normalizedEntryCandidateInput, candidate *EntryCandidate) error {
+	manifest, err := validateRemoteEntryCandidateSource(ctx, input, candidate)
+	if err != nil {
+		return err
+	}
+
+	if err := validateHarnessEntryCandidateManifestIdentity(manifest, input.PackageIdentity, input.coordinate.Version); err != nil {
+		return fmt.Errorf("validate package identity match: %w", err)
+	}
+	candidate.Validation.PackageIdentityMatch = EntryCandidateValidationCheck{
+		OK:     true,
+		Detail: fmt.Sprintf("remote harness template package matches %s", input.PackageIdentity),
+	}
+
+	if err := validateHarnessEntryCandidateInstallPreview(ctx, remoteEntryCandidateSource(input), input.SourceRef, input.Now); err != nil {
+		return fmt.Errorf("validate installability: %w", err)
+	}
+	candidate.Validation.InstallPreview = EntryCandidateValidationCheck{
+		OK:     true,
+		Detail: "existing harness template install preview path succeeded",
+	}
+
+	return nil
+}
+
+func validateRemoteEntryCandidateSource(ctx context.Context, input normalizedEntryCandidateInput, candidate *EntryCandidate) (harnesspkg.ManifestFile, error) {
 	remote := strings.TrimSpace(input.SourceRemote)
 	heads, err := gitpkg.ListRemoteHeads(ctx, input.RepoRoot, remote)
 	if err != nil {
-		return fmt.Errorf("validate source remote reachability: %w", err)
+		return harnesspkg.ManifestFile{}, fmt.Errorf("validate source remote reachability: %w", err)
 	}
 	candidate.Validation.SourceRemoteReachable = EntryCandidateValidationCheck{
 		OK:     true,
@@ -226,16 +312,16 @@ func validateRemoteOrbitEntryCandidate(ctx context.Context, input normalizedEntr
 
 		data, err := gitpkg.ReadFileAtRev(ctx, input.RepoRoot, tempRef, harnesspkg.ManifestRepoPath())
 		if err != nil {
-			return fmt.Errorf("read orbit template manifest: %w", err)
+			return fmt.Errorf("read package manifest: %w", err)
 		}
 		parsed, err := harnesspkg.ParseManifestFileData(data)
 		if err != nil {
-			return fmt.Errorf("parse orbit template manifest: %w", err)
+			return fmt.Errorf("parse package manifest: %w", err)
 		}
 		manifest = parsed
 		return nil
 	}); err != nil {
-		return fmt.Errorf("validate source ref resolution: %w", err)
+		return harnesspkg.ManifestFile{}, fmt.Errorf("validate source ref resolution: %w", err)
 	}
 	candidate.Validation.SourceRefResolved = EntryCandidateValidationCheck{
 		OK:     true,
@@ -243,30 +329,18 @@ func validateRemoteOrbitEntryCandidate(ctx context.Context, input normalizedEntr
 	}
 
 	if err := validateRemoteCommitReachable(ctx, input.RepoRoot, remote, candidate.Source.Commit, input.SourceRef); err != nil {
-		return fmt.Errorf("validate source commit reachability: %w", err)
+		return harnesspkg.ManifestFile{}, fmt.Errorf("validate source commit reachability: %w", err)
 	}
 	candidate.Validation.SourceCommitReachable = EntryCandidateValidationCheck{
 		OK:     true,
 		Detail: fmt.Sprintf("%s is reachable from %s", candidate.Source.Commit, input.SourceRef),
 	}
 
-	if err := validateOrbitEntryCandidateManifestIdentity(manifest, input.PackageIdentity, input.coordinate.Version); err != nil {
-		return fmt.Errorf("validate package identity match: %w", err)
-	}
-	candidate.Validation.PackageIdentityMatch = EntryCandidateValidationCheck{
-		OK:     true,
-		Detail: fmt.Sprintf("remote orbit template package matches %s", input.PackageIdentity),
-	}
+	return manifest, nil
+}
 
-	if err := validateOrbitEntryCandidateInstallPreview(ctx, remote, input.SourceRef, input.Now); err != nil {
-		return fmt.Errorf("validate installability: %w", err)
-	}
-	candidate.Validation.InstallPreview = EntryCandidateValidationCheck{
-		OK:     true,
-		Detail: "existing orbit template install preview path succeeded",
-	}
-
-	return nil
+func remoteEntryCandidateSource(input normalizedEntryCandidateInput) string {
+	return strings.TrimSpace(input.SourceRemote)
 }
 
 func validateLocalOrbitEntryCandidate(ctx context.Context, input normalizedEntryCandidateInput, candidate *EntryCandidate) error {
@@ -297,6 +371,39 @@ func validateLocalOrbitEntryCandidate(ctx context.Context, input normalizedEntry
 	candidate.Validation.InstallPreview = EntryCandidateValidationCheck{
 		OK:     true,
 		Detail: "local orbit template source validation succeeded",
+	}
+
+	return nil
+}
+
+func validateLocalHarnessEntryCandidate(ctx context.Context, input normalizedEntryCandidateInput, candidate *EntryCandidate) error {
+	source, err := harnesspkg.ResolveLocalTemplateInstallSource(ctx, input.RepoRoot, input.SourceRef)
+	if err != nil {
+		return fmt.Errorf("validate local harness template source: %w", err)
+	}
+	candidate.Source.Commit = source.Commit
+	candidate.Validation.SourceRemoteReachable = EntryCandidateValidationCheck{
+		OK:     false,
+		Detail: "local-only preview has no source Git remote",
+	}
+	candidate.Validation.SourceRefResolved = EntryCandidateValidationCheck{
+		OK:     true,
+		Detail: fmt.Sprintf("%s resolved locally to %s", input.SourceRef, source.Commit),
+	}
+	candidate.Validation.SourceCommitReachable = EntryCandidateValidationCheck{
+		OK:     false,
+		Detail: "local-only preview cannot prove remote commit reachability",
+	}
+	if source.Manifest.Template.HarnessID != input.PackageIdentity {
+		return fmt.Errorf("validate package identity match: local harness template package is %q, not %q", source.Manifest.Template.HarnessID, input.PackageIdentity)
+	}
+	candidate.Validation.PackageIdentityMatch = EntryCandidateValidationCheck{
+		OK:     true,
+		Detail: fmt.Sprintf("local harness template package matches %s", input.PackageIdentity),
+	}
+	candidate.Validation.InstallPreview = EntryCandidateValidationCheck{
+		OK:     true,
+		Detail: "local harness template source validation succeeded",
 	}
 
 	return nil
@@ -346,6 +453,33 @@ func validateOrbitEntryCandidateManifestIdentity(manifest harnesspkg.ManifestFil
 	return nil
 }
 
+func validateHarnessEntryCandidateManifestIdentity(manifest harnesspkg.ManifestFile, packageName string, version string) error {
+	if manifest.Kind != harnesspkg.ManifestKindHarnessTemplate {
+		return fmt.Errorf("%s kind must be %q", harnesspkg.ManifestRepoPath(), harnesspkg.ManifestKindHarnessTemplate)
+	}
+	if manifest.Template == nil {
+		return fmt.Errorf("%s template must be present", harnesspkg.ManifestRepoPath())
+	}
+	identity := manifest.Template.Package
+	if identity.Name == "" {
+		identity.Name = manifest.Template.HarnessID
+	}
+	if identity.Type == "" {
+		identity.Type = ids.PackageTypeHarness
+	}
+	if err := ids.ValidatePackageIdentity(identity, ids.PackageTypeHarness, "template.package"); err != nil {
+		return fmt.Errorf("validate template package identity: %w", err)
+	}
+	if identity.Name != packageName {
+		return fmt.Errorf("template.package.name is %q, not %q", identity.Name, packageName)
+	}
+	if identity.Version != "" && identity.Version != version {
+		return fmt.Errorf("template.package.version is %q, not %q", identity.Version, version)
+	}
+
+	return nil
+}
+
 func validateOrbitEntryCandidateInstallPreview(ctx context.Context, remote string, sourceRef string, now time.Time) error {
 	tempDir, err := os.MkdirTemp("", "hyard-registry-entry-*")
 	if err != nil {
@@ -369,6 +503,43 @@ func validateOrbitEntryCandidateInstallPreview(ctx context.Context, remote strin
 	})
 	if err != nil {
 		return fmt.Errorf("build orbit template install preview: %w", err)
+	}
+
+	return nil
+}
+
+func validateHarnessEntryCandidateInstallPreview(ctx context.Context, remote string, sourceRef string, now time.Time) error {
+	tempDir, err := os.MkdirTemp("", "hyard-registry-entry-*")
+	if err != nil {
+		return fmt.Errorf("create temporary runtime: %w", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	if _, err := gitpkg.EnsureRepoRoot(ctx, tempDir); err != nil {
+		return fmt.Errorf("initialize temporary runtime repo: %w", err)
+	}
+	if _, err := harnesspkg.BootstrapRuntimeControlPlane(tempDir, now); err != nil {
+		return fmt.Errorf("bootstrap temporary runtime: %w", err)
+	}
+
+	candidate, source, err := harnesspkg.ResolveRemoteTemplateInstallSource(ctx, tempDir, remote, sourceRef)
+	if err != nil {
+		return fmt.Errorf("resolve harness template install source: %w", err)
+	}
+	_, err = harnesspkg.BuildTemplateInstallPreview(ctx, harnesspkg.TemplateInstallPreviewInput{
+		RepoRoot: tempDir,
+		Source:   source,
+		InstallSource: orbittemplate.Source{
+			SourceKind:     orbittemplate.InstallSourceKindExternalGit,
+			SourceRepo:     candidate.RepoURL,
+			SourceRef:      candidate.Branch,
+			TemplateCommit: source.Commit,
+		},
+		RequireResolvedBindings: false,
+		Now:                     now,
+	})
+	if err != nil {
+		return fmt.Errorf("build harness template install preview: %w", err)
 	}
 
 	return nil
