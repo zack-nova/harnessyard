@@ -48,7 +48,16 @@ func newVarsCommand() *cobra.Command {
 		Use:   "vars",
 		Short: "Manage Runtime Bindings",
 		Long: "Manage Runtime Bindings for Package Variables.\n" +
-			"The canonical Runtime Bindings file is .harness/vars.yaml.",
+			"The canonical Runtime Bindings file is .harness/vars.yaml.\n" +
+			"Runtime Bindings use schema_version: 2 and satisfy Package Variables\n" +
+			"referenced by strict {{ vars.<name> }} Package Template References.",
+		Example: "" +
+			"  hyard vars path\n" +
+			"  hyard vars init <package-source> --out .harness/vars.yaml\n" +
+			"  hyard vars init <package-source> --defaults\n" +
+			"  hyard vars validate\n" +
+			"  hyard vars doctor\n" +
+			"  hyard vars explain project_name\n",
 		Args: cobra.NoArgs,
 	}
 

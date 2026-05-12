@@ -91,6 +91,8 @@ install_script="$repo_root/install.sh"
 goreleaser_config="$repo_root/.goreleaser.yaml"
 hyard_install_cmd="$repo_root/cmd/hyard/cli/install.go"
 hyard_registry_cmd="$repo_root/cmd/hyard/cli/registry.go"
+hyard_vars_cmd="$repo_root/cmd/hyard/cli/vars.go"
+harness_install_cmd="$repo_root/cmd/harness/cli/commands/install.go"
 
 for doc in \
   "$quickstart_doc" \
@@ -107,7 +109,9 @@ for doc in \
   "$install_script" \
   "$goreleaser_config" \
   "$hyard_install_cmd" \
-  "$hyard_registry_cmd"
+  "$hyard_registry_cmd" \
+  "$hyard_vars_cmd" \
+  "$harness_install_cmd"
 do
   assert_file_exists "$doc"
 done
@@ -140,6 +144,12 @@ assert_contains "$quickstart_doc" "hyard install acme/frontend-lab"
 assert_contains "$quickstart_doc" "hyard install acme/docs"
 assert_contains "$quickstart_doc" "hyard install acme/docs@0.1.0"
 assert_contains "$quickstart_doc" "hyard install docs"
+assert_contains "$quickstart_doc" "### Runtime Bindings"
+assert_contains "$quickstart_doc" "hyard vars init acme/docs --out .harness/vars.yaml"
+assert_contains "$quickstart_doc" "schema_version: 2"
+assert_contains "$quickstart_doc" "{{ vars.project_name }}"
+assert_contains "$quickstart_doc" "Runtime Bindings"
+assert_contains "$quickstart_doc" "Package Variables"
 assert_contains "$quickstart_doc" 'Package Handle Coordinates are case-insensitive'
 assert_contains "$quickstart_doc" 'Use `namespace/name[@version-or-tag]`, not npm-style `@namespace/name`.'
 assert_contains "$quickstart_doc" 'Bare handles such as `docs` are curated aliases'
@@ -198,6 +208,10 @@ assert_not_contains "$quickstart_doc" 'export ORBIT_BIN="$ORBIT_BIN_DIR/orbit"'
 assert_not_contains "$quickstart_doc" 'export HARNESS_BIN="$ORBIT_BIN_DIR/harness"'
 assert_not_contains "$quickstart_doc" '"$ORBIT_BIN" branch list --json'
 assert_not_contains "$quickstart_doc" '"$HARNESS_BIN" install "$TEMPLATE_REPO"'
+assert_not_contains "$quickstart_doc" ".orbit/vars.yaml"
+assert_not_contains "$quickstart_doc" '$project_name'
+assert_not_contains "$quickstart_doc" "--strict-bindings"
+assert_not_contains "$quickstart_doc" "--allow-unresolved-bindings"
 
 assert_contains "$concepts_doc" "# Harness Yard Concepts"
 assert_contains "$concepts_doc" "A Harness Yard revision is a Git worktree revision with exactly one revision"
@@ -214,6 +228,11 @@ assert_contains "$configuration_doc" ".harness/orbits/*.yaml"
 assert_contains "$configuration_doc" "Deleted records and retained Git history are not active install state."
 assert_contains "$configuration_doc" 'Supported fields are `name`, `description`, `role`, and `lane`'
 assert_contains "$configuration_doc" "hyard orbit content apply <package> --check --json"
+assert_contains "$configuration_doc" "hyard vars init"
+assert_contains "$configuration_doc" "schema_version: 2"
+assert_contains "$configuration_doc" "{{ vars.<name> }}"
+assert_contains "$configuration_doc" "Rendering is strict"
+assert_not_contains "$configuration_doc" ".orbit/vars.yaml"
 assert_contains "$configuration_doc" "## Audit, Check, And Prepare"
 assert_contains "$configuration_doc" 'Audit statuses are `pass`,'
 assert_contains "$configuration_doc" 'A dirty but otherwise valid worktree is an'
@@ -229,6 +248,11 @@ assert_contains "$harness_authoring_doc" "# Harness Authoring"
 assert_contains "$harness_authoring_doc" "hyard publish harness workspace"
 assert_contains "$harness_authoring_doc" "hyard install acme/frontend-lab"
 assert_contains "$harness_authoring_doc" "hyard install acme/docs --bindings .harness/vars.yaml"
+assert_contains "$harness_authoring_doc" "hyard vars init acme/docs --out .harness/vars.yaml"
+assert_contains "$harness_authoring_doc" "schema_version: 2"
+assert_contains "$harness_authoring_doc" "{{ vars.project_name }}"
+assert_contains "$harness_authoring_doc" "Runtime Bindings"
+assert_contains "$harness_authoring_doc" "Package Variables"
 assert_contains "$harness_authoring_doc" "Explicit Git locators are"
 assert_contains "$harness_authoring_doc" "hyard registry entry harness acme/workspace@0.1.0 --source origin --ref harness-template/workspace --package workspace"
 assert_contains "$harness_authoring_doc" "hyard assign orbit <orbit-package>"
@@ -272,6 +296,12 @@ assert_contains "$release_surface_doc" "hyard install <curated-name>"
 assert_contains "$release_surface_doc" "hyard install acme/docs"
 assert_contains "$release_surface_doc" "hyard install acme/docs@0.1.0"
 assert_contains "$release_surface_doc" "hyard install docs"
+assert_contains "$release_surface_doc" "## Runtime Bindings Surface"
+assert_contains "$release_surface_doc" "hyard vars init <package-source>"
+assert_contains "$release_surface_doc" "schema_version: 2"
+assert_contains "$release_surface_doc" "{{ vars.project_name }}"
+assert_contains "$release_surface_doc" "Package Template Reference rendering is strict"
+assert_contains "$release_surface_doc" "hyard vars init --defaults"
 assert_contains "$release_surface_doc" 'Package Handle Coordinates are case-insensitive'
 assert_contains "$release_surface_doc" 'not npm-style `@namespace/name`'
 assert_contains "$release_surface_doc" 'Explicit Git locators are the advanced escape hatch'
@@ -374,12 +404,19 @@ assert_contains "$hyard_install_cmd" "hyard install acme/docs@0.1.0"
 assert_contains "$hyard_install_cmd" "registry-source"
 assert_contains "$hyard_install_cmd" "allow-yanked"
 
+assert_contains "$harness_install_cmd" "Runtime Bindings YAML file"
+assert_contains "$harness_install_cmd" "hideInstallBindingCompatibilityFlags(cmd)"
+
 assert_contains "$hyard_registry_cmd" "Generate an Orbit Package Registry Entry Candidate"
 assert_contains "$hyard_registry_cmd" "Generate a Harness Package Registry Entry Candidate"
 assert_contains "$hyard_registry_cmd" "hyard registry entry orbit acme/docs@0.1.0"
 assert_contains "$hyard_registry_cmd" "hyard registry entry harness acme/workspace@0.1.0"
 assert_contains "$hyard_registry_cmd" "--out"
 assert_contains "$hyard_registry_cmd" "--registry"
+
+assert_contains "$hyard_vars_cmd" "Manage Runtime Bindings"
+assert_contains "$hyard_vars_cmd" "schema_version: 2"
+assert_contains "$hyard_vars_cmd" "{{ vars.<name> }}"
 
 if command -v goreleaser >/dev/null 2>&1; then
   (

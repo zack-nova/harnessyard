@@ -84,6 +84,36 @@ verified bare or `latest` resolution with a stale cached resolution warning.
 Set `HYARD_CACHE_DIR` only when you need to relocate or inspect the user-level
 registry cache while troubleshooting.
 
+### Runtime Bindings
+
+Packages may declare Package Variables that must be supplied by the runtime.
+Runtime Bindings live in `.harness/vars.yaml` and use schema `2`.
+
+Create a skeleton from a package before installing when required values are
+missing:
+
+```bash
+hyard vars init acme/docs --out .harness/vars.yaml
+hyard vars validate
+hyard install acme/docs --bindings .harness/vars.yaml
+```
+
+The skeleton uses the public Runtime Bindings shape:
+
+```yaml
+schema_version: 2
+variables:
+  project_name:
+    value: Harness Yard Docs
+  github_token:
+    value_from:
+      env: GITHUB_TOKEN
+```
+
+Package-owned runtime files reference Package Variables with strict Package
+Template References such as `{{ vars.project_name }}`. Missing required Runtime
+Bindings block installation before package-owned runtime files are written.
+
 Maintainer-level registry behavior is documented in
 `docs/maintainers/package-registry-source-contract.md`.
 
