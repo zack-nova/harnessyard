@@ -1160,7 +1160,7 @@ func planTemplateInstallBindingsWrite(
 
 	changed := false
 	for name, binding := range resolved {
-		if binding.Source == bindings.SourceRepoVars || binding.Source == bindings.SourceRepoVarsScoped {
+		if binding.Source == bindings.SourceRepoVars || binding.Source == bindings.SourceRepoVarsScoped || binding.Source == bindings.SourceDefault {
 			continue
 		}
 

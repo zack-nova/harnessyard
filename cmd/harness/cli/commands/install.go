@@ -412,7 +412,7 @@ func NewInstallCommand() *cobra.Command {
 					}
 					return cause
 				}
-				result, err := orbittemplate.ApplyLocalTemplate(cmd.Context(), orbittemplate.TemplateApplyInput{Preview: previewInput})
+				result, err := orbittemplate.ApplyTemplatePreview(resolved.Repo.Root, preview, previewInput.OverwriteExisting, previewInput.SkipSharedAgentsWrite)
 				if err != nil {
 					return rollbackOnError(fmt.Errorf("install local template: %w", err))
 				}
@@ -720,7 +720,7 @@ func NewInstallCommand() *cobra.Command {
 				}
 				return cause
 			}
-			result, err := orbittemplate.ApplyRemoteTemplate(cmd.Context(), orbittemplate.RemoteTemplateApplyInput{Preview: previewInput})
+			result, err := orbittemplate.ApplyTemplatePreview(resolved.Repo.Root, preview, previewInput.OverwriteExisting, previewInput.SkipSharedAgentsWrite)
 			if err != nil {
 				return rollbackOnError(fmt.Errorf("install external template: %w", err))
 			}

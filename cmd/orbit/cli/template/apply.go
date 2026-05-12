@@ -724,6 +724,11 @@ func ApplyLocalTemplate(ctx context.Context, input TemplateApplyInput) (Template
 	return applyTemplatePreview(input.Preview.RepoRoot, preview, input.Preview.OverwriteExisting, input.Preview.SkipSharedAgentsWrite)
 }
 
+// ApplyTemplatePreview writes an already-built template preview into the runtime repository.
+func ApplyTemplatePreview(repoRoot string, preview TemplateApplyPreview, overwriteExisting bool, skipSharedAgentsWrite bool) (TemplateApplyResult, error) {
+	return applyTemplatePreview(repoRoot, preview, overwriteExisting, skipSharedAgentsWrite)
+}
+
 // ApplyRemoteTemplate writes the rendered remote template payload into the runtime repository.
 func ApplyRemoteTemplate(ctx context.Context, input RemoteTemplateApplyInput) (TemplateApplyResult, error) {
 	preview, err := BuildRemoteTemplateApplyPreview(ctx, input.Preview)
@@ -735,6 +740,7 @@ func ApplyRemoteTemplate(ctx context.Context, input RemoteTemplateApplyInput) (T
 }
 
 func applyTemplatePreview(repoRoot string, preview TemplateApplyPreview, overwriteExisting bool, skipSharedAgentsWrite bool) (TemplateApplyResult, error) {
+	preview = applyPreviewForWrite(preview, skipSharedAgentsWrite)
 	if len(preview.Conflicts) > 0 && !overwriteExisting {
 		return TemplateApplyResult{}, fmt.Errorf("conflicts detected; re-run with --overwrite-existing to allow replacing existing runtime files")
 	}
@@ -783,6 +789,33 @@ func applyTemplatePreview(repoRoot string, preview TemplateApplyPreview, overwri
 		Preview:      preview,
 		WrittenPaths: writtenPaths,
 	}, nil
+}
+
+func applyPreviewForWrite(preview TemplateApplyPreview, skipSharedAgentsWrite bool) TemplateApplyPreview {
+	if !skipSharedAgentsWrite {
+		return preview
+	}
+
+	next := preview
+	if len(preview.Conflicts) > 0 {
+		next.Conflicts = make([]ApplyConflict, 0, len(preview.Conflicts))
+		for _, conflict := range preview.Conflicts {
+			if conflict.Path == sharedFilePathAgents {
+				continue
+			}
+			next.Conflicts = append(next.Conflicts, conflict)
+		}
+	}
+	if len(preview.Warnings) > 0 {
+		next.Warnings = make([]string, 0, len(preview.Warnings))
+		for _, warning := range preview.Warnings {
+			if strings.HasPrefix(warning, "runtime AGENTS.md ") {
+				continue
+			}
+			next.Warnings = append(next.Warnings, warning)
+		}
+	}
+	return next
 }
 
 func loadOptionalBindingsFile(filename string) (bindings.VarsFile, error) {
@@ -878,7 +911,7 @@ func planResolvedBindingsWrite(
 
 	changed := false
 	for name, binding := range resolved {
-		if binding.Source == bindings.SourceRepoVars || binding.Source == bindings.SourceRepoVarsScoped {
+		if binding.Source == bindings.SourceRepoVars || binding.Source == bindings.SourceRepoVarsScoped || binding.Source == bindings.SourceDefault {
 			continue
 		}
 

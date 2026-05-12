@@ -2,6 +2,8 @@ package cli_test
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -68,6 +70,81 @@ func TestHyardVarsValidateReportsActionableRuntimeBindingsErrors(t *testing.T) {
 	require.Empty(t, stderr)
 	require.ErrorContains(t, err, ".harness/vars.yaml")
 	require.ErrorContains(t, err, "variables.project_name must set exactly one of value or value_from")
+}
+
+func TestHyardVarsInitWritesSchema2RuntimeBindingsSkeleton(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardVarsInitTemplateRepo(t, true)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "vars", "init", "orbit-template/docs")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+	require.Equal(t, "wrote Runtime Bindings skeleton to .harness/vars.yaml\n", stdout)
+
+	file, err := harnesspkg.LoadVarsFile(repo.Root)
+	require.NoError(t, err)
+	require.Equal(t, bindings.VarsSchemaVersion, file.SchemaVersion)
+	require.Empty(t, file.Variables["project_name"].Value)
+	require.Equal(t, "Product title", file.Variables["project_name"].Description)
+	require.Empty(t, file.Variables["docs_url"].Value)
+	require.Equal(t, "Documentation URL", file.Variables["docs_url"].Description)
+	require.NotNil(t, file.Variables["github_token"].ValueFrom)
+	require.Equal(t, "GITHUB_TOKEN", file.Variables["github_token"].ValueFrom.Env)
+	require.Empty(t, file.Variables["github_token"].Value)
+}
+
+func TestHyardVarsInitDefaultsMaterializesDeclarationDefaults(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardVarsInitTemplateRepo(t, true)
+
+	stdout, stderr, err := executeHyardCLI(t, repo.Root, "vars", "init", "orbit-template/docs", "--defaults")
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+	require.Equal(t, "wrote Runtime Bindings skeleton to .harness/vars.yaml\n", stdout)
+
+	file, err := harnesspkg.LoadVarsFile(repo.Root)
+	require.NoError(t, err)
+	require.Equal(t, "https://docs.example.test", file.Variables["docs_url"].Value)
+}
+
+func TestHyardInstallInteractivePersistsMissingBindingsAndSkipsDefaults(t *testing.T) {
+	t.Parallel()
+
+	repo := seedHyardVarsInitTemplateRepo(t, false)
+
+	stdout, stderr, err := executeHyardCLIWithInput(
+		t,
+		repo.Root,
+		"Acme Docs\n",
+		"install",
+		"orbit-template/docs",
+		"--interactive",
+		"--json",
+	)
+	require.NoError(t, err, "stdout: %s\nstderr: %s", stdout, stderr)
+	require.Contains(t, stderr, "project_name (Product title): ")
+	require.NotContains(t, stderr, "docs_url")
+
+	var payload struct {
+		DryRun  bool   `json:"dry_run"`
+		OrbitID string `json:"orbit_id"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.False(t, payload.DryRun)
+	require.Equal(t, "docs", payload.OrbitID)
+
+	rendered, err := os.ReadFile(filepath.Join(repo.Root, "docs", "guide.md"))
+	require.NoError(t, err)
+	require.Equal(t, "Acme Docs guide at https://docs.example.test\n", string(rendered))
+
+	file, err := harnesspkg.LoadVarsFile(repo.Root)
+	require.NoError(t, err)
+	require.Equal(t, "Acme Docs", file.Variables["project_name"].Value)
+	_, hasDefaultBinding := file.Variables["docs_url"]
+	require.False(t, hasDefaultBinding)
+	require.NoError(t, harnesspkg.ValidateVarsFile(repo.Root))
 }
 
 func TestHyardVarsDoctorReportsRuntimeBindingDiagnostics(t *testing.T) {
@@ -209,6 +286,57 @@ func seedHyardVarsInstallRuntime(t *testing.T, declarations map[string]bindings.
 		},
 	})
 	require.NoError(t, err)
+
+	return repo
+}
+
+func seedHyardVarsInitTemplateRepo(t *testing.T, includeSensitive bool) *testutil.Repo {
+	t.Helper()
+
+	repo := testutil.NewRepo(t)
+	repo.Run(t, "branch", "-m", "main")
+	_, err := harnesspkg.BootstrapRuntimeControlPlane(repo.Root, time.Date(2026, time.May, 12, 12, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	repo.AddAndCommit(t, "seed empty runtime")
+
+	repo.Run(t, "checkout", "-b", "orbit-template/docs")
+	repo.Run(t, "rm", "--ignore-unmatch", ".harness/runtime.yaml")
+
+	variables := "" +
+		"variables:\n" +
+		"  docs_url:\n" +
+		"    description: Documentation URL\n" +
+		"    required: true\n" +
+		"    default: https://docs.example.test\n" +
+		"  project_name:\n" +
+		"    description: Product title\n" +
+		"    required: true\n"
+	if includeSensitive {
+		variables += "" +
+			"  github_token:\n" +
+			"    description: GitHub token\n" +
+			"    required: true\n" +
+			"    sensitive: true\n"
+	}
+
+	repo.WriteFile(t, ".harness/manifest.yaml", ""+
+		"schema_version: 1\n"+
+		"kind: orbit_template\n"+
+		"template:\n"+
+		"  orbit_id: docs\n"+
+		"  default_template: false\n"+
+		"  created_from_branch: main\n"+
+		"  created_from_commit: abc123\n"+
+		"  created_at: 2026-05-12T12:00:00Z\n"+
+		variables)
+	repo.WriteFile(t, ".harness/orbits/docs.yaml", ""+
+		"id: docs\n"+
+		"description: Docs orbit\n"+
+		"include:\n"+
+		"  - docs/**\n")
+	repo.WriteFile(t, "docs/guide.md", "{{ vars.project_name }} guide at {{ vars.docs_url }}\n")
+	repo.AddAndCommit(t, "seed vars init template")
+	repo.Run(t, "checkout", "main")
 
 	return repo
 }

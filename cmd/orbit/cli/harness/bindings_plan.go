@@ -26,6 +26,11 @@ type BindingsPlanResult struct {
 	ReusedValues    []string
 }
 
+// BindingsPlanOptions configures Runtime Bindings skeleton generation.
+type BindingsPlanOptions struct {
+	MaterializeDefaults bool
+}
+
 type bindingsPlanDeclaration struct {
 	OrbitID     string
 	Declaration bindings.VariableDeclaration
@@ -36,13 +41,22 @@ func BuildBindingsPlan(
 	previews []orbittemplate.BindingsInitPreview,
 	repoVars bindings.VarsFile,
 ) (BindingsPlanResult, error) {
+	return BuildBindingsPlanWithOptions(previews, repoVars, BindingsPlanOptions{})
+}
+
+// BuildBindingsPlanWithOptions merges bindings-init previews into one shared runtime bindings skeleton.
+func BuildBindingsPlanWithOptions(
+	previews []orbittemplate.BindingsInitPreview,
+	repoVars bindings.VarsFile,
+	options BindingsPlanOptions,
+) (BindingsPlanResult, error) {
 	result := BindingsPlanResult{
 		Sources:  make([]BindingsPlanSource, 0, len(previews)),
 		Bindings: cloneBindingsPlanVarsFile(repoVars),
 	}
 
 	if result.Bindings.SchemaVersion == 0 {
-		result.Bindings.SchemaVersion = 1
+		result.Bindings.SchemaVersion = bindings.VarsSchemaVersion
 	}
 	if result.Bindings.Variables == nil {
 		result.Bindings.Variables = map[string]bindings.VariableBinding{}
@@ -77,7 +91,7 @@ func BuildBindingsPlan(
 		declarations := declarationsByName[name]
 		delete(result.Bindings.Variables, name)
 		if bindingsPlanHasDeclarationConflict(name, declarations) {
-			appendScopedBindingsPlanValue(&result, repoVars, name, declarations)
+			appendScopedBindingsPlanValue(&result, repoVars, name, declarations, options)
 			continue
 		}
 
@@ -85,16 +99,13 @@ func BuildBindingsPlan(
 		if err != nil {
 			return BindingsPlanResult{}, fmt.Errorf("merge shared bindings declarations: %w", err)
 		}
-		binding := bindings.VariableBinding{
-			Value:       "",
-			Description: spec.Description,
-		}
+		binding := bindingsPlanBindingFromDeclaration(name, spec, options)
 
-		if existing, ok := repoVars.Variables[name]; ok && strings.TrimSpace(existing.Value) != "" {
-			binding.Value = existing.Value
+		if existing, ok := repoVars.Variables[name]; ok && bindingsPlanHasConfiguredValue(existing) {
+			binding = bindingsPlanReusedBinding(existing, spec.Description)
 			result.ReusedValues = append(result.ReusedValues, name)
 		}
-		if binding.Value == "" && spec.Required {
+		if !bindingsPlanHasConfiguredValue(binding) && spec.Required && spec.Default == nil {
 			result.MissingRequired = append(result.MissingRequired, name)
 		}
 
@@ -138,6 +149,7 @@ func appendScopedBindingsPlanValue(
 	repoVars bindings.VarsFile,
 	name string,
 	declarations []bindingsPlanDeclaration,
+	options BindingsPlanOptions,
 ) {
 	if result.Bindings.ScopedVariables == nil {
 		result.Bindings.ScopedVariables = map[string]bindings.ScopedVariableBindings{}
@@ -149,18 +161,15 @@ func appendScopedBindingsPlanValue(
 			scoped.Variables = map[string]bindings.VariableBinding{}
 		}
 
-		binding := bindings.VariableBinding{
-			Value:       "",
-			Description: item.Declaration.Description,
-		}
-		if existing, ok := bindings.ScopedVariablesForNamespace(repoVars, namespace)[name]; ok && strings.TrimSpace(existing.Value) != "" {
-			binding.Value = existing.Value
+		binding := bindingsPlanBindingFromDeclaration(name, item.Declaration, options)
+		if existing, ok := bindings.ScopedVariablesForNamespace(repoVars, namespace)[name]; ok && bindingsPlanHasConfiguredValue(existing) {
+			binding = bindingsPlanReusedBinding(existing, item.Declaration.Description)
 			result.ReusedValues = append(result.ReusedValues, namespacedBindingsPlanName(namespace, name))
-		} else if existing, ok := repoVars.Variables[name]; ok && strings.TrimSpace(existing.Value) != "" {
-			binding.Value = existing.Value
+		} else if existing, ok := repoVars.Variables[name]; ok && bindingsPlanHasConfiguredValue(existing) {
+			binding = bindingsPlanReusedBinding(existing, item.Declaration.Description)
 			result.ReusedValues = append(result.ReusedValues, namespacedBindingsPlanName(namespace, name))
 		}
-		if binding.Value == "" && item.Declaration.Required {
+		if !bindingsPlanHasConfiguredValue(binding) && item.Declaration.Required && item.Declaration.Default == nil {
 			result.MissingRequired = append(result.MissingRequired, namespacedBindingsPlanName(namespace, name))
 		}
 
@@ -198,6 +207,37 @@ func bindingsPlanHasDeclarationConflict(name string, declarations []bindingsPlan
 
 func namespacedBindingsPlanName(namespace string, name string) string {
 	return fmt.Sprintf("%s:%s", namespace, name)
+}
+
+func bindingsPlanBindingFromDeclaration(name string, declaration bindings.VariableDeclaration, options BindingsPlanOptions) bindings.VariableBinding {
+	binding := bindings.VariableBinding{
+		Value:       "",
+		Description: declaration.Description,
+	}
+	if declaration.Sensitive {
+		binding.ValueFrom = &bindings.ValueSource{Env: bindingsPlanEnvName(name)}
+		return binding
+	}
+	if options.MaterializeDefaults && declaration.Default != nil {
+		binding.Value = *declaration.Default
+	}
+	return binding
+}
+
+func bindingsPlanReusedBinding(existing bindings.VariableBinding, description string) bindings.VariableBinding {
+	return bindings.VariableBinding{
+		Value:       existing.Value,
+		ValueFrom:   existing.ValueFrom,
+		Description: description,
+	}
+}
+
+func bindingsPlanHasConfiguredValue(binding bindings.VariableBinding) bool {
+	return strings.TrimSpace(binding.Value) != "" || binding.ValueFrom != nil
+}
+
+func bindingsPlanEnvName(name string) string {
+	return strings.ToUpper(name)
 }
 
 func sortedVariableNames(values map[string]orbittemplate.VariableSpec) []string {

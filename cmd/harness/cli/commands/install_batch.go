@@ -669,30 +669,24 @@ func applyOrbitInstallBatchCandidate(
 		cleanupPlan orbittemplate.InstallOwnedCleanupPlan
 	)
 	if candidate.LocalPreview != nil {
-		previewInput := *candidate.LocalPreview
-		previewInput.OverwriteExisting = true
-		previewInput.SkipSharedAgentsWrite = true
 		if targetState.RequiresOverwrite {
 			cleanupPlan, err = orbittemplate.BuildInstallOwnedCleanupPlan(cmd.Context(), repoRoot, targetState.ExistingRecord, candidate.Preview)
 			if err != nil {
 				return orbitInstallBatchApplied{}, fmt.Errorf("reconstruct existing install ownership: %w", err)
 			}
 		}
-		result, err = orbittemplate.ApplyLocalTemplate(cmd.Context(), orbittemplate.TemplateApplyInput{Preview: previewInput})
+		result, err = orbittemplate.ApplyTemplatePreview(repoRoot, candidate.Preview, true, true)
 		if err != nil {
 			return orbitInstallBatchApplied{}, fmt.Errorf("install local template: %w", err)
 		}
 	} else {
-		previewInput := *candidate.RemotePreview
-		previewInput.OverwriteExisting = true
-		previewInput.SkipSharedAgentsWrite = true
 		if targetState.RequiresOverwrite {
 			cleanupPlan, err = orbittemplate.BuildInstallOwnedCleanupPlan(cmd.Context(), repoRoot, targetState.ExistingRecord, candidate.Preview)
 			if err != nil {
 				return orbitInstallBatchApplied{}, fmt.Errorf("reconstruct existing install ownership: %w", err)
 			}
 		}
-		result, err = orbittemplate.ApplyRemoteTemplate(cmd.Context(), orbittemplate.RemoteTemplateApplyInput{Preview: previewInput})
+		result, err = orbittemplate.ApplyTemplatePreview(repoRoot, candidate.Preview, true, true)
 		if err != nil {
 			return orbitInstallBatchApplied{}, fmt.Errorf("install external template: %w", err)
 		}
