@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	gitpkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/git"
+	"github.com/zack-nova/harnessyard/cmd/orbit/cli/ids"
 	"github.com/zack-nova/harnessyard/cmd/orbit/cli/registry"
 )
 
@@ -35,11 +37,56 @@ func newRegistryEntryCommand() *cobra.Command {
 	}
 
 	cmd.AddCommand(newRegistryEntryOrbitCommand())
+	cmd.AddCommand(newRegistryEntryHarnessCommand())
 
 	return cmd
 }
 
 func newRegistryEntryOrbitCommand() *cobra.Command {
+	return newRegistryEntryPackageCommand(registryEntryPackageCommandOptions{
+		PackageType:  ids.PackageTypeOrbit,
+		PackageLabel: "Orbit Package",
+		Use:          "orbit <namespace/name@version>",
+		Short:        "Generate an Orbit Package Registry Entry Candidate",
+		Long: "Generate an Orbit Package Registry Entry Candidate from published Orbit Package evidence.\n" +
+			"The command validates the source remote, source ref, resolved commit, package identity,\n" +
+			"and installability through the existing Orbit install preview path.",
+		Example: "" +
+			"  hyard registry entry orbit acme/docs@0.1.0 --source https://example.com/acme/docs.git --ref orbit-template/docs --package docs\n" +
+			"  hyard registry entry orbit acme/docs@0.1.0 --source origin --ref orbit-template/docs --package docs --out candidate.yaml\n" +
+			"  hyard registry entry orbit acme/docs@0.1.0 --source origin --ref orbit-template/docs --package docs --registry ../hyard-registry\n",
+		BuildCandidate: registry.BuildOrbitEntryCandidate,
+	})
+}
+
+func newRegistryEntryHarnessCommand() *cobra.Command {
+	return newRegistryEntryPackageCommand(registryEntryPackageCommandOptions{
+		PackageType:  ids.PackageTypeHarness,
+		PackageLabel: "Harness Package",
+		Use:          "harness <namespace/name@version>",
+		Short:        "Generate a Harness Package Registry Entry Candidate",
+		Long: "Generate a Harness Package Registry Entry Candidate from published Harness Package evidence.\n" +
+			"The command validates the source remote, source ref, resolved commit, package identity,\n" +
+			"and installability through the existing Harness install preview path.",
+		Example: "" +
+			"  hyard registry entry harness acme/workspace@0.1.0 --source https://example.com/acme/workspace.git --ref harness-template/workspace --package workspace\n" +
+			"  hyard registry entry harness acme/workspace@0.1.0 --source origin --ref harness-template/workspace --package workspace --out candidate.yaml\n" +
+			"  hyard registry entry harness acme/workspace@0.1.0 --source origin --ref harness-template/workspace --package workspace --registry ../hyard-registry\n",
+		BuildCandidate: registry.BuildHarnessEntryCandidate,
+	})
+}
+
+type registryEntryPackageCommandOptions struct {
+	PackageType    string
+	PackageLabel   string
+	Use            string
+	Short          string
+	Long           string
+	Example        string
+	BuildCandidate func(cmdContext context.Context, input registry.EntryCandidateInput) (registry.EntryCandidate, error)
+}
+
+func newRegistryEntryPackageCommand(options registryEntryPackageCommandOptions) *cobra.Command {
 	var sourceRemote string
 	var sourceRef string
 	var expectedCommit string
@@ -50,16 +97,11 @@ func newRegistryEntryOrbitCommand() *cobra.Command {
 	var registryRoot string
 
 	cmd := &cobra.Command{
-		Use:   "orbit <namespace/name@version>",
-		Short: "Generate an Orbit Package Registry Entry Candidate",
-		Long: "Generate an Orbit Package Registry Entry Candidate from published Orbit Package evidence.\n" +
-			"The command validates the source remote, source ref, resolved commit, package identity,\n" +
-			"and installability through the existing Orbit install preview path.",
-		Example: "" +
-			"  hyard registry entry orbit acme/docs@0.1.0 --source https://example.com/acme/docs.git --ref orbit-template/docs --package docs\n" +
-			"  hyard registry entry orbit acme/docs@0.1.0 --source origin --ref orbit-template/docs --package docs --out candidate.yaml\n" +
-			"  hyard registry entry orbit acme/docs@0.1.0 --source origin --ref orbit-template/docs --package docs --registry ../hyard-registry\n",
-		Args: cobra.ExactArgs(1),
+		Use:     options.Use,
+		Short:   options.Short,
+		Long:    options.Long,
+		Example: options.Example,
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			workingDir, err := hyardWorkingDirFromCommand(cmd)
 			if err != nil {
@@ -73,10 +115,10 @@ func newRegistryEntryOrbitCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			candidate, err := registry.BuildOrbitEntryCandidate(cmd.Context(), registry.EntryCandidateInput{
+			candidate, err := options.BuildCandidate(cmd.Context(), registry.EntryCandidateInput{
 				RepoRoot:        repo.Root,
 				Coordinate:      args[0],
-				PackageType:     "orbit",
+				PackageType:     options.PackageType,
 				PackageIdentity: packageIdentity,
 				PackageStatus:   status,
 				SourceRemote:    sourceRemote,
@@ -85,21 +127,21 @@ func newRegistryEntryOrbitCommand() *cobra.Command {
 				TargetPath:      targetPath,
 			})
 			if err != nil {
-				return fmt.Errorf("build Orbit registry entry candidate: %w", err)
+				return fmt.Errorf("build %s registry entry candidate: %w", options.PackageType, err)
 			}
 			data, err := registry.MarshalEntryCandidate(candidate)
 			if err != nil {
-				return fmt.Errorf("marshal Orbit registry entry candidate: %w", err)
+				return fmt.Errorf("marshal %s registry entry candidate: %w", options.PackageType, err)
 			}
 
 			return emitRegistryEntryCandidate(cmd, workingDir, candidate, data, outPath, registryRoot)
 		},
 	}
 
-	cmd.Flags().StringVar(&sourceRemote, "source", "", "Source Git remote containing the published Orbit Package; omit only for local preview output")
-	cmd.Flags().StringVar(&sourceRef, "ref", "", "Source Git ref for the published Orbit Package")
+	cmd.Flags().StringVar(&sourceRemote, "source", "", "Source Git remote containing the published "+options.PackageLabel+"; omit only for local preview output")
+	cmd.Flags().StringVar(&sourceRef, "ref", "", "Source Git ref for the published "+options.PackageLabel)
 	cmd.Flags().StringVar(&expectedCommit, "commit", "", "Optional expected source commit SHA to verify")
-	cmd.Flags().StringVar(&packageIdentity, "package", "", "Orbit Package identity name or SemVer package coordinate")
+	cmd.Flags().StringVar(&packageIdentity, "package", "", options.PackageLabel+" identity name or SemVer package coordinate")
 	cmd.Flags().StringVar(&targetPath, "target", "", "Registry-relative target path; defaults to packages/<namespace>/index.yaml")
 	cmd.Flags().StringVar(&packageStatus, "status", string(registry.PackageStatusActive), "Registry package status for the candidate")
 	cmd.Flags().StringVar(&outPath, "out", "", "Write the YAML candidate to a chosen file")
