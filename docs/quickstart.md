@@ -33,12 +33,17 @@ Run View is the default runtime-user presentation: it keeps authored scaffolding
 of the ordinary working tree and makes current runtime publication the recommended
 sharing path.
 
-Clone a published Harness Template from an explicit GitHub locator and start the
+Package Handle Coordinates are the ordinary install path for published Harness
+Packages and Orbit Packages. Use `namespace/name[@version-or-tag]`, not npm-style `@namespace/name`.
+Package Handle Coordinates are case-insensitive and normalize before resolution.
+
+Create a runtime, install a published Harness Package by handle, and start the
 agent handoff:
 
 ```bash
-hyard clone https://github.com/acme/harness-templates.git demo-runtime --ref harness-template/frontend-lab
+hyard create runtime demo-runtime
 cd demo-runtime
+hyard install acme/frontend-lab
 hyard start --with codex
 ```
 
@@ -60,14 +65,27 @@ Harness Runtime around it:
 
 ```bash
 hyard init runtime
-hyard install https://github.com/acme/harness-templates.git --ref harness-template/frontend-lab
-hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/docs --bindings .harness/vars.yaml
-hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/api --bindings .harness/vars.yaml
-hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/ui --bindings .harness/vars.yaml
-hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/ops --bindings .harness/vars.yaml
+hyard install acme/frontend-lab
+hyard install acme/docs --bindings .harness/vars.yaml
+hyard install acme/docs@0.1.0 --bindings .harness/vars.yaml
+hyard install acme/api@latest --bindings .harness/vars.yaml
+hyard install docs
 hyard check --json
 hyard audit --json
 ```
+
+Bare handles such as `docs` are curated aliases reviewed by the package
+registry. `latest` is an explicit registry dist-tag, so `acme/docs` is the same
+request as `acme/docs@latest`; it is not inferred from a Git branch, newest
+catalog merge, or highest SemVer version.
+
+If fresh registry data cannot be fetched, Harness Yard may use a previously
+verified bare or `latest` resolution with a stale cached resolution warning.
+Set `HYARD_CACHE_DIR` only when you need to relocate or inspect the user-level
+registry cache while troubleshooting.
+
+Maintainer-level registry behavior is documented in
+`docs/maintainers/package-registry-source-contract.md`.
 
 Use `hyard audit` as the standard read-only review command for the current
 worktree. Audit reports one of four statuses: `pass`, `warn`, `fail`, or
@@ -115,9 +133,21 @@ readiness-relevant.
 Install a reusable template or package:
 
 ```bash
+hyard install <namespace>/<name>
+hyard install <namespace>/<name>@<semver>
+hyard install <curated-name>
 hyard install <template-source>
 hyard check --json
 hyard view run --check
+```
+
+Explicit Git locators remain available as an advanced escape hatch when no
+registry entry exists yet:
+
+```bash
+hyard clone https://github.com/acme/harness-templates.git demo-runtime --ref harness-template/frontend-lab
+hyard install https://github.com/acme/harness-templates.git --ref harness-template/frontend-lab
+hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/docs --bindings .harness/vars.yaml
 ```
 
 Review installed orbit packages and work inside the current runtime:

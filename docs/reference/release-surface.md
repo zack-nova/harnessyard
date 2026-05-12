@@ -52,11 +52,32 @@ The canonical top-level package lifecycle surface is:
 
 ```bash
 hyard install <template-source>
-hyard install <namespace>/<name>[@<semver-or-latest>]
+hyard install <namespace>/<name>
+hyard install <namespace>/<name>@<semver>
+hyard install <namespace>/<name>@latest
+hyard install <curated-name>
 hyard install <curated-name>[@latest]
 hyard uninstall orbit <orbit-package>
 hyard uninstall harness <harness-package>
 ```
+
+Package Handle Coordinates are case-insensitive and use
+`namespace/name[@version-or-tag]` or curated `name[@version-or-tag]` syntax.
+They are not npm-style `@namespace/name`. User-facing examples should prefer
+package handles such as:
+
+```bash
+hyard install acme/docs
+hyard install acme/docs@0.1.0
+hyard install docs
+```
+
+Curated bare handles such as `docs` are reviewed aliases. `latest` is an
+explicit registry dist-tag, so `acme/docs` is equivalent to `acme/docs@latest`;
+documentation must not describe it as an inferred newest version or Git branch.
+If fresh registry data is unavailable, stale cached bare or `latest`
+resolutions may install with a warning. Mention `HYARD_CACHE_DIR` only in
+troubleshooting context for the user-level registry cache.
 
 User-facing package lifecycle documentation should prefer `uninstall`.
 Scoped member-editing documentation may continue to use add/remove language, such as
@@ -87,15 +108,16 @@ Orbit Package publish readiness on `hyard orbit prepare <package> --check --json
 
 ## Harness Start Demo Paths
 
-Public demo examples may use explicit Git locators when no registry entry is
-available. Namespaced and curated registry-backed handles are also part of the
-public install surface.
+Public demo examples should use Package Handle Coordinates once registry entries
+exist. Explicit Git locators are the advanced escape hatch when no registry
+entry is available.
 
-Clone a Harness Template and hand off to Codex:
+Create a runtime, install a Harness Package by handle, and hand off to Codex:
 
 ```bash
-hyard clone https://github.com/acme/harness-templates.git demo-runtime --ref harness-template/frontend-lab
+hyard create runtime demo-runtime
 cd demo-runtime
+hyard install acme/frontend-lab
 hyard start --with codex
 ```
 
@@ -104,13 +126,24 @@ typed Package Installation and Package Uninstallation:
 
 ```bash
 hyard init runtime
+hyard install acme/frontend-lab
+hyard install acme/docs --bindings .harness/vars.yaml
+hyard install acme/api@latest --bindings .harness/vars.yaml
+hyard install acme/ui@0.1.0 --bindings .harness/vars.yaml
+hyard install docs
+hyard uninstall harness frontend-lab
+hyard uninstall orbit docs
+```
+
+Advanced explicit Git locator examples remain available for unpublished packages:
+
+```bash
+hyard clone https://github.com/acme/harness-templates.git demo-runtime --ref harness-template/frontend-lab
 hyard install https://github.com/acme/harness-templates.git --ref harness-template/frontend-lab
 hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/docs --bindings .harness/vars.yaml
 hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/api --bindings .harness/vars.yaml
 hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/ui --bindings .harness/vars.yaml
 hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/ops --bindings .harness/vars.yaml
-hyard uninstall harness frontend-lab
-hyard uninstall orbit docs
 ```
 
 Run View Package Installation outputs package guidance incrementally so each
@@ -155,6 +188,26 @@ Author View is the authored-truth view. Author documentation should explain
 Orbit Package publication remains available for authoring. It should be
 documented as an authoring surface, not as the recommended runtime-user
 publication path.
+
+## Registry Entry Candidate Surface
+
+Package authors register published packages by generating a reviewable Registry
+Entry Candidate and submitting the resulting YAML to the package registry
+repository. Orbit and Harness candidates share the same YAML shape; validation
+differs by package kind.
+
+```bash
+hyard registry entry orbit acme/docs@0.1.0 --source origin --ref orbit-template/docs --package docs
+hyard registry entry harness acme/workspace@0.1.0 --source origin --ref harness-template/workspace --package workspace
+```
+
+Default output is stdout. `--out <path>` writes a chosen file, and
+`--registry <path>` writes under the candidate target path in a local registry
+checkout. Local-only evidence can preview candidate YAML but cannot create a
+submittable candidate.
+
+Maintainer-level registry source behavior is documented in
+`docs/maintainers/package-registry-source-contract.md`.
 
 Main `hyard --help` output must stay stable across Runtime View Selection. Runtime
 View Selection may affect command behavior and status/next-action output for a

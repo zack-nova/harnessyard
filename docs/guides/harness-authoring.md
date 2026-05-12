@@ -43,12 +43,16 @@ hyard init runtime
 Install the harness or orbit packages that make up the work system:
 
 ```bash
-hyard install https://github.com/acme/harness-templates.git --ref harness-template/frontend-lab
-hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/docs --bindings .harness/vars.yaml
-hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/api --bindings .harness/vars.yaml
-hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/ui --bindings .harness/vars.yaml
-hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/ops --bindings .harness/vars.yaml
+hyard install acme/frontend-lab
+hyard install acme/docs --bindings .harness/vars.yaml
+hyard install acme/api@latest --bindings .harness/vars.yaml
+hyard install acme/ui@0.1.0 --bindings .harness/vars.yaml
+hyard install docs
 ```
+
+Use Package Handle Coordinates for ordinary installs. Explicit Git locators are
+still available when a package has not been registered yet, but they should be
+treated as an advanced escape hatch.
 
 Inspect package membership and readiness:
 
@@ -79,11 +83,24 @@ Publish the composed Harness Package:
 hyard publish harness workspace
 ```
 
+Generate a reviewable Registry Entry Candidate when the published Harness
+Package is ready to be registered:
+
+```bash
+hyard registry entry harness acme/workspace@0.1.0 --source origin --ref harness-template/workspace --package workspace
+```
+
+The candidate uses the same YAML schema as Orbit candidates while validating the
+Harness Package identity and install preview path.
+
 ## Composition Work
 
 Use package lifecycle commands for installed package membership:
 
 ```bash
+hyard install <namespace>/<name>
+hyard install <namespace>/<name>@<semver>
+hyard install <curated-name>
 hyard install <package-source>
 hyard uninstall orbit <orbit-package>
 hyard uninstall harness <harness-package>

@@ -22,7 +22,7 @@ assert_contains() {
   file=$1
   expected=$2
 
-  if ! grep -Fq "$expected" "$file"; then
+  if ! grep -Fq -- "$expected" "$file"; then
     echo "expected ${file#$repo_root/} to contain: $expected" >&2
     cat "$file" >&2
     exit 1
@@ -33,7 +33,7 @@ assert_not_contains() {
   file=$1
   unexpected=$2
 
-  if grep -Fq "$unexpected" "$file"; then
+  if grep -Fq -- "$unexpected" "$file"; then
     echo "expected ${file#$repo_root/} to not contain: $unexpected" >&2
     cat "$file" >&2
     exit 1
@@ -44,7 +44,7 @@ assert_contains_line() {
   file=$1
   expected=$2
 
-  if ! grep -Fxq "$expected" "$file"; then
+  if ! grep -Fxq -- "$expected" "$file"; then
     echo "expected ${file#$repo_root/} to contain line: $expected" >&2
     cat "$file" >&2
     exit 1
@@ -89,6 +89,8 @@ contributor_testing_doc="$repo_root/docs/contributing/testing.md"
 maintainer_testing_doc="$repo_root/docs/maintainers/testing-strategy.md"
 install_script="$repo_root/install.sh"
 goreleaser_config="$repo_root/.goreleaser.yaml"
+hyard_install_cmd="$repo_root/cmd/hyard/cli/install.go"
+hyard_registry_cmd="$repo_root/cmd/hyard/cli/registry.go"
 
 for doc in \
   "$quickstart_doc" \
@@ -103,7 +105,9 @@ for doc in \
   "$contributor_testing_doc" \
   "$maintainer_testing_doc" \
   "$install_script" \
-  "$goreleaser_config"
+  "$goreleaser_config" \
+  "$hyard_install_cmd" \
+  "$hyard_registry_cmd"
 do
   assert_file_exists "$doc"
 done
@@ -131,11 +135,19 @@ assert_contains "$quickstart_doc" '`not_hyard_revision` exit non-zero'
 assert_contains "$quickstart_doc" "Audit is scoped to the current Git worktree"
 assert_contains "$quickstart_doc" "### Existing Repository Assembly"
 assert_contains "$quickstart_doc" "hyard init runtime"
-assert_contains "$quickstart_doc" "hyard install https://github.com/acme/harness-templates.git --ref harness-template/frontend-lab"
-assert_contains "$quickstart_doc" "hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/docs --bindings .harness/vars.yaml"
-assert_contains "$quickstart_doc" "hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/api --bindings .harness/vars.yaml"
-assert_contains "$quickstart_doc" "hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/ui --bindings .harness/vars.yaml"
-assert_contains "$quickstart_doc" "hyard install https://github.com/acme/orbit-packages.git --ref orbit-template/ops --bindings .harness/vars.yaml"
+assert_contains "$quickstart_doc" "Package Handle Coordinates are the ordinary install path"
+assert_contains "$quickstart_doc" "hyard install acme/frontend-lab"
+assert_contains "$quickstart_doc" "hyard install acme/docs"
+assert_contains "$quickstart_doc" "hyard install acme/docs@0.1.0"
+assert_contains "$quickstart_doc" "hyard install docs"
+assert_contains "$quickstart_doc" 'Package Handle Coordinates are case-insensitive'
+assert_contains "$quickstart_doc" 'Use `namespace/name[@version-or-tag]`, not npm-style `@namespace/name`.'
+assert_contains "$quickstart_doc" 'Bare handles such as `docs` are curated aliases'
+assert_contains "$quickstart_doc" '`latest` is an explicit registry dist-tag'
+assert_contains "$quickstart_doc" 'If fresh registry data cannot be fetched'
+assert_contains "$quickstart_doc" '`HYARD_CACHE_DIR`'
+assert_contains "$quickstart_doc" "Explicit Git locators remain available as an advanced escape hatch"
+assert_contains "$quickstart_doc" "docs/maintainers/package-registry-source-contract.md"
 assert_contains "$quickstart_doc" "Each Run View Orbit Package install outputs its package guidance incrementally"
 assert_contains "$quickstart_doc" "Framework Activation is the separate Agent Framework side-effect step"
 assert_contains "$quickstart_doc" "hyard agent plan"
@@ -191,6 +203,9 @@ assert_contains "$concepts_doc" "# Harness Yard Concepts"
 assert_contains "$concepts_doc" "A Harness Yard revision is a Git worktree revision with exactly one revision"
 assert_contains "$concepts_doc" "Run View is the default runtime-user presentation"
 assert_contains "$concepts_doc" "Author View is for Harness authors and Orbit authors"
+assert_contains "$concepts_doc" 'Package Handle Coordinates are case-insensitive'
+assert_contains "$concepts_doc" '`namespace/name[@version-or-tag]`'
+assert_contains "$concepts_doc" 'not npm-style `@namespace/name`'
 assert_not_contains "$concepts_doc" "hyard plumbing"
 
 assert_contains "$configuration_doc" "# Configuration Reference"
@@ -212,6 +227,10 @@ assert_contains "$content_workflows_doc" "Split an Orbit Workflow only when the 
 
 assert_contains "$harness_authoring_doc" "# Harness Authoring"
 assert_contains "$harness_authoring_doc" "hyard publish harness workspace"
+assert_contains "$harness_authoring_doc" "hyard install acme/frontend-lab"
+assert_contains "$harness_authoring_doc" "hyard install acme/docs --bindings .harness/vars.yaml"
+assert_contains "$harness_authoring_doc" "Explicit Git locators are"
+assert_contains "$harness_authoring_doc" "hyard registry entry harness acme/workspace@0.1.0 --source origin --ref harness-template/workspace --package workspace"
 assert_contains "$harness_authoring_doc" "hyard assign orbit <orbit-package>"
 assert_contains "$harness_authoring_doc" "hyard view author"
 assert_contains "$harness_authoring_doc" "hyard guide save --orbit docs --target all"
@@ -224,12 +243,20 @@ assert_contains "$orbit_authoring_doc" "hyard guide render --orbit docs --target
 assert_contains "$orbit_authoring_doc" "hyard guide save --orbit docs --target all"
 assert_contains "$orbit_authoring_doc" "hyard orbit content apply docs --check --json"
 assert_contains "$orbit_authoring_doc" "hyard publish orbit docs --json"
+assert_contains "$orbit_authoring_doc" "hyard registry entry orbit acme/docs@0.1.0 --source origin --ref orbit-template/docs --package docs"
 assert_not_contains "$orbit_authoring_doc" "hyard guide writeback"
 assert_not_contains "$orbit_authoring_doc" "hyard plumbing"
 
 assert_contains "$installation_doc" "Harness Yard installs one public CLI binary"
 assert_contains "$installation_doc" "brew install hyard"
 assert_contains "$installation_doc" "raw.githubusercontent.com/zack-nova/harnessyard/main/install.sh"
+assert_contains "$installation_doc" "hyard install acme/docs"
+assert_contains "$installation_doc" "hyard install acme/docs@0.1.0"
+assert_contains "$installation_doc" "hyard install docs"
+assert_contains "$installation_doc" 'Package Handle Coordinates are case-insensitive'
+assert_contains "$installation_doc" 'not npm-style `@namespace/name`'
+assert_contains "$installation_doc" 'stale cached'
+assert_contains "$installation_doc" '`HYARD_CACHE_DIR`'
 assert_not_contains "$installation_doc" "hyard plumbing"
 assert_not_contains "$installation_doc" "harness-yard"
 
@@ -239,6 +266,15 @@ assert_contains "$release_surface_doc" 'Public product documentation should teac
 assert_contains "$release_surface_doc" "brew tap zack-nova/tap"
 assert_contains "$release_surface_doc" "raw.githubusercontent.com/zack-nova/harnessyard/main/install.sh"
 assert_contains "$release_surface_doc" "hyard install <template-source>"
+assert_contains "$release_surface_doc" "hyard install <namespace>/<name>"
+assert_contains "$release_surface_doc" "hyard install <namespace>/<name>@<semver>"
+assert_contains "$release_surface_doc" "hyard install <curated-name>"
+assert_contains "$release_surface_doc" "hyard install acme/docs"
+assert_contains "$release_surface_doc" "hyard install acme/docs@0.1.0"
+assert_contains "$release_surface_doc" "hyard install docs"
+assert_contains "$release_surface_doc" 'Package Handle Coordinates are case-insensitive'
+assert_contains "$release_surface_doc" 'not npm-style `@namespace/name`'
+assert_contains "$release_surface_doc" 'Explicit Git locators are the advanced escape hatch'
 assert_contains "$release_surface_doc" "hyard uninstall orbit <orbit-package>"
 assert_contains "$release_surface_doc" "hyard uninstall harness <harness-package>"
 assert_contains "$release_surface_doc" "hyard orbit member remove"
@@ -275,6 +311,10 @@ assert_contains "$release_surface_doc" "Run View is the recommended runtime-user
 assert_contains "$release_surface_doc" 'Run View publication should use `hyard publish harness <harness-package>`'
 assert_contains "$release_surface_doc" "Author View is the authored-truth view"
 assert_contains "$release_surface_doc" "Orbit Package publication remains available for authoring"
+assert_contains "$release_surface_doc" "## Registry Entry Candidate Surface"
+assert_contains "$release_surface_doc" "hyard registry entry orbit acme/docs@0.1.0 --source origin --ref orbit-template/docs --package docs"
+assert_contains "$release_surface_doc" "hyard registry entry harness acme/workspace@0.1.0 --source origin --ref harness-template/workspace --package workspace"
+assert_contains "$release_surface_doc" "docs/maintainers/package-registry-source-contract.md"
 assert_contains "$release_surface_doc" 'Main `hyard --help` output must stay stable across Runtime View Selection'
 assert_contains "$release_surface_doc" "<!-- orbit:begin workflow=\"docs\" -->"
 assert_contains "$release_surface_doc" "<!-- orbit:end workflow=\"docs\" -->"
@@ -327,6 +367,19 @@ assert_not_contains "$goreleaser_config" "  - id: orbit"
 assert_not_contains "$goreleaser_config" "  - id: harness"
 assert_not_contains "$goreleaser_config" "      - orbit"
 assert_not_contains "$goreleaser_config" "      - harness"
+
+assert_contains "$hyard_install_cmd" "hyard install docs"
+assert_contains "$hyard_install_cmd" "hyard install acme/docs@latest"
+assert_contains "$hyard_install_cmd" "hyard install acme/docs@0.1.0"
+assert_contains "$hyard_install_cmd" "registry-source"
+assert_contains "$hyard_install_cmd" "allow-yanked"
+
+assert_contains "$hyard_registry_cmd" "Generate an Orbit Package Registry Entry Candidate"
+assert_contains "$hyard_registry_cmd" "Generate a Harness Package Registry Entry Candidate"
+assert_contains "$hyard_registry_cmd" "hyard registry entry orbit acme/docs@0.1.0"
+assert_contains "$hyard_registry_cmd" "hyard registry entry harness acme/workspace@0.1.0"
+assert_contains "$hyard_registry_cmd" "--out"
+assert_contains "$hyard_registry_cmd" "--registry"
 
 if command -v goreleaser >/dev/null 2>&1; then
   (

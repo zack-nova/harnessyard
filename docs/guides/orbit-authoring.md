@@ -225,6 +225,18 @@ hyard publish orbit docs --json
 
 The user-facing publication path is `hyard publish orbit <package>`.
 
+After publication, generate a reviewable Registry Entry Candidate for the
+package handle you want users to install:
+
+```bash
+hyard registry entry orbit acme/docs@0.1.0 --source origin --ref orbit-template/docs --package docs
+```
+
+The candidate YAML is catalog-as-code input for the package registry review
+flow. Use stdout for review, `--out <path>` for a chosen file, or
+`--registry <path>` to write under the candidate target path in a local registry
+checkout.
+
 ## Pre-Publish Checklist
 
 - The orbit has one objective, one scope boundary, and one done probe.
