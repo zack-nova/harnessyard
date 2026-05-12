@@ -109,7 +109,7 @@ func TestEvaluateRuntimeReadinessInstallBackedOrbitWithMissingRequiredBindingsIs
 	require.NoError(t, err)
 
 	_, err = WriteVarsFile(repo.Root, bindings.VarsFile{
-		SchemaVersion: 1,
+		SchemaVersion: bindings.VarsSchemaVersion,
 		Variables:     map[string]bindings.VariableBinding{},
 	})
 	require.NoError(t, err)

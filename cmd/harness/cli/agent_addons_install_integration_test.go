@@ -77,7 +77,7 @@ func TestHarnessInstallOrbitWithAgentAddonsReportsAgentAddonsAndMissingActivatio
 	require.NoError(t, err)
 	bindingsPath := filepath.Join(repo.Root, "install-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"), 0o600))

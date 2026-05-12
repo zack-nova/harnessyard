@@ -16,7 +16,7 @@ func TestTemplateSaveDryRunIgnoresCompletedBootstrapMembersAndWarns(t *testing.T
 	t.Parallel()
 
 	repo := seedTemplateSaveRepo(t, ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -81,7 +81,7 @@ func TestTemplateSaveDryRunIncludesCompletedBootstrapMembersWhenExplicitlyReques
 	t.Parallel()
 
 	repo := seedTemplateSaveRepo(t, ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+

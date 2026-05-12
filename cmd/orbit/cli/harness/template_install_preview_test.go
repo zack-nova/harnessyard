@@ -54,7 +54,7 @@ func TestBuildTemplateInstallPreviewAllowsUnresolvedRequiredBindings(t *testing.
 	require.Equal(t, ManifestPath(runtimeRepo.Root), bootstrap.ManifestPath)
 	bindingsPath := filepath.Join(runtimeRepo.Root, "bindings.yaml")
 	runtimeRepo.WriteFile(t, "bindings.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n")
@@ -243,7 +243,7 @@ func TestApplyTemplateInstallPreviewRollsBackWhenBundleRecordWriteFails(t *testi
 
 	bindingsPath := filepath.Join(runtimeRepo.Root, "bindings.yaml")
 	runtimeRepo.WriteFile(t, "bindings.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n")
@@ -307,7 +307,7 @@ func TestApplyTemplateInstallPreviewRollsBackWhenBundleCleanupFails(t *testing.T
 
 	bindingsPath := filepath.Join(runtimeRepo.Root, "bindings.yaml")
 	runtimeRepo.WriteFile(t, "bindings.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n")
@@ -415,7 +415,7 @@ func TestBuildTemplateInstallPreviewConflictsWhenStaleBundlePathDrifted(t *testi
 
 	bindingsPath := filepath.Join(runtimeRepo.Root, "bindings.yaml")
 	runtimeRepo.WriteFile(t, "bindings.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n")
@@ -477,7 +477,7 @@ func TestBuildTemplateInstallPreviewConflictsWhenStaleBundleAgentsBlockDrifted(t
 
 	bindingsPath := filepath.Join(runtimeRepo.Root, "bindings.yaml")
 	runtimeRepo.WriteFile(t, "bindings.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n")

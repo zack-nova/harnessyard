@@ -3,6 +3,7 @@ package harness
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/zack-nova/harnessyard/cmd/orbit/cli/bindings"
 )
@@ -26,6 +27,19 @@ func LoadVarsFileWorktreeOrHEAD(ctx context.Context, repoRoot string) (bindings.
 	}
 
 	return file, nil
+}
+
+// ValidateVarsFile reads and validates the canonical .harness/vars.yaml file.
+func ValidateVarsFile(repoRoot string) error {
+	data, err := os.ReadFile(VarsPath(repoRoot))
+	if err != nil {
+		return fmt.Errorf("read %s: %w", VarsRepoPath(), err)
+	}
+	if _, err := bindings.ParseVarsData(data); err != nil {
+		return fmt.Errorf("validate %s: %w", VarsRepoPath(), err)
+	}
+
+	return nil
 }
 
 // WriteVarsFile validates and writes .harness/vars.yaml with stable field ordering.

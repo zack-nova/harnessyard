@@ -13,7 +13,7 @@ func TestWriteAndLoadHarnessVarsFileRoundTrip(t *testing.T) {
 
 	repoRoot := t.TempDir()
 	input := bindings.VarsFile{
-		SchemaVersion: 1,
+		SchemaVersion: bindings.VarsSchemaVersion,
 		Variables: map[string]bindings.VariableBinding{
 			"project_name": {
 				Value:       "HarnessOS",

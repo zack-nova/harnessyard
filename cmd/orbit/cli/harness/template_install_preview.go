@@ -1106,7 +1106,7 @@ func loadTemplateInstallLocalInputs(ctx context.Context, repoRoot string, bindin
 
 func loadOptionalTemplateInstallRepoVarsFile(ctx context.Context, repoRoot string) (bindings.VarsFile, bool, error) {
 	empty := bindings.VarsFile{
-		SchemaVersion: 1,
+		SchemaVersion: bindings.VarsSchemaVersion,
 		Variables:     map[string]bindings.VariableBinding{},
 	}
 	if _, err := os.Stat(VarsPath(repoRoot)); err == nil {
@@ -1176,7 +1176,7 @@ func planTemplateInstallBindingsWrite(
 	}
 
 	planned := bindings.VarsFile{
-		SchemaVersion: 1,
+		SchemaVersion: bindings.VarsSchemaVersion,
 		Variables:     merged,
 	}
 	if len(scopedMerged) > 0 {

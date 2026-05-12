@@ -476,7 +476,7 @@ func TestBuildTemplateApplyPreviewReusesRepoVarsAndCollectsWrites(t *testing.T) 
 
 	repo, sourceRef := seedLocalTemplateApplyRepo(t)
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Local Orbit\n"+
@@ -569,7 +569,7 @@ func TestBuildTemplateApplyPreviewPrefersScopedRepoVars(t *testing.T) {
 
 	repo, sourceRef := seedLocalTemplateApplyRepo(t)
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Global Orbit\n"+
@@ -608,7 +608,7 @@ func TestBuildTemplateApplyPreviewWritesNamespacedBindingWhenRequested(t *testin
 	repo, sourceRef := seedLocalTemplateApplyRepo(t)
 	bindingsPath := filepath.Join(repo.Root, "apply-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Docs Orbit\n"+
@@ -638,7 +638,7 @@ func TestBuildTemplateApplyPreviewConflictsWhenBindingsWouldRewriteRepoVars(t *t
 
 	repo, sourceRef := seedLocalTemplateApplyRepo(t)
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Old Orbit\n"+
@@ -646,7 +646,7 @@ func TestBuildTemplateApplyPreviewConflictsWhenBindingsWouldRewriteRepoVars(t *t
 
 	bindingsPath := filepath.Join(repo.Root, "apply-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: New Orbit\n"), 0o600))
@@ -674,7 +674,7 @@ func TestBuildTemplateApplyPreviewNamespacesIncompatibleInstallRecordVariableDec
 
 	repo, sourceRef := seedLocalTemplateApplyRepo(t)
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Existing Orbit\n"+
@@ -726,7 +726,7 @@ func TestBuildTemplateApplyPreviewRendersSharedAgentsPayload(t *testing.T) {
 
 	repo, sourceRef := seedLocalTemplateApplyRepoWithSharedAgents(t)
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Local Orbit\n"+
@@ -753,7 +753,7 @@ func TestBuildTemplateApplyPreviewWarnsWhenRuntimeAgentsAlreadyHasCurrentOrbitBl
 
 	repo, sourceRef := seedLocalTemplateApplyRepoWithSharedAgents(t)
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Local Orbit\n")
@@ -781,7 +781,7 @@ func TestBuildTemplateApplyPreviewFailsWhenRuntimeAgentsIsMalformed(t *testing.T
 
 	repo, sourceRef := seedLocalTemplateApplyRepoWithSharedAgents(t)
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Local Orbit\n")
@@ -804,7 +804,7 @@ func TestBuildTemplateApplyPreviewReusesUncommittedWorktreeVars(t *testing.T) {
 
 	repo, sourceRef := seedLocalTemplateApplyRepo(t)
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Worktree Orbit\n"+
@@ -876,7 +876,7 @@ func TestBuildTemplateApplyPreviewUsesEditorBindingsForMissingVariables(t *testi
 		EditorMode: true,
 		Editor: editorFunc(func(_ context.Context, filename string) error {
 			return os.WriteFile(filename, []byte(""+
-				"schema_version: 1\n"+
+				"schema_version: 2\n"+
 				"variables:\n"+
 				"  project_name:\n"+
 				"    value: Edited Orbit\n"+
@@ -905,7 +905,7 @@ func TestBuildTemplateApplyPreviewEditorDoesNotOverrideExistingBindings(t *testi
 	repo, sourceRef := seedLocalTemplateApplyRepo(t)
 	bindingsPath := filepath.Join(repo.Root, "apply-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: From File\n"+
@@ -920,7 +920,7 @@ func TestBuildTemplateApplyPreviewEditorDoesNotOverrideExistingBindings(t *testi
 		Editor: editorFunc(func(_ context.Context, filename string) error {
 			editorCalled = true
 			return os.WriteFile(filename, []byte(""+
-				"schema_version: 1\n"+
+				"schema_version: 2\n"+
 				"variables:\n"+
 				"  project_name:\n"+
 				"    value: From Editor\n"), 0o600)
@@ -962,7 +962,7 @@ func TestBuildTemplateApplyPreviewFailsWhenEditorLeavesRequiredValueEmpty(t *tes
 		EditorMode: true,
 		Editor: editorFunc(func(_ context.Context, filename string) error {
 			return os.WriteFile(filename, []byte(""+
-				"schema_version: 1\n"+
+				"schema_version: 2\n"+
 				"variables:\n"+
 				"  project_name:\n"+
 				"    value: \"\"\n"+
@@ -979,7 +979,7 @@ func TestBuildTemplateApplyPreviewDoesNotPromptWhenRepoVarsAlreadyResolveBinding
 
 	repo, sourceRef := seedLocalTemplateApplyRepo(t)
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Local Orbit\n"+
@@ -1007,7 +1007,7 @@ func TestBuildTemplateApplyPreviewDoesNotPromptWhenBindingsFileAlreadyResolveBin
 	repo, sourceRef := seedLocalTemplateApplyRepo(t)
 	bindingsPath := filepath.Join(repo.Root, "apply-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: File Orbit\n"+
@@ -1035,7 +1035,7 @@ func TestApplyLocalTemplateMergesSharedAgentsBlockInPlace(t *testing.T) {
 
 	repo, sourceRef := seedLocalTemplateApplyRepoWithSharedAgents(t)
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Applied Orbit\n")
@@ -1134,7 +1134,7 @@ func TestApplyLocalTemplateWritesRuntimeFilesDefinitionInstallRecordAndVars(t *t
 	repo, sourceRef := seedLocalTemplateApplyRepo(t)
 	bindingsPath := filepath.Join(repo.Root, "apply-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Applied Orbit\n"+
@@ -1181,7 +1181,7 @@ func TestApplyLocalTemplateRequiresOverwriteForConflictingPaths(t *testing.T) {
 
 	bindingsPath := filepath.Join(repo.Root, "apply-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Applied Orbit\n"), 0o600))
@@ -1231,7 +1231,7 @@ func TestBuildTemplateApplyPreviewPreservesConflictSummaryWhenOverwriteExisting(
 
 	bindingsPath := filepath.Join(repo.Root, "apply-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Applied Orbit\n"), 0o600))
@@ -1258,7 +1258,7 @@ func TestBuildRemoteTemplateApplyPreviewUsesRemoteInstallMetadata(t *testing.T) 
 	runtimeRepo := seedRemoteApplyRuntimeRepo(t)
 	bindingsPath := filepath.Join(runtimeRepo.Root, "apply-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Remote Orbit\n"+
@@ -1315,7 +1315,7 @@ func TestApplyRemoteTemplateWritesRuntimeFilesDefinitionInstallRecordAndVars(t *
 	runtimeRepo := seedRemoteApplyRuntimeRepo(t)
 	bindingsPath := filepath.Join(runtimeRepo.Root, "apply-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Applied Remote Orbit\n"+
@@ -1354,7 +1354,7 @@ func TestReplayInstalledTemplateUsesRecordedTemplateCommitInsteadOfCurrentBranch
 	repo, sourceRef := seedLocalTemplateApplyRepo(t)
 	bindingsPath := filepath.Join(repo.Root, "apply-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Applied Orbit\n"), 0o600))
@@ -1401,7 +1401,7 @@ func TestReplayInstalledRemoteTemplateUsesRecordedTemplateCommitAfterRemoteForce
 	runtimeRepo := seedRemoteApplyRuntimeRepo(t)
 	bindingsPath := filepath.Join(runtimeRepo.Root, "apply-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Applied Remote Orbit\n"), 0o600))
@@ -1473,7 +1473,7 @@ func TestReplayInstalledRemoteTemplateFetchesRecordedCommitPin(t *testing.T) {
 	runtimeRepo := seedRemoteApplyRuntimeRepo(t)
 	bindingsPath := filepath.Join(runtimeRepo.Root, "apply-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Applied Remote Orbit\n"), 0o600))
@@ -1516,7 +1516,7 @@ func TestReplayInstalledRemoteTemplateFallsBackToRecordedRefWhenCommitFetchFails
 	runtimeRepo := seedRemoteApplyRuntimeRepo(t)
 	bindingsPath := filepath.Join(runtimeRepo.Root, "apply-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Applied Remote Orbit\n"), 0o600))
@@ -1567,7 +1567,7 @@ func TestBuildInstallOwnedCleanupPlanFailsClosedWithoutVariablesSnapshot(t *test
 	repo, sourceRef := seedLocalTemplateApplyRepo(t)
 	bindingsPath := filepath.Join(repo.Root, "apply-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Applied Orbit\n"), 0o600))
@@ -1716,7 +1716,7 @@ func TestAnalyzeInstalledTemplateDriftReportsDefinitionAndRuntimeFileDrift(t *te
 	repo, sourceRef := seedLocalTemplateApplyRepo(t)
 	bindingsPath := filepath.Join(repo.Root, "apply-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Applied Orbit\n"), 0o600))
@@ -1756,7 +1756,7 @@ func TestAnalyzeInstalledTemplateDriftReportsProvenanceUnresolvable(t *testing.T
 	repo, sourceRef := seedLocalTemplateApplyRepo(t)
 	bindingsPath := filepath.Join(repo.Root, "apply-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Applied Orbit\n"), 0o600))
@@ -1846,7 +1846,7 @@ func seedLocalTemplateApplyRepo(t *testing.T) (*testutil.Repo, string) {
 		"include:\n"+
 		"  - docs/**\n")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+

@@ -177,7 +177,7 @@ func seedInstallGuidanceCommandRepo(t *testing.T, templates []installGuidanceCom
 
 	for _, template := range templates {
 		repo.WriteFile(t, ".harness/vars.yaml", ""+
-			"schema_version: 1\n"+
+			"schema_version: 2\n"+
 			"variables:\n"+
 			"  project_name:\n"+
 			"    value: Orbit\n"+
@@ -232,7 +232,7 @@ func writeInstallGuidanceCommandBindings(t *testing.T, repoRoot string) string {
 
 	bindingsPath := filepath.Join(repoRoot, "install-guidance-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"), 0o600))

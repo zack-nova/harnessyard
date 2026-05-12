@@ -85,7 +85,7 @@ func TestBackfillOrbitBriefPreservesHostedDefinitionComments(t *testing.T) {
 		"  orbit_id: docs\n"+
 		"  source_branch: main\n")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Acme\n")
@@ -138,7 +138,7 @@ func TestBackfillOrbitBriefReturnsSkippedWhenHostedTemplateAlreadyMatches(t *tes
 		"  orbit_id: docs\n"+
 		"  source_branch: main\n")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Acme\n")
@@ -187,7 +187,7 @@ func TestBackfillOrbitBriefSkipsFormatterPaddingAroundMarkers(t *testing.T) {
 		"  orbit_id: docs\n"+
 		"  source_branch: main\n")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Acme\n")

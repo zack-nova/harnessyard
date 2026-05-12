@@ -20,7 +20,7 @@ func TestTemplateApplyRemoteGitWritesRuntimeFilesAndDoesNotEnter(t *testing.T) {
 	runtimeRepo := seedRemoteTemplateApplyRuntimeRepo(t)
 	bindingsPath := filepath.Join(runtimeRepo.Root, "apply-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Applied Remote Orbit\n"+
@@ -65,7 +65,7 @@ func TestTemplateApplyRemoteGitReplacesSharedAgentsBlockInPlace(t *testing.T) {
 
 	bindingsPath := filepath.Join(runtimeRepo.Root, "apply-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Applied Remote Orbit\n"), 0o600))
@@ -98,7 +98,7 @@ func TestTemplateApplyRemoteGitUsesEditorForMissingBindings(t *testing.T) {
 	require.NoError(t, os.WriteFile(editorScript, []byte(""+
 		"#!/bin/sh\n"+
 		"cat > \"$1\" <<'EOF'\n"+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Remote Editor Orbit\n"+
@@ -129,7 +129,7 @@ func TestTemplateApplyRemoteDryRunSupportsJSONAndDoesNotWriteRuntimeFiles(t *tes
 	runtimeRepo := seedRemoteTemplateApplyRuntimeRepo(t)
 	bindingsPath := filepath.Join(runtimeRepo.Root, "apply-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Dry Remote Orbit\n"), 0o600))
@@ -172,7 +172,7 @@ func TestTemplateApplyRemoteDryRunOverwriteExistingKeepsConflictSummaryInJSON(t 
 
 	bindingsPath := filepath.Join(runtimeRepo.Root, "apply-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Dry Remote Orbit\n"), 0o600))
@@ -225,7 +225,7 @@ func TestTemplateApplyRemoteAutoSelectsUniqueDefaultTemplate(t *testing.T) {
 	runtimeRepo := seedRemoteTemplateApplyRuntimeRepo(t)
 	bindingsPath := filepath.Join(runtimeRepo.Root, "apply-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Remote Default Orbit\n"), 0o600))
@@ -321,7 +321,7 @@ func seedRemoteTemplateSourceRepo(t *testing.T, specs ...remoteTemplateBranchSpe
 		"  commit_append_trailer: true\n"+
 		"  sparse_checkout_mode: no-cone\n")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+

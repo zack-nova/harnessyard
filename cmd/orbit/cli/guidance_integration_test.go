@@ -955,7 +955,7 @@ func seedOrbitGuidanceRevisionRepo(t *testing.T, agentsTemplate string, humansTe
 		"  updated_at: 2026-04-18T00:00:00Z\n"+
 		"members: []\n")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Acme\n")

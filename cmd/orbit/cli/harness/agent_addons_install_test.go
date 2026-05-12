@@ -43,7 +43,7 @@ func TestBuildTemplateInstallPreviewSnapshotsPackageAgentAddons(t *testing.T) {
 	require.NoError(t, err)
 	bindingsPath := filepath.Join(runtimeRepo.Root, "bindings.yaml")
 	runtimeRepo.WriteFile(t, "bindings.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n")

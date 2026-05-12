@@ -20,7 +20,7 @@ func TestInstallOverwriteRollsBackWhenCleanupFails(t *testing.T) {
 	repo := seedInstallCommandRepo(t)
 	bindingsPath := filepath.Join(repo.Root, "install-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"), 0o600))
@@ -92,7 +92,7 @@ func TestInstallBatchOverwriteRollsBackWhenCleanupFails(t *testing.T) {
 	repo := seedInstallCommandRepo(t)
 	bindingsPath := filepath.Join(repo.Root, "install-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"), 0o600))
@@ -253,7 +253,7 @@ func seedInstallCommandRepo(t *testing.T) *testutil.Repo {
 		"include:\n"+
 		"  - docs/**\n")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+

@@ -614,7 +614,7 @@ func TestHarnessAgentDeriveWritesRuntimeTruthFromInstalledBundleSnapshot(t *test
 
 	bindingsPath := filepath.Join(runtimeRepo.Root, "bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"+
@@ -3459,7 +3459,7 @@ func TestHarnessCheckReportsDefinitionAndRuntimeFileDrift(t *testing.T) {
 	repo := seedHarnessInstallRepo(t)
 	bindingsPath := filepath.Join(repo.Root, "install-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"), 0o600))
@@ -3494,7 +3494,7 @@ func TestHarnessCheckReportsProvenanceUnresolvable(t *testing.T) {
 	repo := seedHarnessInstallRepo(t)
 	bindingsPath := filepath.Join(repo.Root, "install-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"), 0o600))
@@ -3580,7 +3580,7 @@ func TestHarnessBindingsMissingReportsCurrentVarsGapsAcrossInstallBackedOrbits(t
 		{
 			OrbitID: "docs",
 			VarsYAML: "" +
-				"schema_version: 1\n" +
+				"schema_version: 2\n" +
 				"variables:\n" +
 				"  project_name:\n" +
 				"    value: Orbit\n" +
@@ -3593,7 +3593,7 @@ func TestHarnessBindingsMissingReportsCurrentVarsGapsAcrossInstallBackedOrbits(t
 		{
 			OrbitID: "cmd",
 			VarsYAML: "" +
-				"schema_version: 1\n" +
+				"schema_version: 2\n" +
 				"variables:\n" +
 				"  project_name:\n" +
 				"    value: Orbit\n" +
@@ -3621,7 +3621,7 @@ func TestHarnessBindingsMissingReportsCurrentVarsGapsAcrossInstallBackedOrbits(t
 	require.NoError(t, err)
 
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Filled Orbit\n")
@@ -3702,7 +3702,7 @@ func TestHarnessBindingsMissingTextOutputMapsToReadinessReason(t *testing.T) {
 		{
 			OrbitID: "docs",
 			VarsYAML: "" +
-				"schema_version: 1\n" +
+				"schema_version: 2\n" +
 				"variables:\n" +
 				"  project_name:\n" +
 				"    value: Orbit\n" +
@@ -3740,7 +3740,7 @@ func TestHarnessBindingsScanRuntimeReportsObservedPlaceholdersAndWritesInstallSn
 		{
 			OrbitID: "docs",
 			VarsYAML: "" +
-				"schema_version: 1\n" +
+				"schema_version: 2\n" +
 				"variables:\n" +
 				"  project_name:\n" +
 				"    value: Orbit\n" +
@@ -3828,7 +3828,7 @@ func TestHarnessBindingsScanRuntimeTextOutputMapsToReadinessReason(t *testing.T)
 		{
 			OrbitID: "docs",
 			VarsYAML: "" +
-				"schema_version: 1\n" +
+				"schema_version: 2\n" +
 				"variables:\n" +
 				"  project_name:\n" +
 				"    value: Orbit\n" +
@@ -3871,7 +3871,7 @@ func TestHarnessBindingsApplyDryRunJSONUsesCurrentVarsWithoutMutatingRuntime(t *
 		{
 			OrbitID: "docs",
 			VarsYAML: "" +
-				"schema_version: 1\n" +
+				"schema_version: 2\n" +
 				"variables:\n" +
 				"  project_name:\n" +
 				"    value: Orbit\n" +
@@ -3893,7 +3893,7 @@ func TestHarnessBindingsApplyDryRunJSONUsesCurrentVarsWithoutMutatingRuntime(t *
 	require.NoError(t, err)
 
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Filled Orbit\n")
@@ -3950,7 +3950,7 @@ func TestHarnessBindingsApplyWritesRenderedRuntimeAndRefreshesInstallSnapshot(t 
 		{
 			OrbitID: "docs",
 			VarsYAML: "" +
-				"schema_version: 1\n" +
+				"schema_version: 2\n" +
 				"variables:\n" +
 				"  project_name:\n" +
 				"    value: Orbit\n" +
@@ -3978,7 +3978,7 @@ func TestHarnessBindingsApplyWritesRenderedRuntimeAndRefreshesInstallSnapshot(t 
 	require.NoError(t, err)
 
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Filled Orbit\n")
@@ -4048,7 +4048,7 @@ func TestHarnessBindingsApplyAllowsUnresolvedBindingsAsWarnings(t *testing.T) {
 		{
 			OrbitID: "docs",
 			VarsYAML: "" +
-				"schema_version: 1\n" +
+				"schema_version: 2\n" +
 				"variables:\n" +
 				"  project_name:\n" +
 				"    value: Orbit\n" +
@@ -4119,7 +4119,7 @@ func TestHarnessBindingsApplyTextOutputIncludesReadinessStatus(t *testing.T) {
 		{
 			OrbitID: "docs",
 			VarsYAML: "" +
-				"schema_version: 1\n" +
+				"schema_version: 2\n" +
 				"variables:\n" +
 				"  project_name:\n" +
 				"    value: Orbit\n" +
@@ -4161,7 +4161,7 @@ func TestHarnessBindingsApplyFailsClosedOnDriftWithoutForceAndForceRewritesInsta
 		{
 			OrbitID: "docs",
 			VarsYAML: "" +
-				"schema_version: 1\n" +
+				"schema_version: 2\n" +
 				"variables:\n" +
 				"  project_name:\n" +
 				"    value: Orbit\n" +
@@ -4182,7 +4182,7 @@ func TestHarnessBindingsApplyFailsClosedOnDriftWithoutForceAndForceRewritesInsta
 	require.NoError(t, err)
 
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Filled Orbit\n")
@@ -4240,7 +4240,7 @@ func TestHarnessBindingsApplyFailsWhenInstalledVariableDeclarationBecomesIncompa
 		{
 			OrbitID: "docs",
 			VarsYAML: "" +
-				"schema_version: 1\n" +
+				"schema_version: 2\n" +
 				"variables:\n" +
 				"  project_name:\n" +
 				"    value: Orbit\n" +
@@ -4321,7 +4321,7 @@ func TestHarnessBindingsApplyReportsInvalidLocalVarsBeforeRemoteReplay(t *testin
 	runtimeRepo := seedEmptyHarnessRuntimeRepo(t)
 	bindingsPath := filepath.Join(runtimeRepo.Root, "install-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Remote Installed Orbit\n"), 0o600))
@@ -4336,7 +4336,7 @@ func TestHarnessBindingsApplyReportsInvalidLocalVarsBeforeRemoteReplay(t *testin
 	require.NoError(t, err)
 
 	runtimeRepo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables: {\n"+
 		"  github_token: ${{ secrets.GITHUB_TOKEN }}\n"+
 		"}\n")
@@ -4658,7 +4658,7 @@ func TestHarnessBindingsPlanJSONMergesLocalTemplateVariablesAndPrefillsRepoValue
 		{
 			OrbitID: "docs",
 			VarsYAML: "" +
-				"schema_version: 1\n" +
+				"schema_version: 2\n" +
 				"variables:\n" +
 				"  project_name:\n" +
 				"    value: Orbit\n" +
@@ -4670,7 +4670,7 @@ func TestHarnessBindingsPlanJSONMergesLocalTemplateVariablesAndPrefillsRepoValue
 		{
 			OrbitID: "cmd",
 			VarsYAML: "" +
-				"schema_version: 1\n" +
+				"schema_version: 2\n" +
 				"variables:\n" +
 				"  project_name:\n" +
 				"    value: Orbit\n" +
@@ -4683,7 +4683,7 @@ func TestHarnessBindingsPlanJSONMergesLocalTemplateVariablesAndPrefillsRepoValue
 			},
 		},
 	}, ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -4726,7 +4726,7 @@ func TestHarnessBindingsPlanJSONMergesLocalTemplateVariablesAndPrefillsRepoValue
 	require.Len(t, payload.Sources, 2)
 	require.Equal(t, []string{"project_name"}, payload.ReusedValues)
 	require.Equal(t, []string{"binary_name"}, payload.MissingRequired)
-	require.Equal(t, 1, payload.Bindings.SchemaVersion)
+	require.Equal(t, bindings.VarsSchemaVersion, payload.Bindings.SchemaVersion)
 	require.Equal(t, "Orbit", payload.Bindings.Variables["project_name"].Value)
 	require.Equal(t, "Product title", payload.Bindings.Variables["project_name"].Description)
 	require.Empty(t, payload.Bindings.Variables["binary_name"].Value)
@@ -4740,7 +4740,7 @@ func TestHarnessBindingsPlanNamespacesVariableDescriptionConflict(t *testing.T) 
 		{
 			OrbitID: "docs",
 			VarsYAML: "" +
-				"schema_version: 1\n" +
+				"schema_version: 2\n" +
 				"variables:\n" +
 				"  project_name:\n" +
 				"    value: Orbit\n" +
@@ -4752,7 +4752,7 @@ func TestHarnessBindingsPlanNamespacesVariableDescriptionConflict(t *testing.T) 
 		{
 			OrbitID: "cmd",
 			VarsYAML: "" +
-				"schema_version: 1\n" +
+				"schema_version: 2\n" +
 				"variables:\n" +
 				"  project_name:\n" +
 				"    value: Orbit\n" +
@@ -4762,7 +4762,7 @@ func TestHarnessBindingsPlanNamespacesVariableDescriptionConflict(t *testing.T) 
 			},
 		},
 	}, ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables: {}\n")
 
 	stdout, stderr, err := executeHarnessCLI(
@@ -4803,7 +4803,7 @@ func TestHarnessBindingsPlanOutPreservesUnrelatedExistingVars(t *testing.T) {
 		{
 			OrbitID: "docs",
 			VarsYAML: "" +
-				"schema_version: 1\n" +
+				"schema_version: 2\n" +
 				"variables:\n" +
 				"  project_name:\n" +
 				"    value: Orbit\n" +
@@ -4815,7 +4815,7 @@ func TestHarnessBindingsPlanOutPreservesUnrelatedExistingVars(t *testing.T) {
 		{
 			OrbitID: "cmd",
 			VarsYAML: "" +
-				"schema_version: 1\n" +
+				"schema_version: 2\n" +
 				"variables:\n" +
 				"  project_name:\n" +
 				"    value: Orbit\n" +
@@ -4828,7 +4828,7 @@ func TestHarnessBindingsPlanOutPreservesUnrelatedExistingVars(t *testing.T) {
 			},
 		},
 	}, ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -4860,7 +4860,7 @@ func TestHarnessBindingsPlanOutPreservesUnrelatedExistingVars(t *testing.T) {
 	file, err := harnesspkg.LoadVarsFile(repo.Root)
 	require.NoError(t, err)
 	require.Equal(t, bindings.VarsFile{
-		SchemaVersion: 1,
+		SchemaVersion: bindings.VarsSchemaVersion,
 		Variables: map[string]bindings.VariableBinding{
 			"binary_name": {
 				Value:       "",
@@ -4893,7 +4893,7 @@ func TestHarnessBindingsPlanReportsInvalidLocalVarsBeforeRemoteResolution(t *tes
 
 	repo := seedEmptyHarnessRuntimeRepo(t)
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables: {\n"+
 		"  github_token: ${{ secrets.GITHUB_TOKEN }}\n"+
 		"}\n")
@@ -5484,7 +5484,7 @@ func TestHarnessRemoveShrinksBundleBackedRuntimeMember(t *testing.T) {
 
 	bindingsPath := filepath.Join(runtimeRepo.Root, "bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"+
@@ -5550,7 +5550,7 @@ func TestHarnessMemberExtractDetachedKeepsPayloadAndRemovesBundleOwnership(t *te
 
 	bindingsPath := filepath.Join(runtimeRepo.Root, "bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"+
@@ -5654,7 +5654,7 @@ func TestHarnessMemberExtractDetachedRemovesSingleMemberBundleAgentsBlock(t *tes
 
 	bindingsPath := filepath.Join(runtimeRepo.Root, "bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"+
@@ -5710,7 +5710,7 @@ func TestHarnessMemberExtractDetachedRejectsBundleWithSurvivingRootAgentsBlock(t
 
 	bindingsPath := filepath.Join(runtimeRepo.Root, "bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"+
@@ -5748,7 +5748,7 @@ func TestHarnessMemberExtractToWritesInstallRecordAndRehomesMember(t *testing.T)
 
 	bindingsPath := filepath.Join(runtimeRepo.Root, "bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"+
@@ -5841,7 +5841,7 @@ func TestHarnessMemberExtractToRejectsDetachedHead(t *testing.T) {
 
 	bindingsPath := filepath.Join(runtimeRepo.Root, "bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"+
@@ -5881,7 +5881,7 @@ func TestHarnessMemberExtractReuseOriginFailsWithoutHint(t *testing.T) {
 
 	bindingsPath := filepath.Join(runtimeRepo.Root, "bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"+
@@ -5918,7 +5918,7 @@ func TestHarnessMemberExtractReuseOriginRestoresInstallOrbit(t *testing.T) {
 
 	bindingsPath := filepath.Join(runtimeRepo.Root, "bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"+
@@ -5997,7 +5997,7 @@ func TestHarnessMemberExtractReuseOriginRejectsExternalGitHint(t *testing.T) {
 
 	bindingsPath := filepath.Join(runtimeRepo.Root, "bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"+
@@ -6045,7 +6045,7 @@ func TestHarnessMemberExtractToRollsBackSavedBranchOnMutationFailure(t *testing.
 
 	bindingsPath := filepath.Join(runtimeRepo.Root, "bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"+
@@ -6102,7 +6102,7 @@ func TestHarnessMemberExtractReuseOriginRollsBackSavedBranchOnMutationFailure(t 
 
 	bindingsPath := filepath.Join(runtimeRepo.Root, "bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"+
@@ -6418,7 +6418,7 @@ func TestHarnessInstallLocalTemplateWritesInstallRecordVarsAndMember(t *testing.
 	repo := seedHarnessInstallRepo(t)
 	bindingsPath := filepath.Join(repo.Root, "install-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"), 0o600))
@@ -6461,7 +6461,7 @@ func TestHarnessInstallLocalTemplateRollsBackWhenLateWriteFails(t *testing.T) {
 	repo := seedHarnessInstallRepo(t)
 	bindingsPath := filepath.Join(repo.Root, "install-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"), 0o600))
@@ -6522,7 +6522,7 @@ func TestHarnessInstallTextOutputContract(t *testing.T) {
 	repo := seedHarnessInstallRepo(t)
 	bindingsPath := filepath.Join(repo.Root, "install-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"), 0o600))
@@ -6605,7 +6605,7 @@ func TestHarnessInstallTreatsBlankRepoVarAsUnresolved(t *testing.T) {
 
 	repo := seedHarnessInstallRepo(t)
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: \"  \"\n"+
@@ -6662,7 +6662,7 @@ func TestHarnessInstallPlainProgressWritesStagesToStderr(t *testing.T) {
 	repo := seedHarnessInstallRepo(t)
 	bindingsPath := filepath.Join(repo.Root, "install-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"), 0o600))
@@ -6692,7 +6692,7 @@ func TestHarnessInstallPlainProgressPreservesJSONStdout(t *testing.T) {
 	repo := seedHarnessInstallRepo(t)
 	bindingsPath := filepath.Join(repo.Root, "install-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"), 0o600))
@@ -6719,7 +6719,7 @@ func TestHarnessInstallQuietProgressSuppressesStages(t *testing.T) {
 	repo := seedHarnessInstallRepo(t)
 	bindingsPath := filepath.Join(repo.Root, "install-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"), 0o600))
@@ -6744,7 +6744,7 @@ func TestHarnessInstallDryRunJSONIncludesRuntimeWriteAndDoesNotMutateRuntime(t *
 	repo := seedHarnessInstallRepo(t)
 	bindingsPath := filepath.Join(repo.Root, "install-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Preview Orbit\n"), 0o600))
@@ -6785,7 +6785,7 @@ func TestHarnessInstallFailsWhenOrbitAlreadyInstalled(t *testing.T) {
 	repo := seedHarnessInstallRepo(t)
 	bindingsPath := filepath.Join(repo.Root, "install-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"), 0o600))
@@ -6808,7 +6808,7 @@ func TestHarnessInstallBatchDryRunJSONAggregatesMultipleOrbitPreviews(t *testing
 		{
 			OrbitID: "docs",
 			VarsYAML: "" +
-				"schema_version: 1\n" +
+				"schema_version: 2\n" +
 				"variables:\n" +
 				"  project_name:\n" +
 				"    value: Orbit\n" +
@@ -6820,7 +6820,7 @@ func TestHarnessInstallBatchDryRunJSONAggregatesMultipleOrbitPreviews(t *testing
 		{
 			OrbitID: "cmd",
 			VarsYAML: "" +
-				"schema_version: 1\n" +
+				"schema_version: 2\n" +
 				"variables:\n" +
 				"  project_name:\n" +
 				"    value: Orbit\n" +
@@ -6835,7 +6835,7 @@ func TestHarnessInstallBatchDryRunJSONAggregatesMultipleOrbitPreviews(t *testing
 	})
 	bindingsPath := filepath.Join(repo.Root, "install-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Batch Orbit\n"+
@@ -6907,7 +6907,7 @@ func TestHarnessInstallBatchInstallsAllItemsAfterSharedPreview(t *testing.T) {
 		{
 			OrbitID: "docs",
 			VarsYAML: "" +
-				"schema_version: 1\n" +
+				"schema_version: 2\n" +
 				"variables:\n" +
 				"  project_name:\n" +
 				"    value: Orbit\n" +
@@ -6919,7 +6919,7 @@ func TestHarnessInstallBatchInstallsAllItemsAfterSharedPreview(t *testing.T) {
 		{
 			OrbitID: "cmd",
 			VarsYAML: "" +
-				"schema_version: 1\n" +
+				"schema_version: 2\n" +
 				"variables:\n" +
 				"  project_name:\n" +
 				"    value: Orbit\n" +
@@ -6934,7 +6934,7 @@ func TestHarnessInstallBatchInstallsAllItemsAfterSharedPreview(t *testing.T) {
 	})
 	bindingsPath := filepath.Join(repo.Root, "install-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Batch Orbit\n"+
@@ -7009,7 +7009,7 @@ func TestHarnessInstallBatchRollsBackSharedVarsAndEarlierItemsWhenLaterInstallFa
 		{
 			OrbitID: "docs",
 			VarsYAML: "" +
-				"schema_version: 1\n" +
+				"schema_version: 2\n" +
 				"variables:\n" +
 				"  project_name:\n" +
 				"    value: Orbit\n" +
@@ -7021,7 +7021,7 @@ func TestHarnessInstallBatchRollsBackSharedVarsAndEarlierItemsWhenLaterInstallFa
 		{
 			OrbitID: "cmd",
 			VarsYAML: "" +
-				"schema_version: 1\n" +
+				"schema_version: 2\n" +
 				"variables:\n" +
 				"  project_name:\n" +
 				"    value: Orbit\n" +
@@ -7036,7 +7036,7 @@ func TestHarnessInstallBatchRollsBackSharedVarsAndEarlierItemsWhenLaterInstallFa
 	})
 	bindingsPath := filepath.Join(repo.Root, "install-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Batch Orbit\n"+
@@ -7101,7 +7101,7 @@ func TestHarnessInstallBatchDefaultsToUnresolvedBindingsAndWarnings(t *testing.T
 		{
 			OrbitID: "docs",
 			VarsYAML: "" +
-				"schema_version: 1\n" +
+				"schema_version: 2\n" +
 				"variables:\n" +
 				"  project_name:\n" +
 				"    value: Orbit\n" +
@@ -7113,7 +7113,7 @@ func TestHarnessInstallBatchDefaultsToUnresolvedBindingsAndWarnings(t *testing.T
 		{
 			OrbitID: "cmd",
 			VarsYAML: "" +
-				"schema_version: 1\n" +
+				"schema_version: 2\n" +
 				"variables:\n" +
 				"  project_name:\n" +
 				"    value: Orbit\n" +
@@ -7181,7 +7181,7 @@ func TestHarnessInstallBatchStrictBindingsFailsOnMissingBindings(t *testing.T) {
 		{
 			OrbitID: "docs",
 			VarsYAML: "" +
-				"schema_version: 1\n" +
+				"schema_version: 2\n" +
 				"variables:\n" +
 				"  project_name:\n" +
 				"    value: Orbit\n" +
@@ -7193,7 +7193,7 @@ func TestHarnessInstallBatchStrictBindingsFailsOnMissingBindings(t *testing.T) {
 		{
 			OrbitID: "cmd",
 			VarsYAML: "" +
-				"schema_version: 1\n" +
+				"schema_version: 2\n" +
 				"variables:\n" +
 				"  project_name:\n" +
 				"    value: Orbit\n" +
@@ -7233,7 +7233,7 @@ func TestHarnessInstallBatchNamespacesIncompatibleSharedVariableDeclarations(t *
 		{
 			OrbitID: "docs",
 			VarsYAML: "" +
-				"schema_version: 1\n" +
+				"schema_version: 2\n" +
 				"variables:\n" +
 				"  project_name:\n" +
 				"    value: Orbit\n" +
@@ -7245,7 +7245,7 @@ func TestHarnessInstallBatchNamespacesIncompatibleSharedVariableDeclarations(t *
 		{
 			OrbitID: "cmd",
 			VarsYAML: "" +
-				"schema_version: 1\n" +
+				"schema_version: 2\n" +
 				"variables:\n" +
 				"  project_name:\n" +
 				"    value: Orbit\n" +
@@ -7329,7 +7329,7 @@ func TestHarnessInstallBatchFailsClosedBeforeWritingWhenOrbitIDsRepeat(t *testin
 		{
 			OrbitID: "docs",
 			VarsYAML: "" +
-				"schema_version: 1\n" +
+				"schema_version: 2\n" +
 				"variables:\n" +
 				"  project_name:\n" +
 				"    value: Orbit\n" +
@@ -7341,7 +7341,7 @@ func TestHarnessInstallBatchFailsClosedBeforeWritingWhenOrbitIDsRepeat(t *testin
 	})
 	bindingsPath := filepath.Join(repo.Root, "install-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Batch Orbit\n"), 0o600))
@@ -7374,7 +7374,7 @@ func TestHarnessInstallBatchReportsInvalidLocalVarsBeforeRemoteResolution(t *tes
 
 	repo := seedEmptyHarnessRuntimeRepo(t)
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables: {\n"+
 		"  github_token: ${{ secrets.GITHUB_TOKEN }}\n"+
 		"}\n")
@@ -7405,7 +7405,7 @@ func TestHarnessInstallRemoteTemplateWritesInstallRecordVarsAndMember(t *testing
 	runtimeRepo := seedEmptyHarnessRuntimeRepo(t)
 	bindingsPath := filepath.Join(runtimeRepo.Root, "install-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Remote Installed Orbit\n"), 0o600))
@@ -7454,7 +7454,7 @@ func TestHarnessInstallRemoteTemplateReportsInvalidLocalVarsBeforeRemoteResoluti
 
 	repo := seedEmptyHarnessRuntimeRepo(t)
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables: {\n"+
 		"  github_token: ${{ secrets.GITHUB_TOKEN }}\n"+
 		"}\n")
@@ -7485,7 +7485,7 @@ func TestHarnessInstallRemoteWithoutRefReportsInvalidBindingsBeforeRemoteProgres
 	repo := seedEmptyHarnessRuntimeRepo(t)
 	bindingsPath := filepath.Join(repo.Root, "install-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables: {\n"+
 		"  github_token: ${{ secrets.GITHUB_TOKEN }}\n"+
 		"}\n"), 0o600))
@@ -7517,7 +7517,7 @@ func TestHarnessInstallRemoteTemplateExplicitRefReportsLocalConflictBeforeFetch(
 	repo := seedHarnessInstallRepo(t)
 	bindingsPath := filepath.Join(repo.Root, "install-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"), 0o600))
@@ -7551,7 +7551,7 @@ func TestHarnessInstallRemoteAliasRefReportsInvalidLocalVarsBeforeRemoteProgress
 
 	repo := seedEmptyHarnessRuntimeRepo(t)
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables: {\n"+
 		"  github_token: ${{ secrets.GITHUB_TOKEN }}\n"+
 		"}\n")
@@ -7742,7 +7742,7 @@ func TestOrbitRuntimeCommandsWorkInCreatedRuntimeAfterFirstCommit(t *testing.T) 
 	runGitInDir(t, runtimeRoot, "config", "user.email", "orbit@example.com")
 
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"), 0o600))
@@ -8011,7 +8011,7 @@ func TestHarnessInstallOverwriteExistingReplacesOwnedFilesAndUpdatesInstallRecor
 	repo := seedHarnessInstallRepo(t)
 	bindingsPath := filepath.Join(repo.Root, "install-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"), 0o600))
@@ -8075,7 +8075,7 @@ func TestHarnessInstallCrossInstallOverrideRequiresExplicitOverride(t *testing.T
 	repo := seedHarnessInstallRepo(t)
 	bindingsPath := filepath.Join(repo.Root, "install-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"), 0o600))
@@ -8111,7 +8111,7 @@ func TestHarnessInstallCrossInstallOverrideReplacesActiveInstallMember(t *testin
 	repo := seedHarnessInstallRepo(t)
 	bindingsPath := filepath.Join(repo.Root, "install-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"), 0o600))
@@ -8175,7 +8175,7 @@ func TestHarnessInstallHarnessTemplateOverrideActiveOrbitInstall(t *testing.T) {
 
 	orbitBindingsPath := filepath.Join(runtimeRepo.Root, "orbit-bindings.yaml")
 	require.NoError(t, os.WriteFile(orbitBindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"), 0o600))
@@ -8184,7 +8184,7 @@ func TestHarnessInstallHarnessTemplateOverrideActiveOrbitInstall(t *testing.T) {
 
 	harnessBindingsPath := filepath.Join(runtimeRepo.Root, "harness-bindings.yaml")
 	require.NoError(t, os.WriteFile(harnessBindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"+
@@ -8268,7 +8268,7 @@ func TestHarnessInstallOrbitTemplateOverrideBundleBackedMemberRequiresExplicitOv
 
 	harnessBindingsPath := filepath.Join(runtimeRepo.Root, "harness-bindings.yaml")
 	require.NoError(t, os.WriteFile(harnessBindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"+
@@ -8281,7 +8281,7 @@ func TestHarnessInstallOrbitTemplateOverrideBundleBackedMemberRequiresExplicitOv
 
 	orbitBindingsPath := filepath.Join(runtimeRepo.Root, "orbit-bindings.yaml")
 	require.NoError(t, os.WriteFile(orbitBindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"), 0o600))
@@ -8330,7 +8330,7 @@ func TestHarnessInstallHarnessTemplateOverrideBundleBackedMemberShrinksPreviousB
 
 	initialBindingsPath := filepath.Join(runtimeRepo.Root, "initial-bindings.yaml")
 	require.NoError(t, os.WriteFile(initialBindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"+
@@ -8343,7 +8343,7 @@ func TestHarnessInstallHarnessTemplateOverrideBundleBackedMemberShrinksPreviousB
 
 	replacementBindingsPath := filepath.Join(runtimeRepo.Root, "replacement-bindings.yaml")
 	require.NoError(t, os.WriteFile(replacementBindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"+
@@ -8435,7 +8435,7 @@ func TestHarnessInstallOrbitTemplateOverrideBundleBackedMemberShrinksPreviousBun
 
 	harnessBindingsPath := filepath.Join(runtimeRepo.Root, "harness-bindings.yaml")
 	require.NoError(t, os.WriteFile(harnessBindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"+
@@ -8448,7 +8448,7 @@ func TestHarnessInstallOrbitTemplateOverrideBundleBackedMemberShrinksPreviousBun
 
 	orbitBindingsPath := filepath.Join(runtimeRepo.Root, "orbit-bindings.yaml")
 	require.NoError(t, os.WriteFile(orbitBindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"), 0o600))
@@ -8523,7 +8523,7 @@ func TestHarnessInstallReinstallAfterRemoveIgnoresDetachedInstallRecord(t *testi
 	repo := seedHarnessInstallRepo(t)
 	bindingsPath := filepath.Join(repo.Root, "install-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"), 0o600))
@@ -8558,7 +8558,7 @@ func TestHarnessInstallBatchReinstallAfterRemoveIgnoresDetachedInstallRecord(t *
 	repo := seedHarnessInstallRepo(t)
 	bindingsPath := filepath.Join(repo.Root, "install-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"), 0o600))
@@ -8582,7 +8582,7 @@ func TestHarnessInstallOverwriteFailsWhenExistingOwnedFilesCannotBeSafelyReconst
 	repo := seedHarnessInstallRepo(t)
 	bindingsPath := filepath.Join(repo.Root, "install-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"), 0o600))
@@ -8630,7 +8630,7 @@ func TestHarnessInstallOverwriteFailsClosedWhenInstallRecordLacksVariablesSnapsh
 	repo := seedHarnessInstallRepo(t)
 	bindingsPath := filepath.Join(repo.Root, "install-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"), 0o600))
@@ -8675,7 +8675,7 @@ func TestHarnessBindingsMissingReportsSnapshotlessInstallRecord(t *testing.T) {
 	repo := seedHarnessInstallRepo(t)
 	bindingsPath := filepath.Join(repo.Root, "install-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"), 0o600))
@@ -8947,7 +8947,7 @@ func TestHarnessInstallDryRunHarnessTemplateIgnoresStandaloneRuntimeVarsDescript
 	runtimeRepo.Run(t, "fetch", "source", "harness-template/workspace:harness-template/workspace")
 
 	_, err = harnesspkg.WriteVarsFile(runtimeRepo.Root, bindings.VarsFile{
-		SchemaVersion: 1,
+		SchemaVersion: bindings.VarsSchemaVersion,
 		Variables: map[string]bindings.VariableBinding{
 			"project_name": {
 				Value:       "Orbit",
@@ -9015,7 +9015,7 @@ func TestHarnessInstallDryRunHarnessTemplateConflictsOnInstalledOrbitVariableDec
 	})
 	require.NoError(t, err)
 	_, err = harnesspkg.WriteVarsFile(runtimeRepo.Root, bindings.VarsFile{
-		SchemaVersion: 1,
+		SchemaVersion: bindings.VarsSchemaVersion,
 		Variables: map[string]bindings.VariableBinding{
 			"project_name": {
 				Value:       "Orbit",
@@ -9052,7 +9052,7 @@ func TestHarnessInstallDryRunHarnessTemplateConflictsOnInstalledBundleVariableDe
 		"include:\n"+
 		"  - qa/**\n")
 	conflictingRepo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -9076,7 +9076,7 @@ func TestHarnessInstallDryRunHarnessTemplateConflictsOnInstalledBundleVariableDe
 
 	initialBindingsPath := filepath.Join(runtimeRepo.Root, "bindings.yaml")
 	require.NoError(t, os.WriteFile(initialBindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"+
@@ -9088,7 +9088,7 @@ func TestHarnessInstallDryRunHarnessTemplateConflictsOnInstalledBundleVariableDe
 	require.NoError(t, err)
 
 	_, err = harnesspkg.WriteVarsFile(runtimeRepo.Root, bindings.VarsFile{
-		SchemaVersion: 1,
+		SchemaVersion: bindings.VarsSchemaVersion,
 		Variables: map[string]bindings.VariableBinding{
 			"project_name": {
 				Value:       "Installed Orbit",
@@ -9297,7 +9297,7 @@ func TestHarnessInstallRemoteHarnessTemplateReportsInvalidBindingsBeforeRemoteRe
 	repo := seedEmptyHarnessRuntimeRepo(t)
 	bindingsPath := filepath.Join(repo.Root, "install-bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables: {\n"+
 		"  github_token: ${{ secrets.GITHUB_TOKEN }}\n"+
 		"}\n"), 0o600))
@@ -9329,7 +9329,7 @@ func TestHarnessInstallRemoteHarnessTemplateReportsInvalidLocalVarsBeforeRemoteR
 
 	repo := seedEmptyHarnessRuntimeRepo(t)
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables: {\n"+
 		"  github_token: ${{ secrets.GITHUB_TOKEN }}\n"+
 		"}\n")
@@ -9384,7 +9384,7 @@ func TestHarnessInstallDryRunHarnessTemplateUsesRenderedContentForPathConflictAn
 
 	bindingsPath := filepath.Join(runtimeRepo.Root, "bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -9419,7 +9419,7 @@ func TestHarnessInstallHarnessTemplateLocalWriteJSON(t *testing.T) {
 
 	bindingsPath := filepath.Join(runtimeRepo.Root, "bindings.yaml")
 	require.NoError(t, os.WriteFile(bindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"+
@@ -9529,7 +9529,7 @@ func TestHarnessInstallHarnessTemplateOverwriteExistingReplacesSameBundle(t *tes
 
 	initialBindingsPath := filepath.Join(runtimeRepo.Root, "bindings.yaml")
 	require.NoError(t, os.WriteFile(initialBindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"+
@@ -9561,7 +9561,7 @@ func TestHarnessInstallHarnessTemplateOverwriteExistingReplacesSameBundle(t *tes
 
 	overwriteBindingsPath := filepath.Join(runtimeRepo.Root, "overwrite-bindings.yaml")
 	require.NoError(t, os.WriteFile(overwriteBindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"+
@@ -9645,7 +9645,7 @@ func TestHarnessInstallHarnessTemplateOverwriteExistingFailsAcrossInstallUnits(t
 
 	initialBindingsPath := filepath.Join(runtimeRepo.Root, "bindings.yaml")
 	require.NoError(t, os.WriteFile(initialBindingsPath, []byte(""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Installed Orbit\n"+
@@ -10028,7 +10028,7 @@ func TestHarnessTemplateSaveOverwriteRewritesExistingBranch(t *testing.T) {
 func TestHarnessTemplateSaveEditTemplateWritesEditedTemplateWithoutMutatingRuntimeWorktree(t *testing.T) {
 	repo := seedHarnessTemplateSaveRepo(t)
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -10086,7 +10086,7 @@ func TestHarnessTemplateSaveFailsClosedOnReplacementAmbiguity(t *testing.T) {
 
 	repo := seedHarnessTemplateSaveRepo(t)
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  product_name:\n"+
 		"    value: Orbit\n"+
@@ -10117,7 +10117,7 @@ func TestHarnessTemplateSaveJSONFailureIncludesAmbiguityContributors(t *testing.
 
 	repo := seedHarnessTemplateSaveRepo(t)
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  product_name:\n"+
 		"    value: Orbit\n"+
@@ -10196,7 +10196,7 @@ func TestHarnessTemplateSaveDryRunJSONIncludesAmbiguityContributors(t *testing.T
 
 	repo := seedHarnessTemplateSaveRepo(t)
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  product_name:\n"+
 		"    value: Orbit\n"+
@@ -10275,7 +10275,7 @@ func seedHarnessInstallRepo(t *testing.T) *testutil.Repo {
 		"include:\n"+
 		"  - docs/**\n")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -10315,7 +10315,7 @@ func seedHarnessAgentsComposeRepo(t *testing.T) *testutil.Repo {
 	require.NoError(t, err)
 
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Acme\n"+
@@ -10574,7 +10574,7 @@ func seedHarnessTemplateSaveRepo(t *testing.T) *testutil.Repo {
 		"include:\n"+
 		"  - cmd/**\n")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -10617,7 +10617,7 @@ func seedHarnessTemplateSaveRepoWithoutAgents(t *testing.T) *testutil.Repo {
 		"include:\n"+
 		"  - cmd/**\n")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+
@@ -10651,7 +10651,7 @@ func seedSingleMemberHarnessTemplateSaveRepo(t *testing.T, withAgents bool) *tes
 		"include:\n"+
 		"  - docs/**\n")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+

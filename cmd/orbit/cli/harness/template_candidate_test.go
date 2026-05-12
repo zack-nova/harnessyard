@@ -159,7 +159,7 @@ func TestBuildTemplateMemberCandidateIgnoresHostedCompanionVariables(t *testing.
 		"include:\n"+
 		"  - docs/**\n")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables: {}\n")
 	repo.WriteFile(t, "docs/guide.md", "Plain guide\n")
 	repo.AddAndCommit(t, "seed runtime repo with hosted companion variable")
@@ -190,7 +190,7 @@ func TestBuildTemplateMemberCandidateFailsWhenDefinitionMissing(t *testing.T) {
 		"  commit_append_trailer: true\n"+
 		"  sparse_checkout_mode: no-cone\n")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables: {}\n")
 	repo.AddAndCommit(t, "seed runtime repo without target definition")
 
@@ -221,7 +221,7 @@ func seedTemplateCandidateRepo(t *testing.T) *testutil.Repo {
 		"include:\n"+
 		"  - docs/**\n")
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Orbit\n"+

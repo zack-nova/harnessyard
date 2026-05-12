@@ -66,7 +66,7 @@ func seedRuntimeGuidanceComposeRepo(t *testing.T) *testutil.Repo {
 	require.NoError(t, err)
 
 	repo.WriteFile(t, ".harness/vars.yaml", ""+
-		"schema_version: 1\n"+
+		"schema_version: 2\n"+
 		"variables:\n"+
 		"  project_name:\n"+
 		"    value: Acme\n")

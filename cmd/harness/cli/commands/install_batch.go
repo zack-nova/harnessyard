@@ -520,7 +520,7 @@ func failOnBlockingBatchConflicts(candidates []orbitInstallBatchCandidate, overw
 
 func buildBatchVarsFile(repoRoot string, candidates []orbitInstallBatchCandidate) (bindings.VarsFile, bool, error) {
 	existing := bindings.VarsFile{
-		SchemaVersion: 1,
+		SchemaVersion: bindings.VarsSchemaVersion,
 		Variables:     map[string]bindings.VariableBinding{},
 	}
 	hasExisting := false
@@ -581,7 +581,7 @@ func buildBatchVarsFile(repoRoot string, candidates []orbitInstallBatchCandidate
 	}
 
 	planned := bindings.VarsFile{
-		SchemaVersion: 1,
+		SchemaVersion: bindings.VarsSchemaVersion,
 		Variables:     merged,
 	}
 	if len(scopedMerged) > 0 {

@@ -201,7 +201,7 @@ func buildBindingsPlanPreviews(
 
 func loadOptionalBindingsPlanRepoVars(ctx context.Context, repoRoot string) (bindings.VarsFile, error) {
 	empty := bindings.VarsFile{
-		SchemaVersion: 1,
+		SchemaVersion: bindings.VarsSchemaVersion,
 		Variables:     map[string]bindings.VariableBinding{},
 	}
 
