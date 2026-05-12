@@ -117,6 +117,8 @@ type rawInstallVariablesSnapshot struct {
 type rawInstallVariableDeclaration struct {
 	Description *string `yaml:"description"`
 	Required    *bool   `yaml:"required"`
+	Sensitive   *bool   `yaml:"sensitive"`
+	Default     *string `yaml:"default"`
 }
 
 type rawInstallVariableBinding struct {
@@ -477,6 +479,12 @@ func (raw rawInstallVariablesSnapshot) toInstallVariablesSnapshot() (InstallVari
 		if declaration.Description != nil {
 			next.Description = *declaration.Description
 		}
+		if declaration.Sensitive != nil {
+			next.Sensitive = *declaration.Sensitive
+		}
+		if declaration.Default != nil {
+			next.Default = declaration.Default
+		}
 		snapshot.Declarations[name] = next
 	}
 	for name, binding := range raw.ResolvedAtApply {
@@ -628,6 +636,12 @@ func installVariablesSnapshotNode(snapshot InstallVariablesSnapshot) *yaml.Node 
 			contractutil.AppendMapping(declarationNode, "description", contractutil.StringNode(declaration.Description))
 		}
 		contractutil.AppendMapping(declarationNode, "required", contractutil.BoolNode(declaration.Required))
+		if declaration.Sensitive {
+			contractutil.AppendMapping(declarationNode, "sensitive", contractutil.BoolNode(declaration.Sensitive))
+		}
+		if declaration.Default != nil {
+			contractutil.AppendMapping(declarationNode, "default", contractutil.StringNode(*declaration.Default))
+		}
 		contractutil.AppendMapping(declarationsNode, name, declarationNode)
 	}
 	contractutil.AppendMapping(root, "declarations", declarationsNode)

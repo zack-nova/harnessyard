@@ -617,6 +617,8 @@ func buildRenderedTemplateInstallPayload(
 		declared[name] = bindings.VariableDeclaration{
 			Description: spec.Description,
 			Required:    spec.Required,
+			Sensitive:   spec.Sensitive,
+			Default:     spec.Default,
 		}
 	}
 

@@ -576,6 +576,8 @@ func buildTemplateApplyPreviewFromSourceWithLocalInputs(
 		declared[name] = bindings.VariableDeclaration{
 			Description: spec.Description,
 			Required:    spec.Required,
+			Sensitive:   spec.Sensitive,
+			Default:     spec.Default,
 		}
 	}
 	runtimeNamespaces, err := resolveRuntimeInstallVariableNamespaces(repoRoot, orbitID, declared, runtimeInstallOrbitIDs)

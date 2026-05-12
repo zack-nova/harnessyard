@@ -50,8 +50,10 @@ type TemplateMember struct {
 
 // TemplateVariableSpec captures manifest-level variable metadata only.
 type TemplateVariableSpec struct {
-	Description string `yaml:"description,omitempty"`
-	Required    bool   `yaml:"required"`
+	Description string  `yaml:"description,omitempty"`
+	Required    bool    `yaml:"required"`
+	Sensitive   bool    `yaml:"sensitive,omitempty"`
+	Default     *string `yaml:"default,omitempty"`
 }
 
 type rawTemplateManifest struct {
@@ -84,6 +86,8 @@ type rawTemplateMember struct {
 type rawTemplateVariableSpec struct {
 	Description *string `yaml:"description"`
 	Required    *bool   `yaml:"required"`
+	Sensitive   *bool   `yaml:"sensitive"`
+	Default     *string `yaml:"default"`
 }
 
 // LoadTemplateManifest reads, decodes, and validates .harness/template.yaml.
@@ -245,6 +249,12 @@ func (raw rawTemplateManifest) toTemplateManifest() (TemplateManifest, error) {
 		if rawSpec.Description != nil {
 			spec.Description = *rawSpec.Description
 		}
+		if rawSpec.Sensitive != nil {
+			spec.Sensitive = *rawSpec.Sensitive
+		}
+		if rawSpec.Default != nil {
+			spec.Default = rawSpec.Default
+		}
 		manifest.Variables[name] = spec
 	}
 
@@ -345,6 +355,12 @@ func templateManifestNode(manifest TemplateManifest) *yaml.Node {
 			contractutil.AppendMapping(specNode, "description", contractutil.StringNode(spec.Description))
 		}
 		contractutil.AppendMapping(specNode, "required", contractutil.BoolNode(spec.Required))
+		if spec.Sensitive {
+			contractutil.AppendMapping(specNode, "sensitive", contractutil.BoolNode(spec.Sensitive))
+		}
+		if spec.Default != nil {
+			contractutil.AppendMapping(specNode, "default", contractutil.StringNode(*spec.Default))
+		}
 		contractutil.AppendMapping(variablesNode, name, specNode)
 	}
 	contractutil.AppendMapping(root, "variables", variablesNode)

@@ -1088,6 +1088,8 @@ func templateManifestVariableSpecs(values map[string]TemplateVariableSpec) map[s
 		specs[name] = orbittemplate.VariableSpec{
 			Description: value.Description,
 			Required:    value.Required,
+			Sensitive:   value.Sensitive,
+			Default:     value.Default,
 		}
 	}
 	return specs

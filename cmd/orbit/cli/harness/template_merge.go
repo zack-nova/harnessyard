@@ -126,6 +126,15 @@ func mergeTemplateVariableSpec(name string, current TemplateVariableSpec, next T
 	}
 
 	current.Required = current.Required || next.Required
+	current.Sensitive = current.Sensitive || next.Sensitive
+	switch {
+	case current.Default == nil:
+		current.Default = next.Default
+	case next.Default == nil:
+	case *current.Default == *next.Default:
+	default:
+		return TemplateVariableSpec{}, fmt.Errorf("variable conflict for %q", name)
+	}
 
 	return current, nil
 }

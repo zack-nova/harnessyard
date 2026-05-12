@@ -36,6 +36,8 @@ func analyzeTemplateInstallVariableConflicts(
 		next := bindings.VariableDeclaration{
 			Description: variables[name].Description,
 			Required:    variables[name].Required,
+			Sensitive:   variables[name].Sensitive,
+			Default:     variables[name].Default,
 		}
 		candidateMerged := cloneVariableDeclarations(merged)
 		candidateContributors := cloneVariableContributors(contributors)
