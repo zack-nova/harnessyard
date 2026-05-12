@@ -287,8 +287,8 @@ func TestHarnessInstallHelpIncludesFormalExamples(t *testing.T) {
 	require.Contains(t, stdout, "harness install orbit-template/docs --bindings .harness/vars.yaml")
 	require.Contains(t, stdout, "harness install https://example.com/acme/templates.git --ref orbit-template/docs --bindings .harness/vars.yaml")
 	require.Contains(t, stdout, "harness install orbit-template/docs --overwrite-existing --bindings .harness/vars.yaml --json")
-	require.Contains(t, stdout, "--allow-unresolved-bindings")
-	require.Contains(t, stdout, "--strict-bindings")
+	require.NotContains(t, stdout, "--allow-unresolved-bindings")
+	require.NotContains(t, stdout, "--strict-bindings")
 	require.Contains(t, stdout, "--progress")
 }
 
@@ -301,8 +301,8 @@ func TestHarnessInstallBatchHelpIncludesExamples(t *testing.T) {
 	require.Contains(t, stdout, "Examples:")
 	require.Contains(t, stdout, "harness install batch orbit-template/docs orbit-template/cmd --bindings .harness/vars.yaml --dry-run")
 	require.Contains(t, stdout, "harness install batch orbit-template/docs orbit-template/cmd --bindings .harness/vars.yaml --json")
-	require.Contains(t, stdout, "--allow-unresolved-bindings")
-	require.Contains(t, stdout, "--strict-bindings")
+	require.NotContains(t, stdout, "--allow-unresolved-bindings")
+	require.NotContains(t, stdout, "--strict-bindings")
 	require.Contains(t, stdout, "shared preview")
 }
 

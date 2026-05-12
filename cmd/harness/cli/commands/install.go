@@ -191,6 +191,7 @@ func NewInstallCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			allowUnresolvedPreview := allowUnresolvedBindings || dryRun
 			interactive, err := cmd.Flags().GetBool("interactive")
 			if err != nil {
 				return fmt.Errorf("read --interactive flag: %w", err)
@@ -272,12 +273,12 @@ func NewInstallCommand() *cobra.Command {
 							Prompter:                prompter,
 							EditorMode:              editorMode,
 							Editor:                  editor,
-							RequireResolvedBindings: !allowUnresolvedBindings,
+							RequireResolvedBindings: !allowUnresolvedPreview,
 							Now:                     now,
 							Registry:                registryProvenancePtr,
 						})
 						if err != nil {
-							return fmt.Errorf("build harness template install preview: %w", err)
+							return installPreviewError("build harness template install preview", sourceArg, err)
 						}
 						if err := stageProgress(progress, "checking conflicts"); err != nil {
 							return err
@@ -305,12 +306,12 @@ func NewInstallCommand() *cobra.Command {
 						Prompter:                prompter,
 						EditorMode:              editorMode,
 						Editor:                  editor,
-						RequireResolvedBindings: !allowUnresolvedBindings,
+						RequireResolvedBindings: !allowUnresolvedPreview,
 						Now:                     now,
 						Registry:                registryProvenancePtr,
 					})
 					if err != nil {
-						return fmt.Errorf("build harness template install preview: %w", err)
+						return installPreviewError("build harness template install preview", sourceArg, err)
 					}
 					if err := stageProgress(progress, "checking conflicts"); err != nil {
 						return err
@@ -341,7 +342,7 @@ func NewInstallCommand() *cobra.Command {
 					SourceRef:               sourceArg,
 					BindingsFilePath:        bindingsPath,
 					RuntimeInstallOrbitIDs:  activeInstallOrbitIDs,
-					AllowUnresolvedBindings: allowUnresolvedBindings,
+					AllowUnresolvedBindings: allowUnresolvedPreview,
 					Interactive:             interactive,
 					Prompter:                prompter,
 					EditorMode:              editorMode,
@@ -354,7 +355,7 @@ func NewInstallCommand() *cobra.Command {
 				}
 				preview, err := orbittemplate.BuildTemplateApplyPreview(cmd.Context(), previewInput)
 				if err != nil {
-					return fmt.Errorf("build harness install preview: %w", err)
+					return installPreviewError("build harness install preview", sourceArg, err)
 				}
 				if err := stageProgress(progress, "checking conflicts"); err != nil {
 					return err
@@ -453,7 +454,7 @@ func NewInstallCommand() *cobra.Command {
 				RequestedRef:            requestedRef,
 				BindingsFilePath:        bindingsPath,
 				RuntimeInstallOrbitIDs:  activeInstallOrbitIDs,
-				AllowUnresolvedBindings: allowUnresolvedBindings,
+				AllowUnresolvedBindings: allowUnresolvedPreview,
 				Interactive:             interactive,
 				Prompter:                prompter,
 				EditorMode:              editorMode,
@@ -512,12 +513,12 @@ func NewInstallCommand() *cobra.Command {
 							Prompter:                prompter,
 							EditorMode:              editorMode,
 							Editor:                  editor,
-							RequireResolvedBindings: !allowUnresolvedBindings,
+							RequireResolvedBindings: !allowUnresolvedPreview,
 							Now:                     now,
 							Registry:                registryProvenancePtr,
 						})
 						if err != nil {
-							return fmt.Errorf("build harness template install preview: %w", err)
+							return installPreviewError("build harness template install preview", sourceArg, err)
 						}
 						if err := stageProgress(progress, "checking conflicts"); err != nil {
 							return err
@@ -549,12 +550,12 @@ func NewInstallCommand() *cobra.Command {
 						Prompter:                prompter,
 						EditorMode:              editorMode,
 						Editor:                  editor,
-						RequireResolvedBindings: !allowUnresolvedBindings,
+						RequireResolvedBindings: !allowUnresolvedPreview,
 						Now:                     now,
 						Registry:                registryProvenancePtr,
 					})
 					if err != nil {
-						return fmt.Errorf("build harness template install preview: %w", err)
+						return installPreviewError("build harness template install preview", sourceArg, err)
 					}
 					if err := stageProgress(progress, "checking conflicts"); err != nil {
 						return err
@@ -609,12 +610,12 @@ func NewInstallCommand() *cobra.Command {
 								Prompter:                prompter,
 								EditorMode:              editorMode,
 								Editor:                  editor,
-								RequireResolvedBindings: !allowUnresolvedBindings,
+								RequireResolvedBindings: !allowUnresolvedPreview,
 								Now:                     now,
 								Registry:                registryProvenancePtr,
 							})
 							if err != nil {
-								return fmt.Errorf("build harness template install preview: %w", err)
+								return installPreviewError("build harness template install preview", sourceArg, err)
 							}
 							return emitHarnessTemplateInstallPreview(
 								cmd,
@@ -639,12 +640,12 @@ func NewInstallCommand() *cobra.Command {
 							Prompter:                prompter,
 							EditorMode:              editorMode,
 							Editor:                  editor,
-							RequireResolvedBindings: !allowUnresolvedBindings,
+							RequireResolvedBindings: !allowUnresolvedPreview,
 							Now:                     now,
 							Registry:                registryProvenancePtr,
 						})
 						if err != nil {
-							return fmt.Errorf("build harness template install preview: %w", err)
+							return installPreviewError("build harness template install preview", sourceArg, err)
 						}
 						result, err := harnesspkg.ApplyTemplateInstallPreview(cmd.Context(), resolved.Repo.Root, preview, overwriteExisting)
 						if err != nil {
@@ -654,7 +655,7 @@ func NewInstallCommand() *cobra.Command {
 						return emitHarnessTemplateInstallResult(cmd, resolved.Repo.Root, result, jsonOutput)
 					}
 				}
-				return fmt.Errorf("build harness install preview: %w", err)
+				return installPreviewError("build harness install preview", sourceArg, err)
 			}
 			if preview.RemoteResolutionKind == orbittemplate.RemoteTemplateResolutionSourceAlias {
 				if err := stageProgress(progress, "source branch detected; resolving published template"); err != nil {
@@ -761,7 +762,8 @@ func NewInstallCommand() *cobra.Command {
 	cmd.Flags().Bool("overwrite-existing", false, "Allow overwriting an existing install-backed orbit and removing stale install-owned files")
 	cmd.Flags().StringSlice("override", nil, "Explicitly transfer ownership of one or more existing orbit members from another install unit")
 	cmd.Flags().Bool("allow-unresolved-bindings", false, "Compatibility no-op: unresolved required bindings are preserved by default")
-	cmd.Flags().Bool("strict-bindings", false, "Fail when required bindings are unresolved instead of preserving placeholders")
+	cmd.Flags().Bool("strict-bindings", false, "Compatibility no-op: strict binding resolution is the default")
+	hideInstallBindingCompatibilityFlags(cmd)
 	cmd.Flags().Bool("dry-run", false, "Preview harness install without writing files")
 	addProgressFlag(cmd)
 	cmd.Flags().Bool("interactive", false, "Prompt for missing bindings interactively")
@@ -943,7 +945,51 @@ func allowUnresolvedBindingsFromFlags(cmd *cobra.Command) (bool, error) {
 	if allowUnresolvedBindings && strictBindings {
 		return false, fmt.Errorf("--strict-bindings cannot be used with --allow-unresolved-bindings")
 	}
-	return !strictBindings, nil
+	return allowUnresolvedBindings, nil
+}
+
+func hideInstallBindingCompatibilityFlags(cmd *cobra.Command) {
+	for _, flagName := range []string{"allow-unresolved-bindings", "strict-bindings"} {
+		if err := cmd.Flags().MarkHidden(flagName); err != nil {
+			panic(err)
+		}
+	}
+}
+
+func installPreviewError(context string, sourceArg string, err error) error {
+	wrapped := fmt.Errorf("%s: %w", context, err)
+	if !installErrorNeedsBindingsRecovery(err) {
+		return wrapped
+	}
+	return fmt.Errorf("%w; %s", wrapped, installBindingsRecoveryHint(sourceArg))
+}
+
+func installErrorNeedsBindingsRecovery(err error) bool {
+	message := err.Error()
+	for _, needle := range []string{
+		"missing required bindings:",
+		"unsupported Package Template Reference namespace",
+		"unknown Package Variable",
+		"unresolved Package Variable",
+		"malformed Package Template Reference",
+	} {
+		if strings.Contains(message, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+func installBindingsRecoveryHint(sourceArg string) string {
+	source := strings.TrimSpace(sourceArg)
+	if source == "" {
+		source = "<package-source>"
+	}
+	return fmt.Sprintf(
+		"run hyard vars init %s --out .harness/vars.yaml, then retry with hyard install %s --bindings .harness/vars.yaml",
+		source,
+		source,
+	)
 }
 
 func installOverrideIDsFromFlags(cmd *cobra.Command) (map[string]struct{}, error) {
