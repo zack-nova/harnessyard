@@ -8,12 +8,24 @@ compatibility commands.
 
 ## Repository Validation
 
-Before review handoff, run the standard repository validation commands:
+During day-to-day development, use the fast local feedback loop:
+
+```bash
+mise run check
+```
+
+This runs lint plus cached Go tests, so it avoids the full strict validation
+path's no-cache Go test sweep, vulnerability scan, and shell validation checks.
+
+Before review handoff or landing, run the standard repository validation
+commands:
 
 ```bash
 mise run fix
 mise run ci
 ```
+
+`mise run ci` is the full strict validation command for review and landing.
 
 ## 1. Goals
 

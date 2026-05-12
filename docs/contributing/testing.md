@@ -4,16 +4,29 @@ This page describes the tests contributors should run before opening a pull requ
 
 For the complete testing strategy and coverage matrix, see [Testing Strategy](../maintainers/testing-strategy.md).
 
+## Fast Local Feedback
+
+During day-to-day development, run the fast local feedback loop:
+
+```bash
+mise run check
+```
+
+This runs lint plus cached Go tests through `test:go`, so it avoids the full
+strict validation path's no-cache Go test sweep, vulnerability scan, and shell
+validation checks.
+
 ## Standard Checks
 
-Run the standard repository checks:
+Before opening a pull request, run the standard repository checks:
 
 ```bash
 mise run fix
 mise run ci
 ```
 
-These checks should pass before a pull request is opened.
+`mise run ci` is the full strict validation command. It should pass before a
+pull request is opened and remains the pre-review handoff gate.
 
 ## Quickstart Acceptance Smoke
 
@@ -47,6 +60,9 @@ Command:
 ```bash
 sh ./scripts/test_release_surface_hyard.sh
 ```
+
+The release-surface command remains required for release-surface changes even
+when `mise run check` has already passed.
 
 ## Test Expectations
 

@@ -133,14 +133,14 @@ fi
 """
 
 [tasks.check]
-description = "Run fast local checks"
+description = "Run fast local feedback checks with cached Go tests"
 run = [
   { task = "lint" },
   { task = "test:go" },
 ]
 
 [tasks.ci]
-description = "Run full CI-local validation"
+description = "Run full strict CI-local validation"
 run = [
   { task = "lint" },
   { task = "test:go:ci" },
