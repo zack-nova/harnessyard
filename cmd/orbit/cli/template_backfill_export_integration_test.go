@@ -51,11 +51,11 @@ func TestTemplateSaveBackfillsDriftedBriefBeforeSaving(t *testing.T) {
 
 	definitionData, err := os.ReadFile(filepath.Join(repo.Root, ".harness", "orbits", "docs.yaml"))
 	require.NoError(t, err)
-	require.Contains(t, string(definitionData), "Drifted docs orbit for $project_name")
+	require.Contains(t, string(definitionData), "Drifted docs orbit for {{ vars.project_name }}")
 
 	publishedData, err := gitpkg.ReadFileAtRev(context.Background(), repo.Root, "orbit-template/docs", ".harness/orbits/docs.yaml")
 	require.NoError(t, err)
-	require.Contains(t, string(publishedData), "Drifted docs orbit for $project_name")
+	require.Contains(t, string(publishedData), "Drifted docs orbit for {{ vars.project_name }}")
 }
 
 func TestTemplateSaveDryRunRejectsBackfillBriefMutation(t *testing.T) {
@@ -69,8 +69,8 @@ func TestTemplateSaveDryRunRejectsBackfillBriefMutation(t *testing.T) {
 
 	definitionData, readErr := os.ReadFile(filepath.Join(repo.Root, ".harness", "orbits", "docs.yaml"))
 	require.NoError(t, readErr)
-	require.Contains(t, string(definitionData), "Docs orbit for $project_name")
-	require.NotContains(t, string(definitionData), "Drifted docs orbit for $project_name")
+	require.Contains(t, string(definitionData), "Docs orbit for {{ vars.project_name }}")
+	require.NotContains(t, string(definitionData), "Drifted docs orbit for {{ vars.project_name }}")
 
 	exists, existsErr := gitpkg.LocalBranchExists(context.Background(), repo.Root, "orbit-template/docs")
 	require.NoError(t, existsErr)
@@ -129,7 +129,7 @@ func seedRuntimeRepoWithDriftedBrief(t *testing.T) *testutil.Repo {
 
 	repo := testutil.NewRepo(t)
 	repo.Run(t, "branch", "-m", "main")
-	writeHostedDocsOrbitWithStructuredBrief(t, repo.Root, "Docs orbit for $project_name\n")
+	writeHostedDocsOrbitWithStructuredBrief(t, repo.Root, "Docs orbit for {{ vars.project_name }}\n")
 	repo.WriteFile(t, ".harness/manifest.yaml", ""+
 		"schema_version: 1\n"+
 		"kind: runtime\n"+

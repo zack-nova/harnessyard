@@ -119,7 +119,7 @@ func ReverseVariableizeBrief(content []byte, variables map[string]bindings.Varia
 			continue
 		}
 
-		text = strings.ReplaceAll(text, entry.Literal, "$"+entry.Variable)
+		text = strings.ReplaceAll(text, entry.Literal, packageTemplateReferenceLiteral(entry.Variable))
 		summaries = append(summaries, ReplacementSummary{
 			Variable: entry.Variable,
 			Literal:  entry.Literal,

@@ -207,7 +207,7 @@ func seedHarnessTemplateRemoveRepo(t *testing.T, withAgentsBlocks bool) *testuti
 		"    - docs/guide.md\n"+
 		"    - shared/checklist.md\n"+
 		"  file_digests:\n"+
-		"    docs/guide.md: "+contentDigest([]byte("Docs $project_name guide\n"))+"\n"+
+		"    docs/guide.md: "+contentDigest([]byte("Docs {{ vars.project_name }} guide\n"))+"\n"+
 		"    shared/checklist.md: "+contentDigest([]byte("Shared $shared_name checklist\n"))+"\n"+
 		"  variables:\n"+
 		"    project_name:\n"+
@@ -230,7 +230,7 @@ func seedHarnessTemplateRemoveRepo(t *testing.T, withAgentsBlocks bool) *testuti
 		"    shared_name:\n"+
 		"      description: Shared name\n"+
 		"      required: true\n")
-	repo.WriteFile(t, "docs/guide.md", "Docs $project_name guide\n")
+	repo.WriteFile(t, "docs/guide.md", "Docs {{ vars.project_name }} guide\n")
 	repo.WriteFile(t, "shared/checklist.md", "Shared $shared_name checklist\n")
 
 	if withAgentsBlocks {
@@ -303,12 +303,12 @@ func seedSingleMemberHarnessTemplateRemoveRepo(t *testing.T) *testutil.Repo {
 		"  exported_paths:\n"+
 		"    - docs/guide.md\n"+
 		"  file_digests:\n"+
-		"    docs/guide.md: "+contentDigest([]byte("Docs $project_name guide\n"))+"\n"+
+		"    docs/guide.md: "+contentDigest([]byte("Docs {{ vars.project_name }} guide\n"))+"\n"+
 		"  variables:\n"+
 		"    project_name:\n"+
 		"      description: Project name\n"+
 		"      required: true\n")
-	repo.WriteFile(t, "docs/guide.md", "Docs $project_name guide\n")
+	repo.WriteFile(t, "docs/guide.md", "Docs {{ vars.project_name }} guide\n")
 	repo.AddAndCommit(t, "seed single member harness template remove repo")
 
 	return repo

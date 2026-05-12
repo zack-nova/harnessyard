@@ -42,7 +42,7 @@ func TestBuildTemplateInstallPreviewAllowsUnresolvedRequiredBindings(t *testing.
 		"  project_name:\n"+
 		"    description: Project title\n"+
 		"    required: true\n")
-	sourceRepo.WriteFile(t, "docs/guide.md", "$project_name command $command_name\n")
+	sourceRepo.WriteFile(t, "docs/guide.md", "{{ vars.project_name }} command {{ vars.command_name }}\n")
 	sourceRepo.AddAndCommit(t, "add two variable harness template")
 	source, err := ResolveLocalTemplateInstallSource(ctx, sourceRepo.Root, "HEAD")
 	require.NoError(t, err)
@@ -73,7 +73,7 @@ func TestBuildTemplateInstallPreviewAllowsUnresolvedRequiredBindings(t *testing.
 	})
 	require.NoError(t, err)
 	require.Equal(t, []string{"install kept harness template variables unresolved: command_name"}, preview.Warnings)
-	require.Equal(t, "Orbit command $command_name\n", string(requireTemplateInstallFile(t, preview.RenderedFiles, "docs/guide.md").Content))
+	require.Equal(t, "Orbit command {{ vars.command_name }}\n", string(requireTemplateInstallFile(t, preview.RenderedFiles, "docs/guide.md").Content))
 	require.Equal(t, orbittemplate.InstallVariablesSnapshot{
 		Declarations: map[string]bindings.VariableDeclaration{
 			"command_name": {Description: "CLI command name", Required: true},
@@ -91,7 +91,7 @@ func TestBuildTemplateInstallPreviewAllowsUnresolvedRequiredBindings(t *testing.
 	require.Contains(t, result.WrittenPaths, ".harness/bundles/workspace.yaml")
 	renderedData, err := os.ReadFile(filepath.Join(runtimeRepo.Root, "docs", "guide.md"))
 	require.NoError(t, err)
-	require.Equal(t, "Orbit command $command_name\n", string(renderedData))
+	require.Equal(t, "Orbit command {{ vars.command_name }}\n", string(renderedData))
 
 	bundleRecord, err := LoadBundleRecord(runtimeRepo.Root, "workspace")
 	require.NoError(t, err)
@@ -190,6 +190,7 @@ func TestBuildTemplateInstallPreviewSnapshotsEmptyVariablesContract(t *testing.T
 		"  - orbit_id: workspace\n"+
 		"variables: {}\n")
 	sourceRepo.WriteFile(t, "docs/guide.md", "Static workspace guide\n")
+	sourceRepo.WriteFile(t, "schema/example.schema.json", "{\"title\":\"Static workspace\"}\n")
 	sourceRepo.AddAndCommit(t, "remove harness template variables")
 	source, err := ResolveLocalTemplateInstallSource(ctx, sourceRepo.Root, "HEAD")
 	require.NoError(t, err)
@@ -334,7 +335,7 @@ func TestApplyTemplateInstallPreviewRollsBackWhenBundleCleanupFails(t *testing.T
 	originalVarsData, err := os.ReadFile(VarsPath(runtimeRepo.Root))
 	require.NoError(t, err)
 
-	sourceRepo.WriteFile(t, "docs/reference.md", "$project_name reference\n")
+	sourceRepo.WriteFile(t, "docs/reference.md", "{{ vars.project_name }} reference\n")
 	sourceRepo.Run(t, "rm", "-f", "docs/guide.md")
 	sourceRepo.AddAndCommit(t, "update harness template source contents")
 
@@ -437,7 +438,7 @@ func TestBuildTemplateInstallPreviewConflictsWhenStaleBundlePathDrifted(t *testi
 	require.NoError(t, err)
 
 	runtimeRepo.WriteFile(t, "docs/guide.md", "Locally drifted guide\n")
-	sourceRepo.WriteFile(t, "docs/reference.md", "$project_name reference\n")
+	sourceRepo.WriteFile(t, "docs/reference.md", "{{ vars.project_name }} reference\n")
 	sourceRepo.Run(t, "rm", "-f", "docs/guide.md")
 	sourceRepo.AddAndCommit(t, "replace bundle docs payload")
 
@@ -465,7 +466,7 @@ func TestBuildTemplateInstallPreviewConflictsWhenStaleBundleAgentsBlockDrifted(t
 
 	ctx := context.Background()
 	sourceRepo := seedHarnessTemplateInstallSourceRepo(t)
-	sourceRepo.WriteFile(t, "AGENTS.md", "Workspace guide for $project_name\n")
+	sourceRepo.WriteFile(t, "AGENTS.md", "Workspace guide for {{ vars.project_name }}\n")
 	sourceRepo.AddAndCommit(t, "add bundle agents")
 	source, err := ResolveLocalTemplateInstallSource(ctx, sourceRepo.Root, "HEAD")
 	require.NoError(t, err)

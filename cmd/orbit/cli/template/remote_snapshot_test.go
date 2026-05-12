@@ -30,7 +30,7 @@ func TestResolveRemoteTemplateCandidateSnapshotLoadsManifestDefinitionAndUserFil
 	require.Equal(t, []CandidateFile{
 		{
 			Path:    "docs/guide.md",
-			Content: []byte("$project_name guide\n"),
+			Content: []byte("{{ vars.project_name }} guide\n"),
 			Mode:    gitpkg.FileModeRegular,
 		},
 	}, source.Files)

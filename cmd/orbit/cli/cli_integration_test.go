@@ -460,7 +460,7 @@ func TestOrbitBriefBackfillWritesCurrentOrbitBlockToHostedSpec(t *testing.T) {
 	spec, err := orbitpkg.LoadHostedOrbitSpec(context.Background(), repo.Root, "docs")
 	require.NoError(t, err)
 	require.NotNil(t, spec.Meta)
-	require.Equal(t, "You are the $project_name docs orbit.\nKeep release notes current.\n", spec.Meta.AgentsTemplate)
+	require.Equal(t, "You are the {{ vars.project_name }} docs orbit.\nKeep release notes current.\n", spec.Meta.AgentsTemplate)
 
 	agentsData, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
 	require.NoError(t, err)
@@ -518,7 +518,7 @@ func TestOrbitBriefBackfillWritesCurrentOrbitBlockOnTemplateRevision(t *testing.
 	spec, err := orbitpkg.LoadHostedOrbitSpec(context.Background(), repo.Root, "docs")
 	require.NoError(t, err)
 	require.NotNil(t, spec.Meta)
-	require.Equal(t, "You are the $project_name docs orbit.\nKeep release notes current.\n", spec.Meta.AgentsTemplate)
+	require.Equal(t, "You are the {{ vars.project_name }} docs orbit.\nKeep release notes current.\n", spec.Meta.AgentsTemplate)
 }
 
 func TestOrbitBriefBackfillWritesCurrentOrbitBlockOnSourceRevision(t *testing.T) {
@@ -534,7 +534,7 @@ func TestOrbitBriefBackfillWritesCurrentOrbitBlockOnSourceRevision(t *testing.T)
 	spec, err := orbitpkg.LoadHostedOrbitSpec(context.Background(), repo.Root, "docs")
 	require.NoError(t, err)
 	require.NotNil(t, spec.Meta)
-	require.Equal(t, "You are the $project_name docs orbit.\nKeep release notes current.\n", spec.Meta.AgentsTemplate)
+	require.Equal(t, "You are the {{ vars.project_name }} docs orbit.\nKeep release notes current.\n", spec.Meta.AgentsTemplate)
 }
 
 func TestOrbitBriefBackfillReportsSkippedStatusWhenHostedTruthAlreadyMatches(t *testing.T) {
@@ -547,7 +547,7 @@ func TestOrbitBriefBackfillReportsSkippedStatusWhenHostedTruthAlreadyMatches(t *
 	require.NoError(t, err)
 	spec.Description = "Docs orbit"
 	require.NotNil(t, spec.Meta)
-	spec.Meta.AgentsTemplate = "You are the $project_name docs orbit.\nKeep release notes current.\n"
+	spec.Meta.AgentsTemplate = "You are the {{ vars.project_name }} docs orbit.\nKeep release notes current.\n"
 	_, err = orbitpkg.WriteHostedOrbitSpec(repo.Root, spec)
 	require.NoError(t, err)
 
@@ -597,7 +597,7 @@ func TestOrbitBriefBackfillReportsRemovedStatusWhenClearingHostedTruth(t *testin
 	require.NoError(t, err)
 	spec.Description = "Docs orbit"
 	require.NotNil(t, spec.Meta)
-	spec.Meta.AgentsTemplate = "You are the $project_name docs orbit.\nKeep release notes current.\n"
+	spec.Meta.AgentsTemplate = "You are the {{ vars.project_name }} docs orbit.\nKeep release notes current.\n"
 	_, err = orbitpkg.WriteHostedOrbitSpec(repo.Root, spec)
 	require.NoError(t, err)
 
@@ -649,7 +649,7 @@ func TestOrbitBriefMaterializeWritesRenderedCurrentOrbitBlockToRootAgents(t *tes
 	t.Parallel()
 
 	repo := seedBriefMaterializeRevisionRepo(t, "runtime", ""+
-		"You are the $project_name docs orbit.\n"+
+		"You are the {{ vars.project_name }} docs orbit.\n"+
 		"Keep release notes current.\n",
 		"",
 	)
@@ -670,14 +670,14 @@ func TestOrbitBriefMaterializeWritesRenderedCurrentOrbitBlockToRootAgents(t *tes
 	spec, err := orbitpkg.LoadHostedOrbitSpec(context.Background(), repo.Root, "docs")
 	require.NoError(t, err)
 	require.NotNil(t, spec.Meta)
-	require.Equal(t, "You are the $project_name docs orbit.\nKeep release notes current.\n", spec.Meta.AgentsTemplate)
+	require.Equal(t, "You are the {{ vars.project_name }} docs orbit.\nKeep release notes current.\n", spec.Meta.AgentsTemplate)
 }
 
 func TestOrbitBriefMaterializePreservesOtherBlocksAndProseOnSourceRevision(t *testing.T) {
 	t.Parallel()
 
 	repo := seedBriefMaterializeRevisionRepo(t, "source", ""+
-		"You are the $project_name docs orbit.\n"+
+		"You are the {{ vars.project_name }} docs orbit.\n"+
 		"Keep release notes current.\n",
 		""+
 			"Workspace overview.\n"+
@@ -696,7 +696,7 @@ func TestOrbitBriefMaterializePreservesOtherBlocksAndProseOnSourceRevision(t *te
 	agents := string(agentsData)
 	require.Contains(t, agents, "Workspace overview.\n")
 	require.Contains(t, agents, "<!-- orbit:begin workflow=\"api\" -->\nAPI brief.\n<!-- orbit:end workflow=\"api\" -->\n")
-	require.Contains(t, agents, "<!-- orbit:begin workflow=\"docs\" -->\nYou are the $project_name docs orbit.\nKeep release notes current.\n<!-- orbit:end workflow=\"docs\" -->\n")
+	require.Contains(t, agents, "<!-- orbit:begin workflow=\"docs\" -->\nYou are the {{ vars.project_name }} docs orbit.\nKeep release notes current.\n<!-- orbit:end workflow=\"docs\" -->\n")
 	require.Less(t, strings.Index(agents, "Workspace overview.\n"), strings.Index(agents, "<!-- orbit:begin workflow=\"api\" -->"))
 	require.Less(t, strings.Index(agents, "<!-- orbit:end workflow=\"api\" -->"), strings.Index(agents, "<!-- orbit:begin workflow=\"docs\" -->"))
 }
@@ -705,7 +705,7 @@ func TestOrbitBriefMaterializeFailsClosedWhenCurrentOrbitBlockIsDrifted(t *testi
 	t.Parallel()
 
 	repo := seedBriefMaterializeRevisionRepo(t, "orbit_template", ""+
-		"You are the $project_name docs orbit.\n"+
+		"You are the {{ vars.project_name }} docs orbit.\n"+
 		"Keep release notes current.\n",
 		""+
 			"Workspace overview.\n"+
@@ -735,7 +735,7 @@ func TestOrbitBriefMaterializeForceOverwritesDriftedCurrentOrbitBlock(t *testing
 	t.Parallel()
 
 	repo := seedBriefMaterializeRevisionRepo(t, "orbit_template", ""+
-		"You are the $project_name docs orbit.\n"+
+		"You are the {{ vars.project_name }} docs orbit.\n"+
 		"Keep release notes current.\n",
 		""+
 			"Workspace overview.\n"+
@@ -757,14 +757,14 @@ func TestOrbitBriefMaterializeForceOverwritesDriftedCurrentOrbitBlock(t *testing
 	require.NoError(t, err)
 	agents := string(agentsData)
 	require.Contains(t, agents, "<!-- orbit:begin workflow=\"api\" -->\nAPI brief.\n<!-- orbit:end workflow=\"api\" -->\n")
-	require.Contains(t, agents, "<!-- orbit:begin workflow=\"docs\" -->\nYou are the $project_name docs orbit.\nKeep release notes current.\n<!-- orbit:end workflow=\"docs\" -->\n")
+	require.Contains(t, agents, "<!-- orbit:begin workflow=\"docs\" -->\nYou are the {{ vars.project_name }} docs orbit.\nKeep release notes current.\n<!-- orbit:end workflow=\"docs\" -->\n")
 	require.NotContains(t, agents, "You are the Drifted docs orbit.\n")
 }
 
 func TestOrbitBriefMaterializeRejectsPlainRevision(t *testing.T) {
 	t.Parallel()
 
-	repo := seedBriefMaterializeRevisionRepo(t, "", "You are the $project_name docs orbit.\n", "")
+	repo := seedBriefMaterializeRevisionRepo(t, "", "You are the {{ vars.project_name }} docs orbit.\n", "")
 
 	stdout, stderr, err := executeCLI(t, repo.Root, "brief", "materialize", "--orbit", "docs")
 	require.Error(t, err)
@@ -776,7 +776,7 @@ func TestOrbitBriefMaterializeRejectsPlainRevision(t *testing.T) {
 func TestOrbitBriefMaterializeRejectsHarnessTemplateRevision(t *testing.T) {
 	t.Parallel()
 
-	repo := seedBriefMaterializeRevisionRepo(t, "harness_template", "You are the $project_name docs orbit.\n", "")
+	repo := seedBriefMaterializeRevisionRepo(t, "harness_template", "You are the {{ vars.project_name }} docs orbit.\n", "")
 
 	stdout, stderr, err := executeCLI(t, repo.Root, "brief", "materialize", "--orbit", "docs")
 	require.Error(t, err)

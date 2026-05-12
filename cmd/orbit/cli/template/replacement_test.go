@@ -35,7 +35,7 @@ func TestReplaceRuntimeValuesReplacesExactLiteralsAndTracksSummary(t *testing.T)
 	require.False(t, result.SkippedBinary)
 	require.Empty(t, result.Ambiguities)
 	require.Equal(t,
-		"$project_name lives at $service_api.\nFallback: $service_url\n",
+		"{{ vars.project_name }} lives at {{ vars.service_api }}.\nFallback: {{ vars.service_url }}\n",
 		string(result.Content),
 	)
 	require.Equal(t, []ReplacementSummary{
@@ -125,13 +125,13 @@ func TestReplaceRuntimeValuesRejectsEmptyLiteral(t *testing.T) {
 	require.ErrorContains(t, err, "must not be empty")
 }
 
-func TestReplaceRuntimeValuesIgnoresNonMarkdownFiles(t *testing.T) {
+func TestReplaceRuntimeValuesReplacesTextFilesWithoutMarkdownExtension(t *testing.T) {
 	t.Parallel()
 
 	result, err := ReplaceRuntimeValues(
 		CandidateFile{
 			Path:    "schema/example.schema.json",
-			Content: []byte("{\"title\":\"Orbit\",\"x-template\":\"$project_name\"}\n"),
+			Content: []byte("{\"title\":\"Orbit\",\"x-template\":\"{{ vars.project_name }}\"}\n"),
 		},
 		map[string]bindings.VariableBinding{
 			"project_name": {
@@ -141,8 +141,14 @@ func TestReplaceRuntimeValuesIgnoresNonMarkdownFiles(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.False(t, result.SkippedBinary)
-	require.Contains(t, string(result.Content), "\"title\":\"Orbit\"")
-	require.Contains(t, string(result.Content), "\"x-template\":\"$project_name\"")
-	require.Empty(t, result.Replacements)
+	require.Contains(t, string(result.Content), "\"title\":\"{{ vars.project_name }}\"")
+	require.Contains(t, string(result.Content), "\"x-template\":\"{{ vars.project_name }}\"")
+	require.Equal(t, []ReplacementSummary{
+		{
+			Variable: "project_name",
+			Literal:  "Orbit",
+			Count:    1,
+		},
+	}, result.Replacements)
 	require.Empty(t, result.Ambiguities)
 }

@@ -47,7 +47,7 @@ func TestResolveLocalTemplateSourceLoadsManifestDefinitionAndUserFiles(t *testin
 	require.Equal(t, []CandidateFile{
 		{
 			Path:    "docs/guide.md",
-			Content: []byte("$project_name guide\n"),
+			Content: []byte("{{ vars.project_name }} guide\n"),
 			Mode:    gitpkg.FileModeRegular,
 		},
 	}, source.Files)
@@ -75,7 +75,7 @@ func TestResolveLocalTemplateSourceLoadsVariablesFromBranchManifestWithoutLegacy
 		"description: Docs orbit\n"+
 		"include:\n"+
 		"  - docs/**\n")
-	repo.WriteFile(t, "docs/guide.md", "$project_name guide\n")
+	repo.WriteFile(t, "docs/guide.md", "{{ vars.project_name }} guide\n")
 	repo.AddAndCommit(t, "seed branch-manifest-only template branch")
 
 	source, err := ResolveLocalTemplateSource(context.Background(), repo.Root, "HEAD")
@@ -89,7 +89,7 @@ func TestResolveLocalTemplateSourceLoadsVariablesFromBranchManifestWithoutLegacy
 	require.Equal(t, []CandidateFile{
 		{
 			Path:    "docs/guide.md",
-			Content: []byte("$project_name guide\n"),
+			Content: []byte("{{ vars.project_name }} guide\n"),
 			Mode:    gitpkg.FileModeRegular,
 		},
 	}, source.Files)
@@ -106,7 +106,7 @@ func TestResolveLocalTemplateSourceLoadsAgentsTemplateFromCompanionSpec(t *testi
 		"meta:\n"+
 		"  file: .harness/orbits/docs.yaml\n"+
 		"  agents_template: |\n"+
-		"    Project guidance for $project_name\n"+
+		"    Project guidance for {{ vars.project_name }}\n"+
 		"  include_in_projection: true\n"+
 		"  include_in_write: true\n"+
 		"  include_in_export: true\n"+
@@ -117,7 +117,7 @@ func TestResolveLocalTemplateSourceLoadsAgentsTemplateFromCompanionSpec(t *testi
 		"    paths:\n"+
 		"      include:\n"+
 		"        - docs/**\n")
-	repo.WriteFile(t, "docs/guide.md", "$project_name guide\n")
+	repo.WriteFile(t, "docs/guide.md", "{{ vars.project_name }} guide\n")
 	repo.AddAndCommit(t, "seed template branch with structured brief")
 
 	source, err := ResolveLocalTemplateSource(context.Background(), repo.Root, "HEAD")
@@ -125,12 +125,12 @@ func TestResolveLocalTemplateSourceLoadsAgentsTemplateFromCompanionSpec(t *testi
 	require.Equal(t, []CandidateFile{
 		{
 			Path:    "docs/guide.md",
-			Content: []byte("$project_name guide\n"),
+			Content: []byte("{{ vars.project_name }} guide\n"),
 			Mode:    gitpkg.FileModeRegular,
 		},
 	}, source.Files)
 	require.NotNil(t, source.Spec.Meta)
-	require.Equal(t, "Project guidance for $project_name\n", source.Spec.Meta.AgentsTemplate)
+	require.Equal(t, "Project guidance for {{ vars.project_name }}\n", source.Spec.Meta.AgentsTemplate)
 }
 
 func TestResolveLocalTemplateSourceLoadsCapabilitiesAndCapabilityAssetsFromHostedCompanionSpec(t *testing.T) {
@@ -144,9 +144,9 @@ func TestResolveLocalTemplateSourceLoadsCapabilitiesAndCapabilityAssetsFromHoste
 		"meta:\n"+
 		"  file: .harness/orbits/docs.yaml\n"+
 		"  agents_template: |\n"+
-		"    Project guidance for $project_name\n"+
+		"    Project guidance for {{ vars.project_name }}\n"+
 		"  humans_template: |\n"+
-		"    Run docs workflow for $project_name\n"+
+		"    Run docs workflow for {{ vars.project_name }}\n"+
 		"  include_in_projection: true\n"+
 		"  include_in_write: true\n"+
 		"  include_in_export: true\n"+
@@ -167,15 +167,15 @@ func TestResolveLocalTemplateSourceLoadsCapabilitiesAndCapabilityAssetsFromHoste
 		"    paths:\n"+
 		"      include:\n"+
 		"        - docs/**\n")
-	repo.WriteFile(t, "docs/guide.md", "$project_name guide\n")
-	repo.WriteFile(t, "orbit/commands/review.md", "Review $project_name docs.\n")
+	repo.WriteFile(t, "docs/guide.md", "{{ vars.project_name }} guide\n")
+	repo.WriteFile(t, "orbit/commands/review.md", "Review {{ vars.project_name }} docs.\n")
 	repo.WriteFile(t, "orbit/skills/docs-style/SKILL.md", ""+
 		"---\n"+
 		"name: docs-style\n"+
 		"description: Docs style references.\n"+
 		"---\n"+
 		"# Docs Style\n")
-	repo.WriteFile(t, "orbit/skills/docs-style/checklist.md", "Use $project_name style guide.\n")
+	repo.WriteFile(t, "orbit/skills/docs-style/checklist.md", "Use {{ vars.project_name }} style guide.\n")
 	repo.AddAndCommit(t, "seed template branch with capabilities")
 
 	source, err := ResolveLocalTemplateSource(context.Background(), repo.Root, "HEAD")
@@ -194,12 +194,12 @@ func TestResolveLocalTemplateSourceLoadsCapabilitiesAndCapabilityAssetsFromHoste
 	require.Equal(t, []CandidateFile{
 		{
 			Path:    "docs/guide.md",
-			Content: []byte("$project_name guide\n"),
+			Content: []byte("{{ vars.project_name }} guide\n"),
 			Mode:    gitpkg.FileModeRegular,
 		},
 		{
 			Path:    "orbit/commands/review.md",
-			Content: []byte("Review $project_name docs.\n"),
+			Content: []byte("Review {{ vars.project_name }} docs.\n"),
 			Mode:    gitpkg.FileModeRegular,
 		},
 		{
@@ -209,7 +209,7 @@ func TestResolveLocalTemplateSourceLoadsCapabilitiesAndCapabilityAssetsFromHoste
 		},
 		{
 			Path:    "orbit/skills/docs-style/checklist.md",
-			Content: []byte("Use $project_name style guide.\n"),
+			Content: []byte("Use {{ vars.project_name }} style guide.\n"),
 			Mode:    gitpkg.FileModeRegular,
 		},
 	}, source.Files)
@@ -241,8 +241,8 @@ func TestResolveLocalTemplateSourceRejectsHostedCapabilitySkillRootMissingSkillM
 		"    paths:\n"+
 		"      include:\n"+
 		"        - docs/**\n")
-	repo.WriteFile(t, "docs/guide.md", "$project_name guide\n")
-	repo.WriteFile(t, "orbit/skills/docs-style/checklist.md", "Use $project_name style guide.\n")
+	repo.WriteFile(t, "docs/guide.md", "{{ vars.project_name }} guide\n")
+	repo.WriteFile(t, "orbit/skills/docs-style/checklist.md", "Use {{ vars.project_name }} style guide.\n")
 	repo.AddAndCommit(t, "seed template branch with incomplete skill capability")
 
 	_, err := ResolveLocalTemplateSource(context.Background(), repo.Root, "HEAD")
@@ -261,7 +261,7 @@ func TestResolveLocalTemplateSourcePrefersHostedCompanionOverLegacyCompanion(t *
 		"meta:\n"+
 		"  file: .harness/orbits/docs.yaml\n"+
 		"  agents_template: |\n"+
-		"    Hosted guidance for $project_name\n"+
+		"    Hosted guidance for {{ vars.project_name }}\n"+
 		"  include_in_projection: true\n"+
 		"  include_in_write: true\n"+
 		"  include_in_export: true\n"+
@@ -278,17 +278,17 @@ func TestResolveLocalTemplateSourcePrefersHostedCompanionOverLegacyCompanion(t *
 		"meta:\n"+
 		"  file: .orbit/orbits/docs.yaml\n"+
 		"  agents_template: |\n"+
-		"    Legacy guidance for $project_name\n"+
+		"    Legacy guidance for {{ vars.project_name }}\n"+
 		"include:\n"+
 		"  - docs/**\n")
-	repo.WriteFile(t, "docs/guide.md", "$project_name guide\n")
+	repo.WriteFile(t, "docs/guide.md", "{{ vars.project_name }} guide\n")
 	repo.AddAndCommit(t, "seed dual-host template branch")
 
 	source, err := ResolveLocalTemplateSource(context.Background(), repo.Root, "HEAD")
 	require.NoError(t, err)
 	require.NotNil(t, source.Spec.Meta)
 	require.Equal(t, ".harness/orbits/docs.yaml", source.Spec.Meta.File)
-	require.Equal(t, "Hosted guidance for $project_name\n", source.Spec.Meta.AgentsTemplate)
+	require.Equal(t, "Hosted guidance for {{ vars.project_name }}\n", source.Spec.Meta.AgentsTemplate)
 }
 
 func TestResolveLocalTemplateSourceRejectsNonTemplateBranchManifest(t *testing.T) {
@@ -354,7 +354,7 @@ func TestResolveLocalTemplateSourceIgnoresInvalidLegacyTemplateManifestWhenBranc
 		"description: Docs orbit\n"+
 		"include:\n"+
 		"  - docs/**\n")
-	repo.WriteFile(t, "docs/guide.md", "$project_name guide\n")
+	repo.WriteFile(t, "docs/guide.md", "{{ vars.project_name }} guide\n")
 	repo.AddAndCommit(t, "seed template branch with invalid legacy manifest")
 
 	source, err := ResolveLocalTemplateSource(context.Background(), repo.Root, "HEAD")
@@ -367,7 +367,7 @@ func TestResolveLocalTemplateSourceIgnoresInvalidLegacyTemplateManifestWhenBranc
 	require.Equal(t, []CandidateFile{
 		{
 			Path:    "docs/guide.md",
-			Content: []byte("$project_name guide\n"),
+			Content: []byte("{{ vars.project_name }} guide\n"),
 			Mode:    gitpkg.FileModeRegular,
 		},
 	}, source.Files)
@@ -410,7 +410,7 @@ func TestResolveLocalTemplateSourceIgnoresLegacySharedFilesManifestEntryWhenBran
 		"id: docs\n"+
 		"include:\n"+
 		"  - docs/**\n")
-	repo.WriteFile(t, "docs/guide.md", "$project_name guide\n")
+	repo.WriteFile(t, "docs/guide.md", "{{ vars.project_name }} guide\n")
 	repo.AddAndCommit(t, "seed legacy shared files template")
 
 	source, err := ResolveLocalTemplateSource(context.Background(), repo.Root, "HEAD")
@@ -423,7 +423,7 @@ func TestResolveLocalTemplateSourceIgnoresLegacySharedFilesManifestEntryWhenBran
 	require.Equal(t, []CandidateFile{
 		{
 			Path:    "docs/guide.md",
-			Content: []byte("$project_name guide\n"),
+			Content: []byte("{{ vars.project_name }} guide\n"),
 			Mode:    gitpkg.FileModeRegular,
 		},
 	}, source.Files)
@@ -432,18 +432,24 @@ func TestResolveLocalTemplateSourceIgnoresLegacySharedFilesManifestEntryWhenBran
 func TestRenderTemplateFilesRequiresBindingsForReferencedVariables(t *testing.T) {
 	t.Parallel()
 
-	_, err := RenderTemplateFiles([]CandidateFile{
+	_, err := renderTemplateFilesWithOptions([]CandidateFile{
 		{
 			Path:    "docs/guide.md",
-			Content: []byte("$project_name guide\n"),
+			Content: []byte("{{ vars.project_name }} guide\n"),
 		},
-	}, map[string]string{})
+	}, map[string]string{}, renderTemplateOptions{
+		Declared: map[string]bindings.VariableDeclaration{
+			"project_name": {
+				Required: true,
+			},
+		},
+	})
 	require.Error(t, err)
-	require.ErrorContains(t, err, "missing binding")
+	require.ErrorContains(t, err, "unresolved Package Variable")
 	require.ErrorContains(t, err, "project_name")
 }
 
-func TestRenderTemplateFilesIgnoresNonMarkdownFiles(t *testing.T) {
+func TestRenderTemplateFilesLeavesLegacyDollarReferencesInTextFiles(t *testing.T) {
 	t.Parallel()
 
 	rendered, err := RenderTemplateFiles([]CandidateFile{
@@ -466,7 +472,7 @@ func TestRenderTemplateFilesIgnoresNonMarkdownFiles(t *testing.T) {
 		},
 		{
 			Path:    "docs/guide.md",
-			Content: []byte("Orbit guide\n"),
+			Content: []byte("$project_name guide\n"),
 		},
 	}, rendered)
 }
@@ -1108,7 +1114,7 @@ func TestBuildTemplateApplyPreviewAllowsUnresolvedBindingsWhenRequested(t *testi
 	require.Equal(t, []CandidateFile{
 		{
 			Path:    "docs/guide.md",
-			Content: []byte("$project_name guide\n"),
+			Content: []byte("{{ vars.project_name }} guide\n"),
 			Mode:    gitpkg.FileModeRegular,
 		},
 	}, preview.RenderedFiles)
@@ -1372,7 +1378,7 @@ func TestReplayInstalledTemplateUsesRecordedTemplateCommitInsteadOfCurrentBranch
 
 	runtimeBranch := strings.TrimSpace(repo.Run(t, "branch", "--show-current"))
 	repo.Run(t, "checkout", sourceRef)
-	repo.WriteFile(t, "docs/reference.md", "$project_name reference\n")
+	repo.WriteFile(t, "docs/reference.md", "{{ vars.project_name }} reference\n")
 	repo.Run(t, "rm", "-f", "docs/guide.md")
 	repo.AddAndCommit(t, "update template branch contents")
 	repo.Run(t, "checkout", runtimeBranch)
@@ -1445,7 +1451,7 @@ func TestReplayInstalledRemoteTemplateUsesRecordedTemplateCommitAfterRemoteForce
 		"description: Rewritten docs orbit\n"+
 		"include:\n"+
 		"  - docs/**\n")
-	sourceRepo.WriteFile(t, "docs/reference.md", "$project_name rewritten reference\n")
+	sourceRepo.WriteFile(t, "docs/reference.md", "{{ vars.project_name }} rewritten reference\n")
 	sourceRepo.AddAndCommit(t, "rewrite remote template branch history")
 	sourceRepo.Run(t, "push", "--force", remoteURL, "rewritten-template:"+sourceRef)
 
@@ -1594,7 +1600,7 @@ func TestBuildInstallOwnedCleanupPlanFailsClosedWithoutVariablesSnapshot(t *test
 
 	runtimeBranch := strings.TrimSpace(repo.Run(t, "branch", "--show-current"))
 	repo.Run(t, "checkout", sourceRef)
-	repo.WriteFile(t, "docs/reference.md", "$project_name reference\n")
+	repo.WriteFile(t, "docs/reference.md", "{{ vars.project_name }} reference\n")
 	repo.Run(t, "rm", "-f", "docs/guide.md")
 	repo.AddAndCommit(t, "update template branch contents")
 	repo.Run(t, "checkout", runtimeBranch)
@@ -1955,7 +1961,7 @@ func seedLocalTemplateApplyRepoWithSharedAgents(t *testing.T) (*testutil.Repo, s
 		"meta:\n"+
 		"  file: .harness/orbits/docs.yaml\n"+
 		"  agents_template: |\n"+
-		"    Docs orbit for $project_name\n"+
+		"    Docs orbit for {{ vars.project_name }}\n"+
 		"  include_in_projection: true\n"+
 		"  include_in_write: true\n"+
 		"  include_in_export: true\n"+
@@ -1966,7 +1972,7 @@ func seedLocalTemplateApplyRepoWithSharedAgents(t *testing.T) (*testutil.Repo, s
 		"    paths:\n"+
 		"      include:\n"+
 		"        - docs/**\n")
-	repo.WriteFile(t, "docs/guide.md", "$project_name guide\n")
+	repo.WriteFile(t, "docs/guide.md", "{{ vars.project_name }} guide\n")
 	repo.AddAndCommit(t, "seed template branch with structured brief")
 	repo.Run(t, "checkout", currentBranch)
 

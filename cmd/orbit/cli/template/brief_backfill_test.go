@@ -24,7 +24,7 @@ func TestReverseVariableizeBriefReplacesUniqueRuntimeValues(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	require.Equal(t, "Welcome to $project_name.\nOpen $docs_url.\n", string(result.Content))
+	require.Equal(t, "Welcome to {{ vars.project_name }}.\nOpen {{ vars.docs_url }}.\n", string(result.Content))
 	require.ElementsMatch(t, []ReplacementSummary{
 		{
 			Variable: "docs_url",
@@ -124,7 +124,7 @@ func TestBackfillOrbitBriefPreservesHostedDefinitionComments(t *testing.T) {
 	require.Contains(t, string(data), "# keep meta comment")
 	require.Contains(t, string(data), "# keep member comment")
 	require.Contains(t, string(data), "agents_template: |")
-	require.Contains(t, string(data), "Docs orbit for $project_name\n")
+	require.Contains(t, string(data), "Docs orbit for {{ vars.project_name }}\n")
 }
 
 func TestBackfillOrbitBriefReturnsSkippedWhenHostedTemplateAlreadyMatches(t *testing.T) {
@@ -148,7 +148,7 @@ func TestBackfillOrbitBriefReturnsSkippedWhenHostedTemplateAlreadyMatches(t *tes
 		"meta:\n"+
 		"  file: .harness/orbits/docs.yaml\n"+
 		"  agents_template: |\n"+
-		"    Docs orbit for $project_name\n"+
+		"    Docs orbit for {{ vars.project_name }}\n"+
 		"  include_in_projection: true\n"+
 		"  include_in_write: true\n"+
 		"  include_in_export: true\n"+
@@ -173,7 +173,7 @@ func TestBackfillOrbitBriefReturnsSkippedWhenHostedTemplateAlreadyMatches(t *tes
 	data, err := os.ReadFile(filepath.Join(repo.Root, ".harness", "orbits", "docs.yaml"))
 	require.NoError(t, err)
 	require.Contains(t, string(data), "agents_template: |")
-	require.Contains(t, string(data), "Docs orbit for $project_name\n")
+	require.Contains(t, string(data), "Docs orbit for {{ vars.project_name }}\n")
 }
 
 func TestBackfillOrbitBriefSkipsFormatterPaddingAroundMarkers(t *testing.T) {
@@ -197,7 +197,7 @@ func TestBackfillOrbitBriefSkipsFormatterPaddingAroundMarkers(t *testing.T) {
 		"meta:\n"+
 		"  file: .harness/orbits/docs.yaml\n"+
 		"  agents_template: |\n"+
-		"    Docs orbit for $project_name\n"+
+		"    Docs orbit for {{ vars.project_name }}\n"+
 		"  include_in_projection: true\n"+
 		"  include_in_write: true\n"+
 		"  include_in_export: true\n"+
@@ -224,7 +224,7 @@ func TestBackfillOrbitBriefSkipsFormatterPaddingAroundMarkers(t *testing.T) {
 
 	specData, err := os.ReadFile(filepath.Join(repo.Root, ".harness", "orbits", "docs.yaml"))
 	require.NoError(t, err)
-	require.Contains(t, string(specData), "    Docs orbit for $project_name\n")
+	require.Contains(t, string(specData), "    Docs orbit for {{ vars.project_name }}\n")
 	require.NotContains(t, string(specData), "agents_template: |+\n\n")
 }
 

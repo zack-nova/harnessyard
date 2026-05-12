@@ -53,8 +53,8 @@ func seedHarnessTemplateInstallSourceRepo(t *testing.T) *testutil.Repo {
 		"include:\n"+
 		"  - docs/**\n"+
 		"  - schema/**\n")
-	repo.WriteFile(t, "docs/guide.md", "$project_name guide\n")
-	repo.WriteFile(t, "schema/example.schema.json", "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$id\": \"workspace/example.schema.json\",\n  \"title\": \"$project_name\"\n}\n")
+	repo.WriteFile(t, "docs/guide.md", "{{ vars.project_name }} guide\n")
+	repo.WriteFile(t, "schema/example.schema.json", "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$id\": \"workspace/example.schema.json\",\n  \"title\": \"{{ vars.project_name }}\"\n}\n")
 	repo.AddAndCommit(t, "seed harness template source")
 
 	return repo
@@ -112,8 +112,8 @@ func TestResolveLocalTemplateInstallSourceLoadsMemberSnapshotsAndSkipsControlFil
 		"    - docs/guide.md\n"+
 		"    - schema/example.schema.json\n"+
 		"  file_digests:\n"+
-		"    docs/guide.md: "+contentDigest([]byte("$project_name guide\n"))+"\n"+
-		"    schema/example.schema.json: "+contentDigest([]byte("{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$id\": \"workspace/example.schema.json\",\n  \"title\": \"$project_name\"\n}\n"))+"\n"+
+		"    docs/guide.md: "+contentDigest([]byte("{{ vars.project_name }} guide\n"))+"\n"+
+		"    schema/example.schema.json: "+contentDigest([]byte("{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$id\": \"workspace/example.schema.json\",\n  \"title\": \"{{ vars.project_name }}\"\n}\n"))+"\n"+
 		"  variables:\n"+
 		"    project_name:\n"+
 		"      required: true\n")
@@ -201,7 +201,7 @@ func TestResolveLocalTemplateInstallSourceRejectsHostedCapabilitySkillRootMissin
 		"      include:\n"+
 		"        - docs/**\n"+
 		"        - schema/**\n")
-	repo.WriteFile(t, "orbit/skills/docs-style/checklist.md", "Use $project_name style guide.\n")
+	repo.WriteFile(t, "orbit/skills/docs-style/checklist.md", "Use {{ vars.project_name }} style guide.\n")
 	repo.AddAndCommit(t, "add incomplete skill capability to harness template source")
 
 	_, err := ResolveLocalTemplateInstallSource(context.Background(), repo.Root, "HEAD")
@@ -264,7 +264,7 @@ func TestResolveLocalTemplateInstallSourceRejectsPartialMemberSnapshotSet(t *tes
 		"  exported_paths:\n"+
 		"    - docs/guide.md\n"+
 		"  file_digests:\n"+
-		"    docs/guide.md: "+contentDigest([]byte("$project_name guide\n"))+"\n"+
+		"    docs/guide.md: "+contentDigest([]byte("{{ vars.project_name }} guide\n"))+"\n"+
 		"  variables:\n"+
 		"    project_name:\n"+
 		"      required: true\n")
@@ -290,7 +290,7 @@ func TestResolveLocalTemplateInstallSourceRejectsSnapshotVariableSummaryDrift(t 
 		"  exported_paths:\n"+
 		"    - docs/guide.md\n"+
 		"  file_digests:\n"+
-		"    docs/guide.md: "+contentDigest([]byte("$project_name guide\n"))+"\n"+
+		"    docs/guide.md: "+contentDigest([]byte("{{ vars.project_name }} guide\n"))+"\n"+
 		"  variables:\n"+
 		"    wrong_name:\n"+
 		"      required: true\n")

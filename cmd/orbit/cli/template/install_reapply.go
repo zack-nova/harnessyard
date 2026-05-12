@@ -215,6 +215,7 @@ func buildInstalledTemplateBindingsPreviewFromRecord(
 
 	renderedFiles, err := renderTemplateFilesWithOptions(source.Files, renderValues, renderTemplateOptions{
 		AllowUnresolved: true,
+		Declared:        declared,
 	})
 	if err != nil {
 		return TemplateApplyPreview{}, fmt.Errorf("render template files: %w", err)
@@ -222,6 +223,7 @@ func buildInstalledTemplateBindingsPreviewFromRecord(
 
 	renderedSharedAgentsFile, hasSharedAgents, err := renderSharedAgentsPayloadWithOptions(source, renderValues, renderTemplateOptions{
 		AllowUnresolved: true,
+		Declared:        declared,
 	})
 	if err != nil {
 		return TemplateApplyPreview{}, fmt.Errorf("render shared AGENTS payload: %w", err)

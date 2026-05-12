@@ -175,9 +175,9 @@ func seedInstalledHarnessProgressRepo(t *testing.T) *testutil.Repo {
 				"    value: Orbit\n" +
 				"    description: Product title\n",
 			Files: map[string]string{
-				"docs/guide.md": "$project_name guide\n",
+				"docs/guide.md": "{{ vars.project_name }} guide\n",
 			},
-			AgentsTemplate: "Follow $project_name docs workflow\n",
+			AgentsTemplate: "Follow {{ vars.project_name }} docs workflow\n",
 		},
 	})
 

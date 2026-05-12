@@ -101,12 +101,14 @@ func replayInstalledTemplateFromSnapshot(source LocalTemplateSource, record Inst
 	allowUnresolved := len(record.Variables.UnresolvedAtApply) > 0
 	renderedFiles, err := renderTemplateFilesWithOptions(source.Files, renderValues, renderTemplateOptions{
 		AllowUnresolved: allowUnresolved,
+		Declared:        record.Variables.Declarations,
 	})
 	if err != nil {
 		return TemplateApplyPreview{}, fmt.Errorf("render replayed template files: %w", err)
 	}
 	renderedSharedAgentsFile, hasSharedAgents, err := renderSharedAgentsPayloadWithOptions(source, renderValues, renderTemplateOptions{
 		AllowUnresolved: allowUnresolved,
+		Declared:        record.Variables.Declarations,
 	})
 	if err != nil {
 		return TemplateApplyPreview{}, fmt.Errorf("render replayed shared AGENTS payload: %w", err)

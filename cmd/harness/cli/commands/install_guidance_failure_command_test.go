@@ -20,9 +20,9 @@ import (
 func TestInstallReturnsWarningAndRollsBackGuidanceArtifactsWhenScopedGuidanceFails(t *testing.T) {
 	repo := seedInstallGuidanceCommandRepo(t, []installGuidanceCommandTemplateSpec{{
 		OrbitID:        "docs",
-		AgentsTemplate: "You are the $project_name docs orbit.\n",
+		AgentsTemplate: "You are the {{ vars.project_name }} docs orbit.\n",
 		Files: map[string]string{
-			"docs/guide.md": "$project_name guide\n",
+			"docs/guide.md": "{{ vars.project_name }} guide\n",
 		},
 	}})
 	bindingsPath := writeInstallGuidanceCommandBindings(t, repo.Root)
@@ -79,16 +79,16 @@ func TestInstallBatchReturnsWarningAndRollsBackGuidanceArtifactsWhenScopedGuidan
 	repo := seedInstallGuidanceCommandRepo(t, []installGuidanceCommandTemplateSpec{
 		{
 			OrbitID:        "docs",
-			AgentsTemplate: "You are the $project_name docs orbit.\n",
+			AgentsTemplate: "You are the {{ vars.project_name }} docs orbit.\n",
 			Files: map[string]string{
-				"docs/guide.md": "$project_name guide\n",
+				"docs/guide.md": "{{ vars.project_name }} guide\n",
 			},
 		},
 		{
 			OrbitID:        "cmd",
-			AgentsTemplate: "Use the $project_name cmd release flow.\n",
+			AgentsTemplate: "Use the {{ vars.project_name }} cmd release flow.\n",
 			Files: map[string]string{
-				"cmd/README.md": "$project_name cmd guide\n",
+				"cmd/README.md": "{{ vars.project_name }} cmd guide\n",
 			},
 		},
 	})

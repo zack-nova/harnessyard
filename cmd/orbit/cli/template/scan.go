@@ -25,9 +25,9 @@ type ScanResult struct {
 	Unused     []string
 }
 
-// ScanVariables scans Markdown files for $var_name references and compares them
-// with the declared manifest variable set. Non-Markdown, binary, or invalid UTF-8
-// files are skipped.
+// ScanVariables scans text files for Package Template References plus legacy
+// $var_name placeholders and compares them with the declared manifest variable set.
+// Binary or invalid UTF-8 files are skipped.
 func ScanVariables(files []CandidateFile, declared map[string]VariableSpec) ScanResult {
 	referencedSet := make(map[string]struct{})
 	declaredSet := make(map[string]struct{}, len(declared))
@@ -37,12 +37,18 @@ func ScanVariables(files []CandidateFile, declared map[string]VariableSpec) Scan
 	}
 
 	for _, file := range files {
-		if !isMarkdownTemplateFile(file.Path) || isBinaryOrInvalidText(file.Content) {
+		if isBinaryOrInvalidText(file.Content) {
 			continue
 		}
 
-		for _, match := range variableReferencePattern.FindAllString(string(file.Content), -1) {
-			referencedSet[match[1:]] = struct{}{}
+		content := string(file.Content)
+		if isMarkdownTemplateFile(file.Path) {
+			for _, match := range variableReferencePattern.FindAllString(content, -1) {
+				referencedSet[match[1:]] = struct{}{}
+			}
+		}
+		for _, name := range scanPackageTemplateReferenceNames(content) {
+			referencedSet[name] = struct{}{}
 		}
 	}
 
@@ -65,6 +71,32 @@ func ScanVariables(files []CandidateFile, declared map[string]VariableSpec) Scan
 		Referenced: referenced,
 		Undeclared: undeclared,
 		Unused:     unused,
+	}
+}
+
+func scanPackageTemplateReferenceNames(text string) []string {
+	names := make(map[string]struct{})
+	cursor := 0
+	for {
+		startOffset := strings.Index(text[cursor:], "{{")
+		if startOffset < 0 {
+			return sortedNames(names)
+		}
+		start := cursor + startOffset
+		if start > 0 && text[start-1] == '$' {
+			cursor = start + 2
+			continue
+		}
+		endOffset := strings.Index(text[start+2:], "}}")
+		if endOffset < 0 {
+			return sortedNames(names)
+		}
+		end := start + 2 + endOffset
+		ref, err := parsePackageTemplateReference(strings.TrimSpace(text[start+2 : end]))
+		if err == nil && ref.Namespace == "vars" {
+			names[ref.Name] = struct{}{}
+		}
+		cursor = end + 2
 	}
 }
 

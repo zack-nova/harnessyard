@@ -335,7 +335,7 @@ func TestHarnessTemplatePublishPushesWhenRemoteTemplateBranchAdvancedBeyondLocal
 
 	remoteGuide, readErr := gitpkg.ReadFileAtRemoteRef(context.Background(), repo.Root, remoteURL, "refs/heads/harness-template/workspace", "docs/guide.md")
 	require.NoError(t, readErr)
-	require.Equal(t, "$project_name guide v2\n", string(remoteGuide))
+	require.Equal(t, "{{ vars.project_name }} guide v2\n", string(remoteGuide))
 
 	_, readErr = gitpkg.ReadFileAtRemoteRef(context.Background(), repo.Root, remoteURL, "refs/heads/harness-template/workspace", "docs/remote-note.md")
 	require.Error(t, readErr)
@@ -402,7 +402,7 @@ func TestHarnessTemplatePublishPushesWhenRemoteTemplateBranchDivergedFromMatchin
 
 	remoteGuide, readErr := gitpkg.ReadFileAtRemoteRef(context.Background(), repo.Root, remoteURL, "refs/heads/harness-template/workspace", "docs/guide.md")
 	require.NoError(t, readErr)
-	require.Equal(t, "$project_name guide\n", string(remoteGuide))
+	require.Equal(t, "{{ vars.project_name }} guide\n", string(remoteGuide))
 
 	_, readErr = gitpkg.ReadFileAtRemoteRef(context.Background(), repo.Root, remoteURL, "refs/heads/harness-template/workspace", "docs/remote-note.md")
 	require.Error(t, readErr)

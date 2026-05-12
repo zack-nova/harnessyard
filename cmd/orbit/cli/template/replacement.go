@@ -45,10 +45,6 @@ func ReplaceRuntimeValues(file CandidateFile, variables map[string]bindings.Vari
 		return result, nil
 	}
 
-	if !isMarkdownTemplateFile(file.Path) {
-		return result, nil
-	}
-
 	entries, ambiguities, err := buildReplacementPlan(variables)
 	if err != nil {
 		return ReplacementResult{}, err
@@ -66,7 +62,7 @@ func ReplaceRuntimeValues(file CandidateFile, variables map[string]bindings.Vari
 			continue
 		}
 
-		content = strings.ReplaceAll(content, entry.Literal, "$"+entry.Variable)
+		content = strings.ReplaceAll(content, entry.Literal, packageTemplateReferenceLiteral(entry.Variable))
 		summaries = append(summaries, ReplacementSummary{
 			Variable: entry.Variable,
 			Literal:  entry.Literal,
@@ -119,4 +115,8 @@ func buildReplacementPlan(variables map[string]bindings.VariableBinding) ([]repl
 	}
 
 	return entries, ambiguities, nil
+}
+
+func packageTemplateReferenceLiteral(name string) string {
+	return "{{ vars." + name + " }}"
 }

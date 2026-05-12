@@ -3586,9 +3586,9 @@ func TestHarnessBindingsMissingReportsCurrentVarsGapsAcrossInstallBackedOrbits(t
 				"    value: Orbit\n" +
 				"    description: Product title\n",
 			Files: map[string]string{
-				"docs/guide.md": "$project_name guide\n",
+				"docs/guide.md": "{{ vars.project_name }} guide\n",
 			},
-			AgentsTemplate: "You are the $project_name docs orbit.\n",
+			AgentsTemplate: "You are the {{ vars.project_name }} docs orbit.\n",
 		},
 		{
 			OrbitID: "cmd",
@@ -3602,9 +3602,9 @@ func TestHarnessBindingsMissingReportsCurrentVarsGapsAcrossInstallBackedOrbits(t
 				"    value: orbit\n" +
 				"    description: CLI binary\n",
 			Files: map[string]string{
-				"cmd/README.md": "Run $project_name as `$binary_name`.\n",
+				"cmd/README.md": "Run {{ vars.project_name }} as `{{ vars.binary_name }}`.\n",
 			},
-			AgentsTemplate: "Use $binary_name for $project_name releases.\n",
+			AgentsTemplate: "Use {{ vars.binary_name }} for {{ vars.project_name }} releases.\n",
 		},
 	})
 
@@ -3708,7 +3708,7 @@ func TestHarnessBindingsMissingTextOutputMapsToReadinessReason(t *testing.T) {
 				"    value: Orbit\n" +
 				"    description: Product title\n",
 			Files: map[string]string{
-				"docs/guide.md": "$project_name guide\n",
+				"docs/guide.md": "{{ vars.project_name }} guide\n",
 			},
 		},
 	})
@@ -3746,9 +3746,9 @@ func TestHarnessBindingsScanRuntimeReportsObservedPlaceholdersAndWritesInstallSn
 				"    value: Orbit\n" +
 				"    description: Product title\n",
 			Files: map[string]string{
-				"docs/guide.md": "$project_name guide\n",
+				"docs/guide.md": "{{ vars.project_name }} guide\n",
 			},
-			AgentsTemplate: "Follow $project_name docs workflow\n",
+			AgentsTemplate: "Follow {{ vars.project_name }} docs workflow\n",
 		},
 	})
 
@@ -3761,7 +3761,7 @@ func TestHarnessBindingsScanRuntimeReportsObservedPlaceholdersAndWritesInstallSn
 	)
 	require.NoError(t, err)
 
-	agentsBlock, err := orbittemplate.WrapRuntimeAgentsBlock("docs", []byte("Follow $project_name docs workflow\n"))
+	agentsBlock, err := orbittemplate.WrapRuntimeAgentsBlock("docs", []byte("Follow {{ vars.project_name }} docs workflow\n"))
 	require.NoError(t, err)
 	repo.WriteFile(t, "AGENTS.md", string(agentsBlock))
 
@@ -3834,16 +3834,16 @@ func TestHarnessBindingsScanRuntimeTextOutputMapsToReadinessReason(t *testing.T)
 				"    value: Orbit\n" +
 				"    description: Product title\n",
 			Files: map[string]string{
-				"docs/guide.md": "$project_name guide\n",
+				"docs/guide.md": "{{ vars.project_name }} guide\n",
 			},
-			AgentsTemplate: "Follow $project_name docs workflow\n",
+			AgentsTemplate: "Follow {{ vars.project_name }} docs workflow\n",
 		},
 	})
 
 	_, _, err := executeHarnessCLI(t, repo.Root, "install", "orbit-template/docs", "--allow-unresolved-bindings")
 	require.NoError(t, err)
 
-	agentsBlock, err := orbittemplate.WrapRuntimeAgentsBlock("docs", []byte("Follow $project_name docs workflow\n"))
+	agentsBlock, err := orbittemplate.WrapRuntimeAgentsBlock("docs", []byte("Follow {{ vars.project_name }} docs workflow\n"))
 	require.NoError(t, err)
 	repo.WriteFile(t, "AGENTS.md", string(agentsBlock))
 
@@ -3877,9 +3877,9 @@ func TestHarnessBindingsApplyDryRunJSONUsesCurrentVarsWithoutMutatingRuntime(t *
 				"    value: Orbit\n" +
 				"    description: Product title\n",
 			Files: map[string]string{
-				"docs/guide.md": "$project_name guide\n",
+				"docs/guide.md": "{{ vars.project_name }} guide\n",
 			},
-			AgentsTemplate: "Follow $project_name docs workflow\n",
+			AgentsTemplate: "Follow {{ vars.project_name }} docs workflow\n",
 		},
 	})
 
@@ -3931,11 +3931,11 @@ func TestHarnessBindingsApplyDryRunJSONUsesCurrentVarsWithoutMutatingRuntime(t *
 
 	guideData, err := os.ReadFile(filepath.Join(repo.Root, "docs", "guide.md"))
 	require.NoError(t, err)
-	require.Equal(t, "$project_name guide\n", string(guideData))
+	require.Equal(t, "{{ vars.project_name }} guide\n", string(guideData))
 
 	agentsData, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
 	require.NoError(t, err)
-	require.Contains(t, string(agentsData), "Follow $project_name docs workflow\n")
+	require.Contains(t, string(agentsData), "Follow {{ vars.project_name }} docs workflow\n")
 
 	record, err := harnesspkg.LoadInstallRecord(repo.Root, "docs")
 	require.NoError(t, err)
@@ -3956,9 +3956,9 @@ func TestHarnessBindingsApplyWritesRenderedRuntimeAndRefreshesInstallSnapshot(t 
 				"    value: Orbit\n" +
 				"    description: Product title\n",
 			Files: map[string]string{
-				"docs/guide.md": "$project_name guide\n",
+				"docs/guide.md": "{{ vars.project_name }} guide\n",
 			},
-			AgentsTemplate: "Follow $project_name docs workflow\n",
+			AgentsTemplate: "Follow {{ vars.project_name }} docs workflow\n",
 		},
 	})
 
@@ -4018,7 +4018,7 @@ func TestHarnessBindingsApplyWritesRenderedRuntimeAndRefreshesInstallSnapshot(t 
 	agentsData, err := os.ReadFile(filepath.Join(repo.Root, "AGENTS.md"))
 	require.NoError(t, err)
 	require.Contains(t, string(agentsData), "Follow Filled Orbit docs workflow\n")
-	require.NotContains(t, string(agentsData), "$project_name")
+	require.NotContains(t, string(agentsData), "{{ vars.project_name }}")
 
 	record, err := harnesspkg.LoadInstallRecord(repo.Root, "docs")
 	require.NoError(t, err)
@@ -4054,7 +4054,7 @@ func TestHarnessBindingsApplyAllowsUnresolvedBindingsAsWarnings(t *testing.T) {
 				"    value: Orbit\n" +
 				"    description: Product title\n",
 			Files: map[string]string{
-				"docs/guide.md": "$project_name guide\n",
+				"docs/guide.md": "{{ vars.project_name }} guide\n",
 			},
 		},
 	})
@@ -4102,7 +4102,7 @@ func TestHarnessBindingsApplyAllowsUnresolvedBindingsAsWarnings(t *testing.T) {
 
 	guideData, err := os.ReadFile(filepath.Join(repo.Root, "docs", "guide.md"))
 	require.NoError(t, err)
-	require.Equal(t, "$project_name guide\n", string(guideData))
+	require.Equal(t, "{{ vars.project_name }} guide\n", string(guideData))
 
 	record, err := harnesspkg.LoadInstallRecord(repo.Root, "docs")
 	require.NoError(t, err)
@@ -4125,9 +4125,9 @@ func TestHarnessBindingsApplyTextOutputIncludesReadinessStatus(t *testing.T) {
 				"    value: Orbit\n" +
 				"    description: Product title\n",
 			Files: map[string]string{
-				"docs/guide.md": "$project_name guide\n",
+				"docs/guide.md": "{{ vars.project_name }} guide\n",
 			},
-			AgentsTemplate: "Follow $project_name docs workflow\n",
+			AgentsTemplate: "Follow {{ vars.project_name }} docs workflow\n",
 		},
 	})
 
@@ -4167,7 +4167,7 @@ func TestHarnessBindingsApplyFailsClosedOnDriftWithoutForceAndForceRewritesInsta
 				"    value: Orbit\n" +
 				"    description: Product title\n",
 			Files: map[string]string{
-				"docs/guide.md": "$project_name guide\n",
+				"docs/guide.md": "{{ vars.project_name }} guide\n",
 			},
 		},
 	})
@@ -4246,7 +4246,7 @@ func TestHarnessBindingsApplyFailsWhenInstalledVariableDeclarationBecomesIncompa
 				"    value: Orbit\n" +
 				"    description: Product title\n",
 			Files: map[string]string{
-				"docs/guide.md": "$project_name guide\n",
+				"docs/guide.md": "{{ vars.project_name }} guide\n",
 			},
 		},
 	})
@@ -5053,12 +5053,12 @@ func TestHarnessRemoveDeletesTemplateMemberFromHarnessTemplate(t *testing.T) {
 		"  exported_paths:\n"+
 		"    - docs/guide.md\n"+
 		"  file_digests:\n"+
-		"    docs/guide.md: "+testContentDigest([]byte("Docs $project_name guide\n"))+"\n"+
+		"    docs/guide.md: "+testContentDigest([]byte("Docs {{ vars.project_name }} guide\n"))+"\n"+
 		"  variables:\n"+
 		"    project_name:\n"+
 		"      description: Project name\n"+
 		"      required: true\n")
-	repo.WriteFile(t, "docs/guide.md", "Docs $project_name guide\n")
+	repo.WriteFile(t, "docs/guide.md", "Docs {{ vars.project_name }} guide\n")
 	repo.AddAndCommit(t, "seed harness template for remove")
 
 	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "remove", "docs")
@@ -5141,13 +5141,13 @@ func TestHarnessRemoveTemplateMemberJSONOutputIncludesTemplateSummary(t *testing
 		"    - docs/guide.md\n"+
 		"  file_digests:\n"+
 		"    AGENTS.md: "+testContentDigest(agentsContent)+"\n"+
-		"    docs/guide.md: "+testContentDigest([]byte("Docs $project_name guide\n"))+"\n"+
+		"    docs/guide.md: "+testContentDigest([]byte("Docs {{ vars.project_name }} guide\n"))+"\n"+
 		"  variables:\n"+
 		"    project_name:\n"+
 		"      description: Project name\n"+
 		"      required: true\n")
 	repo.WriteFile(t, "AGENTS.md", string(agentsContent))
-	repo.WriteFile(t, "docs/guide.md", "Docs $project_name guide\n")
+	repo.WriteFile(t, "docs/guide.md", "Docs {{ vars.project_name }} guide\n")
 	repo.AddAndCommit(t, "seed harness template remove json repo")
 
 	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "remove", "docs", "--json")
@@ -5240,12 +5240,12 @@ func TestHarnessRemoveTemplateMemberJSONOutputKeepsFalseSummaryFields(t *testing
 		"  exported_paths:\n"+
 		"    - docs/guide.md\n"+
 		"  file_digests:\n"+
-		"    docs/guide.md: "+testContentDigest([]byte("Docs $project_name guide\n"))+"\n"+
+		"    docs/guide.md: "+testContentDigest([]byte("Docs {{ vars.project_name }} guide\n"))+"\n"+
 		"  variables:\n"+
 		"    project_name:\n"+
 		"      description: Project name\n"+
 		"      required: true\n")
-	repo.WriteFile(t, "docs/guide.md", "Docs $project_name guide\n")
+	repo.WriteFile(t, "docs/guide.md", "Docs {{ vars.project_name }} guide\n")
 	repo.AddAndCommit(t, "seed harness template remove false summary repo")
 
 	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "remove", "docs", "--json")
@@ -5386,7 +5386,7 @@ func seedSingleMemberHarnessTemplateRemoveCLIRepo(t *testing.T, withAgents bool)
 
 	exportedPaths := []string{"docs/guide.md"}
 	fileDigestLines := []string{
-		"    docs/guide.md: " + testContentDigest([]byte("Docs $project_name guide\n")),
+		"    docs/guide.md: " + testContentDigest([]byte("Docs {{ vars.project_name }} guide\n")),
 	}
 	if withAgents {
 		docsBlock, wrapErr := orbittemplate.WrapRuntimeAgentsBlock("docs", []byte("Docs guidance\n"))
@@ -5413,7 +5413,7 @@ func seedSingleMemberHarnessTemplateRemoveCLIRepo(t *testing.T, withAgents bool)
 		"    project_name:\n"+
 		"      description: Project name\n"+
 		"      required: true\n")
-	repo.WriteFile(t, "docs/guide.md", "Docs $project_name guide\n")
+	repo.WriteFile(t, "docs/guide.md", "Docs {{ vars.project_name }} guide\n")
 	repo.AddAndCommit(t, "seed single member harness template remove cli repo")
 
 	return repo
@@ -5534,7 +5534,7 @@ func TestHarnessRemoveShrinksBundleBackedRuntimeMember(t *testing.T) {
 
 	cmdData, err := os.ReadFile(filepath.Join(runtimeRepo.Root, "cmd", "main.go"))
 	require.NoError(t, err)
-	require.Equal(t, "package main\n\nconst name = \"orbitctl\"\n", string(cmdData))
+	require.Equal(t, "package main\n\nconst name = \"orbit-installed\"\n", string(cmdData))
 }
 
 func TestHarnessMemberExtractDetachedKeepsPayloadAndRemovesBundleOwnership(t *testing.T) {
@@ -6582,7 +6582,7 @@ func TestHarnessInstallDefaultsToUnresolvedBindingsAndPlaceholderRuntime(t *test
 
 	guideData, err := os.ReadFile(filepath.Join(repo.Root, "docs", "guide.md"))
 	require.NoError(t, err)
-	require.Equal(t, "$project_name guide\n", string(guideData))
+	require.Equal(t, "{{ vars.project_name }} guide\n", string(guideData))
 
 	record, err := harnesspkg.LoadInstallRecord(repo.Root, "docs")
 	require.NoError(t, err)
@@ -6631,7 +6631,7 @@ func TestHarnessInstallTreatsBlankRepoVarAsUnresolved(t *testing.T) {
 
 	guideData, err := os.ReadFile(filepath.Join(repo.Root, "docs", "guide.md"))
 	require.NoError(t, err)
-	require.Equal(t, "$project_name guide\n", string(guideData))
+	require.Equal(t, "{{ vars.project_name }} guide\n", string(guideData))
 }
 
 func TestHarnessInstallStrictBindingsFailsOnMissingBindings(t *testing.T) {
@@ -6814,7 +6814,7 @@ func TestHarnessInstallBatchDryRunJSONAggregatesMultipleOrbitPreviews(t *testing
 				"    value: Orbit\n" +
 				"    description: Product title\n",
 			Files: map[string]string{
-				"docs/guide.md": "$project_name guide\n",
+				"docs/guide.md": "{{ vars.project_name }} guide\n",
 			},
 		},
 		{
@@ -6829,7 +6829,7 @@ func TestHarnessInstallBatchDryRunJSONAggregatesMultipleOrbitPreviews(t *testing
 				"    value: orbit\n" +
 				"    description: CLI binary\n",
 			Files: map[string]string{
-				"cmd/README.md": "Run $project_name as `$binary_name`.\n",
+				"cmd/README.md": "Run {{ vars.project_name }} as `{{ vars.binary_name }}`.\n",
 			},
 		},
 	})
@@ -6913,7 +6913,7 @@ func TestHarnessInstallBatchInstallsAllItemsAfterSharedPreview(t *testing.T) {
 				"    value: Orbit\n" +
 				"    description: Product title\n",
 			Files: map[string]string{
-				"docs/guide.md": "$project_name guide\n",
+				"docs/guide.md": "{{ vars.project_name }} guide\n",
 			},
 		},
 		{
@@ -6928,7 +6928,7 @@ func TestHarnessInstallBatchInstallsAllItemsAfterSharedPreview(t *testing.T) {
 				"    value: orbit\n" +
 				"    description: CLI binary\n",
 			Files: map[string]string{
-				"cmd/README.md": "Run $project_name as `$binary_name`.\n",
+				"cmd/README.md": "Run {{ vars.project_name }} as `{{ vars.binary_name }}`.\n",
 			},
 		},
 	})
@@ -7015,7 +7015,7 @@ func TestHarnessInstallBatchRollsBackSharedVarsAndEarlierItemsWhenLaterInstallFa
 				"    value: Orbit\n" +
 				"    description: Product title\n",
 			Files: map[string]string{
-				"docs/guide.md": "$project_name guide\n",
+				"docs/guide.md": "{{ vars.project_name }} guide\n",
 			},
 		},
 		{
@@ -7030,7 +7030,7 @@ func TestHarnessInstallBatchRollsBackSharedVarsAndEarlierItemsWhenLaterInstallFa
 				"    value: orbit\n" +
 				"    description: CLI binary\n",
 			Files: map[string]string{
-				"cmd/README.md": "Run $project_name as `$binary_name`.\n",
+				"cmd/README.md": "Run {{ vars.project_name }} as `{{ vars.binary_name }}`.\n",
 			},
 		},
 	})
@@ -7107,7 +7107,7 @@ func TestHarnessInstallBatchDefaultsToUnresolvedBindingsAndWarnings(t *testing.T
 				"    value: Orbit\n" +
 				"    description: Product title\n",
 			Files: map[string]string{
-				"docs/guide.md": "$project_name guide\n",
+				"docs/guide.md": "{{ vars.project_name }} guide\n",
 			},
 		},
 		{
@@ -7122,7 +7122,7 @@ func TestHarnessInstallBatchDefaultsToUnresolvedBindingsAndWarnings(t *testing.T
 				"    value: orbit\n" +
 				"    description: CLI binary\n",
 			Files: map[string]string{
-				"cmd/README.md": "Run $project_name as `$binary_name`.\n",
+				"cmd/README.md": "Run {{ vars.project_name }} as `{{ vars.binary_name }}`.\n",
 			},
 		},
 	})
@@ -7164,11 +7164,11 @@ func TestHarnessInstallBatchDefaultsToUnresolvedBindingsAndWarnings(t *testing.T
 
 	docsData, err := os.ReadFile(filepath.Join(repo.Root, "docs", "guide.md"))
 	require.NoError(t, err)
-	require.Equal(t, "$project_name guide\n", string(docsData))
+	require.Equal(t, "{{ vars.project_name }} guide\n", string(docsData))
 
 	cmdData, err := os.ReadFile(filepath.Join(repo.Root, "cmd", "README.md"))
 	require.NoError(t, err)
-	require.Equal(t, "Run $project_name as `$binary_name`.\n", string(cmdData))
+	require.Equal(t, "Run {{ vars.project_name }} as `{{ vars.binary_name }}`.\n", string(cmdData))
 
 	_, err = os.Stat(filepath.Join(repo.Root, ".harness", "vars.yaml"))
 	require.ErrorIs(t, err, os.ErrNotExist)
@@ -7187,7 +7187,7 @@ func TestHarnessInstallBatchStrictBindingsFailsOnMissingBindings(t *testing.T) {
 				"    value: Orbit\n" +
 				"    description: Product title\n",
 			Files: map[string]string{
-				"docs/guide.md": "$project_name guide\n",
+				"docs/guide.md": "{{ vars.project_name }} guide\n",
 			},
 		},
 		{
@@ -7202,7 +7202,7 @@ func TestHarnessInstallBatchStrictBindingsFailsOnMissingBindings(t *testing.T) {
 				"    value: orbit\n" +
 				"    description: CLI binary\n",
 			Files: map[string]string{
-				"cmd/README.md": "Run $project_name as `$binary_name`.\n",
+				"cmd/README.md": "Run {{ vars.project_name }} as `{{ vars.binary_name }}`.\n",
 			},
 		},
 	})
@@ -7239,7 +7239,7 @@ func TestHarnessInstallBatchNamespacesIncompatibleSharedVariableDeclarations(t *
 				"    value: Orbit\n" +
 				"    description: Product title\n",
 			Files: map[string]string{
-				"docs/guide.md": "$project_name guide\n",
+				"docs/guide.md": "{{ vars.project_name }} guide\n",
 			},
 		},
 		{
@@ -7251,7 +7251,7 @@ func TestHarnessInstallBatchNamespacesIncompatibleSharedVariableDeclarations(t *
 				"    value: Orbit\n" +
 				"    description: CLI title\n",
 			Files: map[string]string{
-				"cmd/README.md": "$project_name CLI\n",
+				"cmd/README.md": "{{ vars.project_name }} CLI\n",
 			},
 		},
 	})
@@ -7272,10 +7272,10 @@ func TestHarnessInstallBatchNamespacesIncompatibleSharedVariableDeclarations(t *
 
 	docsData, err := os.ReadFile(filepath.Join(repo.Root, "docs", "guide.md"))
 	require.NoError(t, err)
-	require.Equal(t, "$project_name guide\n", string(docsData))
+	require.Equal(t, "{{ vars.project_name }} guide\n", string(docsData))
 	cmdData, err := os.ReadFile(filepath.Join(repo.Root, "cmd", "README.md"))
 	require.NoError(t, err)
-	require.Equal(t, "$project_name CLI\n", string(cmdData))
+	require.Equal(t, "{{ vars.project_name }} CLI\n", string(cmdData))
 
 	docsRecord, err := orbittemplate.LoadInstallRecordFile(filepath.Join(repo.Root, ".harness", "installs", "docs.yaml"))
 	require.NoError(t, err)
@@ -7335,7 +7335,7 @@ func TestHarnessInstallBatchFailsClosedBeforeWritingWhenOrbitIDsRepeat(t *testin
 				"    value: Orbit\n" +
 				"    description: Product title\n",
 			Files: map[string]string{
-				"docs/guide.md": "$project_name guide\n",
+				"docs/guide.md": "{{ vars.project_name }} guide\n",
 			},
 		},
 	})
@@ -8025,7 +8025,7 @@ func TestHarnessInstallOverwriteExistingReplacesOwnedFilesAndUpdatesInstallRecor
 
 	runtimeBranch := strings.TrimSpace(repo.Run(t, "branch", "--show-current"))
 	repo.Run(t, "checkout", "orbit-template/docs")
-	repo.WriteFile(t, "docs/reference.md", "$project_name reference\n")
+	repo.WriteFile(t, "docs/reference.md", "{{ vars.project_name }} reference\n")
 	repo.Run(t, "rm", "-f", "docs/guide.md")
 	repo.AddAndCommit(t, "update template branch contents")
 	updatedCommit := strings.TrimSpace(repo.Run(t, "rev-parse", "HEAD"))
@@ -8407,7 +8407,7 @@ func TestHarnessInstallHarnessTemplateOverrideBundleBackedMemberShrinksPreviousB
 
 	cmdData, err := os.ReadFile(filepath.Join(runtimeRepo.Root, "cmd", "main.go"))
 	require.NoError(t, err)
-	require.Equal(t, "package main\n\nconst name = \"orbitctl\"\n", string(cmdData))
+	require.Equal(t, "package main\n\nconst name = \"orbit-installed\"\n", string(cmdData))
 
 	guideData, err := os.ReadFile(filepath.Join(runtimeRepo.Root, "docs", "guide.md"))
 	require.NoError(t, err)
@@ -8593,7 +8593,7 @@ func TestHarnessInstallOverwriteFailsWhenExistingOwnedFilesCannotBeSafelyReconst
 
 	runtimeBranch := strings.TrimSpace(repo.Run(t, "branch", "--show-current"))
 	repo.Run(t, "checkout", "orbit-template/docs")
-	repo.WriteFile(t, "docs/reference.md", "$project_name reference\n")
+	repo.WriteFile(t, "docs/reference.md", "{{ vars.project_name }} reference\n")
 	repo.Run(t, "rm", "-f", "docs/guide.md")
 	repo.AddAndCommit(t, "update template branch contents")
 	repo.Run(t, "checkout", runtimeBranch)
@@ -8648,7 +8648,7 @@ func TestHarnessInstallOverwriteFailsClosedWhenInstallRecordLacksVariablesSnapsh
 
 	runtimeBranch := strings.TrimSpace(repo.Run(t, "branch", "--show-current"))
 	repo.Run(t, "checkout", "orbit-template/docs")
-	repo.WriteFile(t, "docs/reference.md", "$project_name reference\n")
+	repo.WriteFile(t, "docs/reference.md", "{{ vars.project_name }} reference\n")
 	repo.Run(t, "rm", "-f", "docs/guide.md")
 	repo.AddAndCommit(t, "update template branch contents")
 	repo.Run(t, "checkout", runtimeBranch)
@@ -9060,7 +9060,7 @@ func TestHarnessInstallDryRunHarnessTemplateConflictsOnInstalledBundleVariableDe
 		"  qa_owner:\n"+
 		"    value: release-team\n"+
 		"    description: QA owner\n")
-	conflictingRepo.WriteFile(t, "qa/checklist.md", "$project_name checklist for $qa_owner\n")
+	conflictingRepo.WriteFile(t, "qa/checklist.md", "{{ vars.project_name }} checklist for {{ vars.qa_owner }}\n")
 	_, _, err = executeHarnessCLI(t, conflictingRepo.Root, "add", "qa")
 	require.NoError(t, err)
 	conflictingRepo.AddAndCommit(t, "seed conflicting bundle source")
@@ -9461,7 +9461,7 @@ func TestHarnessInstallHarnessTemplateLocalWriteJSON(t *testing.T) {
 
 	cmdData, err := os.ReadFile(filepath.Join(runtimeRepo.Root, "cmd", "main.go"))
 	require.NoError(t, err)
-	require.Equal(t, "package main\n\nconst name = \"orbitctl\"\n", string(cmdData))
+	require.Equal(t, "package main\n\nconst name = \"orbit-installed\"\n", string(cmdData))
 
 	runtimeFile, err := harnesspkg.LoadRuntimeFile(runtimeRepo.Root)
 	require.NoError(t, err)
@@ -9544,7 +9544,7 @@ func TestHarnessInstallHarnessTemplateOverwriteExistingReplacesSameBundle(t *tes
 	_, _, err = executeHarnessCLI(t, sourceRepo.Root, "remove", "docs")
 	require.NoError(t, err)
 	sourceRepo.WriteFile(t, "cmd/main.go", "package main\n\nconst name = \"orbit-next\"\n")
-	sourceRepo.WriteFile(t, "AGENTS.md", "Workspace guide for $project_name v2\n")
+	sourceRepo.WriteFile(t, "AGENTS.md", "Workspace guide for {{ vars.project_name }} v2\n")
 	sourceRepo.AddAndCommit(t, "update harness template source")
 
 	_, err = harnesspkg.SaveTemplateBranch(context.Background(), harnesspkg.TemplateSaveInput{
@@ -9766,8 +9766,8 @@ func TestHarnessTemplateSaveCreatesHarnessTemplateBranch(t *testing.T) {
 
 	agentsData, err := gitpkg.ReadFileAtRev(context.Background(), repo.Root, "harness-template/workspace", "AGENTS.md")
 	require.NoError(t, err)
-	require.Contains(t, string(agentsData), "$project_name")
-	require.Contains(t, string(agentsData), "$command_name")
+	require.Contains(t, string(agentsData), "{{ vars.project_name }}")
+	require.Contains(t, string(agentsData), "{{ vars.command_name }}")
 
 	inspectStdout, inspectStderr, err := executeOrbitCLI(t, repo.Root, "branch", "inspect", "harness-template/workspace", "--json")
 	require.NoError(t, err)
@@ -10002,7 +10002,7 @@ func TestHarnessTemplateSaveOverwriteRewritesExistingBranch(t *testing.T) {
 	require.NoError(t, err)
 	firstCommit := strings.TrimSpace(repo.Run(t, "rev-parse", "harness-template/workspace"))
 
-	repo.WriteFile(t, "docs/guide.md", "Orbit guide v2 for $project_name\n")
+	repo.WriteFile(t, "docs/guide.md", "Orbit guide v2 for {{ vars.project_name }}\n")
 	repo.AddAndCommit(t, "update runtime docs")
 
 	stdout, stderr, err := executeHarnessCLI(t, repo.Root, "template", "save", "--to", "harness-template/workspace", "--overwrite", "--json")
@@ -10021,7 +10021,7 @@ func TestHarnessTemplateSaveOverwriteRewritesExistingBranch(t *testing.T) {
 
 	savedData, err := gitpkg.ReadFileAtRev(context.Background(), repo.Root, "harness-template/workspace", "docs/guide.md")
 	require.NoError(t, err)
-	require.Contains(t, string(savedData), "$project_name")
+	require.Contains(t, string(savedData), "{{ vars.project_name }}")
 	require.Contains(t, string(savedData), "v2")
 }
 
@@ -10044,7 +10044,7 @@ func TestHarnessTemplateSaveEditTemplateWritesEditedTemplateWithoutMutatingRunti
 	editorScript := filepath.Join(repo.Root, "edit-template.sh")
 	require.NoError(t, os.WriteFile(editorScript, []byte(""+
 		"#!/bin/sh\n"+
-		"printf '%s\\n' '$project_name guide at $service_url' > \"$1/docs/guide.md\"\n"), 0o755))
+		"printf '%s\\n' '{{ vars.project_name }} guide at {{ vars.service_url }}' > \"$1/docs/guide.md\"\n"), 0o755))
 	t.Setenv("EDITOR", editorScript)
 
 	_, _, err := executeHarnessCLI(t, repo.Root, "template", "save", "--to", "harness-template/workspace", "--edit-template")
@@ -10056,7 +10056,7 @@ func TestHarnessTemplateSaveEditTemplateWritesEditedTemplateWithoutMutatingRunti
 
 	templateData, err := gitpkg.ReadFileAtRev(context.Background(), repo.Root, "harness-template/workspace", "docs/guide.md")
 	require.NoError(t, err)
-	require.Equal(t, "$project_name guide at $service_url\n", string(templateData))
+	require.Equal(t, "{{ vars.project_name }} guide at {{ vars.service_url }}\n", string(templateData))
 
 	manifestData, err := gitpkg.ReadFileAtRev(context.Background(), repo.Root, "harness-template/workspace", ".harness/template.yaml")
 	require.NoError(t, err)
@@ -10298,7 +10298,7 @@ func createAlternateDocsTemplateBranch(t *testing.T, repo *testutil.Repo) string
 	runtimeBranch := strings.TrimSpace(repo.Run(t, "branch", "--show-current"))
 	repo.Run(t, "checkout", "orbit-template/docs")
 	repo.Run(t, "checkout", "-b", "orbit-template/docs-alt")
-	repo.WriteFile(t, "docs/reference.md", "$project_name reference\n")
+	repo.WriteFile(t, "docs/reference.md", "{{ vars.project_name }} reference\n")
 	repo.Run(t, "rm", "-f", "docs/guide.md")
 	repo.AddAndCommit(t, "create alternate docs template branch")
 	alternateCommit := strings.TrimSpace(repo.Run(t, "rev-parse", "HEAD"))
@@ -10327,7 +10327,7 @@ func seedHarnessAgentsComposeRepo(t *testing.T) *testutil.Repo {
 		"meta:\n"+
 		"  file: .harness/orbits/docs.yaml\n"+
 		"  agents_template: |\n"+
-		"    You are the $project_name docs orbit.\n"+
+		"    You are the {{ vars.project_name }} docs orbit.\n"+
 		"  include_in_projection: true\n"+
 		"  include_in_write: true\n"+
 		"  include_in_export: true\n"+
@@ -10364,7 +10364,7 @@ func seedHarnessAgentsComposeRepo(t *testing.T) *testutil.Repo {
 		"meta:\n"+
 		"  file: .harness/orbits/cmd.yaml\n"+
 		"  agents_template: |\n"+
-		"    Use $command_name for $project_name releases.\n"+
+		"    Use {{ vars.command_name }} for {{ vars.project_name }} releases.\n"+
 		"  include_in_projection: true\n"+
 		"  include_in_write: true\n"+
 		"  include_in_export: true\n"+

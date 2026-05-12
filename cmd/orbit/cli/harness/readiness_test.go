@@ -104,7 +104,7 @@ func TestEvaluateRuntimeReadinessInstallBackedOrbitWithMissingRequiredBindingsIs
 
 	spec, err := orbitpkg.DefaultHostedMemberSchemaSpec("docs")
 	require.NoError(t, err)
-	spec.Meta.AgentsTemplate = "Docs orbit for $project_name\n"
+	spec.Meta.AgentsTemplate = "Docs orbit for {{ vars.project_name }}\n"
 	_, err = orbitpkg.WriteHostedOrbitSpec(repo.Root, spec)
 	require.NoError(t, err)
 
@@ -397,7 +397,7 @@ func TestEvaluateRuntimeReadinessInvalidAgentsContainerIsBroken(t *testing.T) {
 
 	spec, err := orbitpkg.DefaultHostedMemberSchemaSpec("docs")
 	require.NoError(t, err)
-	spec.Meta.AgentsTemplate = "Docs orbit for $project_name\n"
+	spec.Meta.AgentsTemplate = "Docs orbit for {{ vars.project_name }}\n"
 	_, err = orbitpkg.WriteHostedOrbitSpec(repo.Root, spec)
 	require.NoError(t, err)
 
