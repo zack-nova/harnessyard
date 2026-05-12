@@ -91,6 +91,143 @@ guidance, and package-owned runtime files. Retained Git history, audit output,
 provenance data, detached install records, or removed hosted OrbitSpecs must not
 make the package appear installed, active, reapplicable, or readiness-relevant.
 
+## Runtime Bindings Surface
+
+The canonical Runtime Bindings file is:
+
+```text
+.harness/vars.yaml
+```
+
+The public Runtime Bindings management surface is:
+
+```bash
+hyard vars path
+hyard vars init <package-source>
+hyard vars validate
+hyard vars doctor
+hyard vars explain [name]
+```
+
+Public documentation should use **Runtime Bindings** for runtime-owned values
+that satisfy Package Variables. It should not teach users the historical
+`bindings` command tree or `.orbit/vars.yaml`.
+
+Package lifecycle commands may continue to accept `--bindings` to point at a
+Runtime Bindings file, but examples should use `.harness/vars.yaml`.
+
+The public Runtime Bindings schema version is `2`. Pre-release schema `1`
+bindings documents and scalar shorthand are not part of the public release
+contract.
+
+The minimum public schema supports inline values and explicit value sources:
+
+```yaml
+schema_version: 2
+variables:
+  project_name:
+    value: Harness Yard
+  github_token:
+    value_from:
+      env: GITHUB_TOKEN
+  issue_payload:
+    value_from:
+      file: .harness/context/issue.json
+scoped_variables:
+  docs:
+    variables:
+      project_name:
+        value: Harness Yard Docs
+```
+
+`scoped_variables.<namespace>.variables` remains the public Scoped Bindings
+shape in schema `2`. The namespace is the installed package or orbit namespace
+whose Package Variables should receive the scoped value.
+
+Package-owned runtime file rendering uses namespaced Package Template References:
+
+```md
+Project: {{ vars.project_name }}
+```
+
+The initial Package Template Reference context supports only the `vars`
+namespace. References to `package.*`, `runtime.*`, `context.*`, `secrets.*`, or
+any other namespace must fail with an unsupported namespace diagnostic instead
+of being preserved or rendered as an empty string.
+
+The pre-release `$project_name` shorthand is not part of the public template
+contract. GitHub Actions expressions such as `${{ secrets.GITHUB_TOKEN }}` are
+not Harness Yard Package Template References and must not be interpreted by the
+Harness Yard renderer.
+
+Package Template Reference rendering is strict. Public installation rendering
+must fail before writing package-owned runtime output for unsupported namespaces,
+unknown `vars.*` references, unresolved declared variables, or malformed Harness
+Yard template syntax. Diagnostics should include the file path when available;
+spelling suggestions are not required in the initial contract.
+
+Package Variable declarations may include `required`, `description`,
+`sensitive`, and `default`. Later type, enum, validation, migration, and IDE
+schema support should extend this contract without reintroducing schema `1`.
+`default` is a declaration-side fallback used only when no scoped or global
+Runtime Binding is present. Defaults are reported as `source: default`, satisfy
+required variables, and do not get written to `.harness/vars.yaml` unless a user
+explicitly asks `hyard vars init --defaults` to materialize them. Sensitive
+Package Variables must not declare defaults.
+
+Sensitive Package Variables must not be bound with inline `value` or
+`value_from.file`. The initial public contract only accepts `value_from.env` for
+`sensitive: true` declarations, and diagnostics must redact resolved sensitive
+values.
+
+Required Package Variables are strict by default. Public `hyard install` flows
+must fail before writing package-owned runtime output when required Runtime
+Bindings are missing. Public documentation should not teach
+`--strict-bindings`, `--allow-unresolved-bindings`, or unresolved runtime
+placeholders as normal product behavior.
+
+When `hyard install` is attached to an interactive terminal and required Runtime
+Bindings are missing, it may prompt for the missing values, write them to
+`.harness/vars.yaml`, validate them, and then continue installation. In
+non-interactive or CI contexts it must fail with recovery commands such as:
+
+```bash
+hyard vars init <package-source> --out .harness/vars.yaml
+hyard install <package-source> --bindings .harness/vars.yaml
+```
+
+The initial `hyard vars doctor` scope is limited to Runtime Bindings problems
+that can block safe package installation or variable resolution:
+
+- invalid `.harness/vars.yaml` schema or schema version
+- invalid variable names
+- bindings that provide both `value` and `value_from`, or neither
+- blank `value_from.env` or `value_from.file`
+- missing required Runtime Bindings for installed or selected packages
+- sensitive Package Variables bound through inline `value` or `value_from.file`
+- unset environment variables referenced by `value_from.env`
+- warnings for undeclared bindings and missing `value_from.file` paths
+
+Template usage scanning, unknown template references, typed validation, enum
+validation, deprecation, migration, JSON Schema generation, and secret-manager
+integration are not part of the initial `doctor` contract.
+
+The initial `hyard vars explain [name]` scope is limited to the declaration and
+selected resolution result. Text and JSON output should report:
+
+- variable name
+- resolved or unresolved status
+- value source, using `.harness/vars.yaml`, `env:<name>`, `file:<path>`, or
+  `default`
+- redacted value for sensitive variables and literal value for non-sensitive
+  variables
+- required and sensitive flags
+- installed package or orbit ids that declared the variable
+- selected scope, either global or scoped namespace
+
+Usage locations, template reference locations, shadowed candidates, and full
+precedence trees are not part of the initial `explain` contract.
+
 ## Audit Review Surface
 
 The public read-only review command is:

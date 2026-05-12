@@ -220,6 +220,26 @@ _Avoid_: add
 Named inputs that an installable package may declare for Package Installation; absence means the package needs no user-provided values.
 _Avoid_: environment variables, runtime state
 
+**Sensitive Package Variable**:
+A Package Variable whose value must not be persisted inline or displayed in normal diagnostics.
+_Avoid_: ordinary variable, debug value
+
+**Runtime Bindings**:
+Runtime-owned values or value sources that satisfy Package Variables for a Harness Runtime.
+_Avoid_: repo vars, fill-in vars, `.orbit/vars.yaml`
+
+**Value Source**:
+An explicit non-inline place a Runtime Binding can read from, such as an environment variable or a file.
+_Avoid_: implicit shell expansion, GitHub Actions expression
+
+**Scoped Bindings**:
+Runtime Bindings limited to one package or orbit namespace when a shared Package Variable name needs package-specific values.
+_Avoid_: global variables, environment variables
+
+**Package Template Reference**:
+A namespaced placeholder in package-owned content that resolves from a declared Package Variable during Package Installation.
+_Avoid_: shell variable, GitHub Actions expression, `$name`
+
 **Package-Owned Runtime File**:
 A runtime file written into the current Harness Runtime by Package Installation and owned by that package.
 _Avoid_: projection path, processed file
@@ -432,8 +452,18 @@ _Avoid_: rule
 - A **Harness Runtime** or **Harness Package** may combine multiple **Orbit Workflows** into one agent work system.
 - A **Package Installation** may declare zero **Package Variables**; zero variables is a complete variable contract, not a missing one.
 - A **Package Installation** records its complete **Package Variables** contract, including the explicit zero-variable case.
-- Users provide **Package Variables** through bindings, usually with `.harness/vars.yaml` or an explicit `--bindings` file.
-- User convention documentation locates bindings files and commands without defining the complete bindings schema.
+- Users provide **Package Variables** through **Runtime Bindings**, either in the canonical `.harness/vars.yaml` file or through an explicit `--bindings` file.
+- `.orbit/vars.yaml` is not a **Runtime Bindings** path or a public product compatibility surface.
+- **Runtime Bindings** may provide inline values or explicit **Value Sources**; implicit environment expansion is not part of the Runtime Bindings model.
+- **Sensitive Package Variables** must be bound through non-persisted value sources and redacted in diagnostics.
+- Declaration defaults satisfy **Package Variables** only when no scoped or global **Runtime Binding** is present.
+- Package-owned content resolves **Package Template References** through the `{{ vars.<name> }}` syntax.
+- The initial **Package Template Reference** context contains only the `vars` namespace.
+- **Package Template Reference** rendering fails closed on unsupported namespaces, unknown variables, unresolved variables, and malformed syntax.
+- Missing required **Runtime Bindings** block **Package Installation** rather than producing unresolved runtime placeholders.
+- Interactive **Package Installation** may collect missing required **Runtime Bindings** before writing package-owned runtime output.
+- Public Runtime Bindings management is exposed through the `hyard vars` command surface.
+- User convention documentation locates Runtime Bindings files and commands without defining the complete bindings schema.
 - **Package Installation** in **Run View** may automatically compose root guidance and apply **Run View Cleanup** after package truth is written.
 - **Package Installation** in **Run View** outputs guidance incrementally for the newly installed package rather than recomposing existing markerless presentation guidance.
 - **Package Installation** appends incremental **Run View Root Guidance** to the end of the relevant root guidance file with stable separation.

@@ -83,6 +83,17 @@ new follow-up work should update this file or create a fresh focused issue.
 - Bundle-owned guidance has no first-class editing workflow. Users can compose
   and backfill, but editing ownership across bundle boundaries is still awkward.
 
+## Runtime Bindings Contract
+
+- Runtime Bindings need the accepted schema `2` reset from ADR 0005. Implement
+  the work in this order: core bindings contract and resolution, strict
+  `{{ vars.<name> }}` rendering, public `hyard vars` commands, strict install
+  onboarding, then public help/docs cleanup.
+- Public Runtime Bindings behavior should stay centered on `.harness/vars.yaml`
+  and `hyard vars`; `.orbit/vars.yaml`, schema `1`, `$name` templates,
+  unresolved placeholders, `--strict-bindings`, and public
+  `--allow-unresolved-bindings` should not remain release-facing surfaces.
+
 ## Authoring Schema And Current-Worktree Semantics
 
 - OrbitSpec `behavior` is canonical, but legacy `rules` remains accepted input

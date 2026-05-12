@@ -16,7 +16,7 @@ files have different editing policies.
 | Policy | Visible files | Modify with | Validate with |
 | --- | --- | --- | --- |
 | Tool-owned control-plane truth | `.harness/manifest.yaml`, `.harness/installs/*.yaml`, `.harness/bundles/*.yaml`, `.harness/template.yaml`, `.harness/template_members/*.yaml` | `hyard create`, `hyard init`, `hyard install`, `hyard uninstall`, `hyard publish`, `hyard assign`, `hyard unassign` | `hyard audit`, `hyard check` |
-| Authored package truth | `.harness/orbits/*.yaml`, `.harness/vars.yaml` | `hyard orbit ...`, `hyard guide save`, installation and bindings commands; advanced users may hand-edit | `hyard orbit validate`, `hyard orbit prepare <package> --check`, `hyard check`, `hyard audit` |
+| Authored package truth | `.harness/orbits/*.yaml`, `.harness/vars.yaml` | `hyard orbit ...`, `hyard guide save`, installation and vars commands; advanced users may hand-edit | `hyard orbit validate`, `hyard orbit prepare <package> --check`, `hyard check`, `hyard audit` |
 | Editable content and presentation | `AGENTS.md`, `HUMANS.md`, `BOOTSTRAP.md`, authored docs/content, `orbit_member` hints, package command and skill assets | Edit files directly, then run `hyard guide save`, `hyard view run`, or `hyard orbit content apply` when applicable | `hyard view status`, `hyard check`, `hyard audit` |
 | Repo-local state and cache | `.git/orbit/state/*` | Harness Yard commands only | Re-run the command that produced the state, or use `hyard check` / `hyard audit` |
 
@@ -52,7 +52,7 @@ Harness Yard stores versioned truth under `.harness/*`.
 | --- | --- | --- |
 | `.harness/manifest.yaml` | Revision identity. | `hyard create`, `hyard init`, `hyard clone`, `hyard publish` |
 | `.harness/orbits/*.yaml` | Hosted OrbitSpec authored truth for active runtime packages and authored revisions. | `hyard orbit ...`, `hyard guide save`, validated advanced edits, `hyard uninstall` deletion when package ownership is unambiguous |
-| `.harness/vars.yaml` | Runtime-owned package variable bindings. | Bindings helpers, install commands, validated advanced edits |
+| `.harness/vars.yaml` | Runtime-owned Runtime Bindings for Package Variables. | `hyard vars ...`, install commands, validated advanced edits |
 | `.harness/installs/*.yaml` | Active installed Orbit Package records. Deleted records and retained Git history are not active install state. | `hyard install`, `hyard uninstall` |
 | `.harness/bundles/*.yaml` | Harness package composition records. | `hyard publish`, `hyard assign`, `hyard unassign` |
 | `.harness/template.yaml` | Template metadata. | Publish or template commands |
@@ -122,15 +122,44 @@ Run View root guidance.
 Packages may declare Package Variables. Absence of variables means the package
 needs no user-provided values.
 
-Runtime users usually provide bindings with:
+Runtime users usually provide Runtime Bindings with:
 
 ```bash
 hyard install <package-source> --bindings .harness/vars.yaml
 ```
 
 Reusable runtime-owned bindings belong in `.harness/vars.yaml` when the runtime
-owns them. This document locates bindings files and commands; it does not define
-the complete bindings YAML schema.
+owns them. The public management surface is `hyard vars ...`. This document
+locates Runtime Bindings files and commands; it does not define the complete
+bindings YAML schema.
+
+The public Runtime Bindings document starts at `schema_version: 2`. It supports
+inline `value` bindings and explicit `value_from.env` or `value_from.file`
+sources. Scoped Bindings use `scoped_variables.<namespace>.variables`, where the
+namespace is the installed package or orbit namespace. Pre-release schema `1`
+documents and scalar shorthand are not part of the public configuration
+contract. Package-owned runtime files reference Package Variables with
+`{{ vars.<name> }}`; `vars` is the only initial template namespace, and
+unsupported namespaces fail rendering. Pre-release `$name` shorthand is not part
+of the public template contract. Rendering is strict: unsupported namespaces,
+unknown `vars.*` references, unresolved declared variables, and malformed
+Harness Yard template syntax block package-owned runtime writes. GitHub Actions
+`${{ ... }}` expressions are not Harness Yard template references. Sensitive
+Package Variables may only use `value_from.env` in the initial public contract;
+inline `value` and `value_from.file` are rejected for sensitive declarations,
+and sensitive declarations may not define defaults.
+Declaration defaults are fallbacks, not Runtime Bindings; they satisfy required
+variables only when no scoped or global binding is present. Required Package
+Variables are strict by default: missing Runtime Bindings block package
+installation instead of writing unresolved placeholders. Interactive installs
+may prompt for missing required Runtime Bindings and persist them to
+`.harness/vars.yaml`; non-interactive installs fail with `hyard vars init`
+recovery guidance.
+
+`hyard vars doctor` is the initial CI-oriented Runtime Bindings preflight. It
+checks schema shape, required binding resolution, sensitive binding policy,
+explicit value source references, and undeclared binding warnings. It does not
+yet scan template usage or enforce later typed declaration fields.
 
 ## Member Hints
 
