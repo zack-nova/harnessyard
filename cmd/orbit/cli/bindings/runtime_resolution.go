@@ -43,6 +43,10 @@ type RuntimeBindingResolution struct {
 // ResolveRuntimeBinding selects a Runtime Binding using public P0 precedence:
 // scoped Runtime Binding, global Runtime Binding, declaration default, unresolved.
 func ResolveRuntimeBinding(input RuntimeBindingInput) (RuntimeBindingResolution, error) {
+	if err := ValidateVariableDeclaration(input.Declaration); err != nil {
+		return RuntimeBindingResolution{}, fmt.Errorf("%s: %w", input.Name, err)
+	}
+
 	result := RuntimeBindingResolution{
 		Name:      input.Name,
 		Required:  input.Declaration.Required,

@@ -49,3 +49,21 @@ func TestMergeDeclarationsFailsOnConflictingDescriptions(t *testing.T) {
 	require.Equal(t, "project_name", conflict.Name)
 	require.Equal(t, []string{"orbit-template/cmd", "orbit-template/docs"}, conflict.Sources)
 }
+
+func TestMergeDeclarationsRejectsSensitiveDefault(t *testing.T) {
+	t.Parallel()
+
+	defaultValue := "ghp_secret"
+	merged := map[string]VariableDeclaration{}
+	contributors := map[string][]string{}
+
+	err := MergeDeclarations(merged, contributors, map[string]VariableDeclaration{
+		"github_token": {
+			Required:  true,
+			Sensitive: true,
+			Default:   &defaultValue,
+		},
+	}, "orbit-template/docs")
+	require.Error(t, err)
+	require.ErrorContains(t, err, "sensitive variables must not define default")
+}

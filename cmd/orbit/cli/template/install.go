@@ -533,6 +533,9 @@ func validateInstallVariablesSnapshot(snapshot InstallVariablesSnapshot) error {
 		if err := contractutil.ValidateVariableName(name); err != nil {
 			return fmt.Errorf("declarations.%s: %w", name, err)
 		}
+		if err := bindings.ValidateVariableDeclaration(snapshot.Declarations[name]); err != nil {
+			return fmt.Errorf("declarations.%s: %w", name, err)
+		}
 	}
 	for _, name := range contractutil.SortedKeys(snapshot.Namespaces) {
 		if err := contractutil.ValidateVariableName(name); err != nil {

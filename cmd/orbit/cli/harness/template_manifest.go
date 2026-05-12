@@ -8,6 +8,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/zack-nova/harnessyard/cmd/orbit/cli/bindings"
 	"github.com/zack-nova/harnessyard/cmd/orbit/cli/ids"
 	"github.com/zack-nova/harnessyard/cmd/orbit/cli/internal/contractutil"
 )
@@ -166,6 +167,15 @@ func ValidateTemplateManifest(manifest TemplateManifest) error {
 
 	for _, name := range contractutil.SortedKeys(manifest.Variables) {
 		if err := contractutil.ValidateVariableName(name); err != nil {
+			return fmt.Errorf("variables.%s: %w", name, err)
+		}
+		spec := manifest.Variables[name]
+		if err := bindings.ValidateVariableDeclaration(bindings.VariableDeclaration{
+			Description: spec.Description,
+			Required:    spec.Required,
+			Sensitive:   spec.Sensitive,
+			Default:     spec.Default,
+		}); err != nil {
 			return fmt.Errorf("variables.%s: %w", name, err)
 		}
 	}

@@ -9,6 +9,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/zack-nova/harnessyard/cmd/orbit/cli/bindings"
 	gitpkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/git"
 	"github.com/zack-nova/harnessyard/cmd/orbit/cli/ids"
 	"github.com/zack-nova/harnessyard/cmd/orbit/cli/internal/contractutil"
@@ -366,6 +367,15 @@ func ValidateOrbitTemplateManifestFile(file ManifestFile) error {
 	if file.Variables != nil {
 		for _, name := range contractutil.SortedKeys(file.Variables) {
 			if err := contractutil.ValidateVariableName(name); err != nil {
+				return fmt.Errorf("variables.%s: %w", name, err)
+			}
+			spec := file.Variables[name]
+			if err := bindings.ValidateVariableDeclaration(bindings.VariableDeclaration{
+				Description: spec.Description,
+				Required:    spec.Required,
+				Sensitive:   spec.Sensitive,
+				Default:     spec.Default,
+			}); err != nil {
 				return fmt.Errorf("variables.%s: %w", name, err)
 			}
 		}

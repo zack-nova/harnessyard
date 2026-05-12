@@ -232,6 +232,33 @@ func TestWriteAndLoadOrbitTemplateManifestFileRoundTrip(t *testing.T) {
 	require.Equal(t, input, loaded)
 }
 
+func TestLoadOrbitTemplateManifestFileRejectsSensitiveDefault(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Dir(ManifestPath(repoRoot)), 0o755))
+	require.NoError(t, os.WriteFile(ManifestPath(repoRoot), []byte(""+
+		"schema_version: 1\n"+
+		"kind: orbit_template\n"+
+		"template:\n"+
+		"  package:\n"+
+		"    type: orbit\n"+
+		"    name: docs\n"+
+		"  created_from_branch: main\n"+
+		"  created_from_commit: abc123\n"+
+		"  created_at: 2026-04-05T11:00:00Z\n"+
+		"variables:\n"+
+		"  github_token:\n"+
+		"    required: true\n"+
+		"    sensitive: true\n"+
+		"    default: ghp_secret\n"), 0o600))
+
+	_, err := LoadManifestFile(repoRoot)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "variables.github_token")
+	require.ErrorContains(t, err, "sensitive variables must not define default")
+}
+
 func TestWriteAndLoadHarnessTemplateManifestFileRoundTrip(t *testing.T) {
 	t.Parallel()
 

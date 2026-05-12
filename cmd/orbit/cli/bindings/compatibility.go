@@ -18,8 +18,24 @@ func (err *DeclarationConflictError) Error() string {
 	return fmt.Sprintf("variable conflict for %q (sources: %s)", err.Name, strings.Join(err.Sources, ", "))
 }
 
+// ValidateVariableDeclaration applies declaration-local Package Variable policy.
+func ValidateVariableDeclaration(declaration VariableDeclaration) error {
+	if declaration.Sensitive && declaration.Default != nil {
+		return fmt.Errorf("sensitive variables must not define default")
+	}
+
+	return nil
+}
+
 // MergeVariableDeclaration applies the shared compatibility policy for one variable declaration.
 func MergeVariableDeclaration(name string, current VariableDeclaration, next VariableDeclaration) (VariableDeclaration, error) {
+	if err := ValidateVariableDeclaration(current); err != nil {
+		return VariableDeclaration{}, fmt.Errorf("variable conflict for %q: %w", name, err)
+	}
+	if err := ValidateVariableDeclaration(next); err != nil {
+		return VariableDeclaration{}, fmt.Errorf("variable conflict for %q: %w", name, err)
+	}
+
 	switch {
 	case current.Description == next.Description:
 	case current.Description == "":
@@ -40,7 +56,7 @@ func MergeVariableDeclaration(name string, current VariableDeclaration, next Var
 		return VariableDeclaration{}, fmt.Errorf("variable conflict for %q", name)
 	}
 	if current.Sensitive && current.Default != nil {
-		return VariableDeclaration{}, fmt.Errorf("variable conflict for %q", name)
+		return VariableDeclaration{}, fmt.Errorf("variable conflict for %q: %w", name, ValidateVariableDeclaration(current))
 	}
 
 	return current, nil
@@ -55,6 +71,9 @@ func MergeDeclarations(
 ) error {
 	for _, name := range contractutil.SortedKeys(next) {
 		nextDeclaration := next[name]
+		if err := ValidateVariableDeclaration(nextDeclaration); err != nil {
+			return fmt.Errorf("validate variable %q declaration: %w", name, err)
+		}
 		currentDeclaration, ok := merged[name]
 		if !ok {
 			merged[name] = nextDeclaration

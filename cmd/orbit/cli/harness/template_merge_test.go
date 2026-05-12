@@ -156,3 +156,24 @@ func TestMergeTemplateMemberCandidatesFailsOnVariableDescriptionConflict(t *test
 	require.ErrorContains(t, err, `variable conflict for "project_name"`)
 	require.ErrorContains(t, err, `members: cmd, docs`)
 }
+
+func TestMergeTemplateMemberCandidatesRejectsSensitiveDefault(t *testing.T) {
+	t.Parallel()
+
+	defaultValue := "ghp_secret"
+	_, err := MergeTemplateMemberCandidates([]TemplateMemberCandidate{
+		{
+			OrbitID: "docs",
+			Variables: map[string]TemplateVariableSpec{
+				"github_token": {
+					Required:  true,
+					Sensitive: true,
+					Default:   &defaultValue,
+				},
+			},
+		},
+	})
+	require.Error(t, err)
+	require.ErrorContains(t, err, `variable conflict for "github_token"`)
+	require.ErrorContains(t, err, `members: docs`)
+}

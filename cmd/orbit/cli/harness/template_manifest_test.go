@@ -159,6 +159,37 @@ func TestLoadTemplateManifestAllowsEmptyMembersAndVariables(t *testing.T) {
 	}, loaded)
 }
 
+func TestLoadTemplateManifestRejectsSensitiveDefault(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Dir(TemplatePath(repoRoot)), 0o755))
+	require.NoError(t, os.WriteFile(TemplatePath(repoRoot), []byte(""+
+		"schema_version: 1\n"+
+		"kind: harness_template\n"+
+		"template:\n"+
+		"  harness_id: project_a\n"+
+		"  default_template: false\n"+
+		"  created_from_branch: main\n"+
+		"  created_from_commit: abc123\n"+
+		"  created_at: 2026-03-25T13:00:00Z\n"+
+		"  root_guidance:\n"+
+		"    agents: false\n"+
+		"    humans: false\n"+
+		"    bootstrap: false\n"+
+		"members: []\n"+
+		"variables:\n"+
+		"  github_token:\n"+
+		"    required: true\n"+
+		"    sensitive: true\n"+
+		"    default: ghp_secret\n"), 0o600))
+
+	_, err := LoadTemplateManifest(repoRoot)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "variables.github_token")
+	require.ErrorContains(t, err, "sensitive variables must not define default")
+}
+
 func TestValidateTemplateManifestRejectsDuplicateMembers(t *testing.T) {
 	t.Parallel()
 

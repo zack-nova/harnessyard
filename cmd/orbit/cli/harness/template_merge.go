@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/zack-nova/harnessyard/cmd/orbit/cli/bindings"
 	orbittemplate "github.com/zack-nova/harnessyard/cmd/orbit/cli/template"
 )
 
@@ -74,6 +75,12 @@ func MergeTemplateMemberCandidates(candidates []TemplateMemberCandidate) (Templa
 		}
 
 		for name, next := range candidate.Variables {
+			if err := validateTemplateVariableSpec(next); err != nil {
+				return TemplateMergeResult{}, &TemplateVariableConflictError{
+					Name:    name,
+					Members: appendContributor(variableContributors[name], candidate.OrbitID),
+				}
+			}
 			current, ok := variables[name]
 			if !ok {
 				variables[name] = next
@@ -135,8 +142,23 @@ func mergeTemplateVariableSpec(name string, current TemplateVariableSpec, next T
 	default:
 		return TemplateVariableSpec{}, fmt.Errorf("variable conflict for %q", name)
 	}
+	if err := validateTemplateVariableSpec(current); err != nil {
+		return TemplateVariableSpec{}, fmt.Errorf("variable conflict for %q", name)
+	}
 
 	return current, nil
+}
+
+func validateTemplateVariableSpec(spec TemplateVariableSpec) error {
+	if err := bindings.ValidateVariableDeclaration(bindings.VariableDeclaration{
+		Description: spec.Description,
+		Required:    spec.Required,
+		Sensitive:   spec.Sensitive,
+		Default:     spec.Default,
+	}); err != nil {
+		return fmt.Errorf("validate variable declaration: %w", err)
+	}
+	return nil
 }
 
 func appendContributor(existing []string, contributor string) []string {
