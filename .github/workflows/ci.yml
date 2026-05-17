@@ -117,7 +117,7 @@ jobs:
 
       - name: Upload Go test timing
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: go-test-timing-${{ matrix.shard }}
           path: tmp/go-test-timing/${{ matrix.shard }}/
