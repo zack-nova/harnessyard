@@ -231,11 +231,30 @@ func TestHyardRegistryEntryOrbitWritesOutAndRegistryTargets(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Empty(t, stderr)
-	require.Contains(t, stdout, "wrote registry entry candidate")
+	require.Contains(t, stdout, "wrote registry catalog index")
 	registryData, err := os.ReadFile(filepath.Join(registryCheckout, "packages", "acme", "index.yaml"))
 	require.NoError(t, err)
-	require.Contains(t, string(registryData), "package_handle: acme/docs\n")
-	require.Contains(t, string(registryData), "source_commit_reachable:\n")
+	var catalog registryCatalogIndexYAML
+	require.NoError(t, yaml.Unmarshal(registryData, &catalog))
+	require.Equal(t, 1, catalog.SchemaVersion)
+	require.Equal(t, "acme", catalog.Namespace)
+	docs := catalog.Packages["docs"]
+	require.Equal(t, "acme/docs", docs.Handle)
+	require.Equal(t, "active", docs.Status)
+	require.Equal(t, "orbit", docs.Package.Type)
+	require.Equal(t, "docs", docs.Package.Name)
+	require.Equal(t, gitpkg.ComparablePath(fixture.SourceRemote), gitpkg.ComparablePath(docs.Source.Repository))
+	require.Equal(t, "0.1.0", docs.DistTags["latest"])
+	version := docs.Versions["0.1.0"]
+	require.Equal(t, "git", version.Locator.Kind)
+	require.Equal(t, gitpkg.ComparablePath(fixture.SourceRemote), gitpkg.ComparablePath(version.Locator.Repository))
+	require.Equal(t, "orbit-template/docs", version.Locator.Ref)
+	require.Equal(t, fixture.SourceCommit, version.Locator.Commit)
+	require.Equal(t, "refs/heads/orbit-template/docs", version.Validation.RemoteRef)
+	require.Equal(t, ".harness/manifest.yaml", version.Validation.Manifest)
+	require.Equal(t, ".harness/orbits/docs.yaml", version.Validation.PackageManifest)
+	require.Equal(t, "orbit", version.Validation.PackageIdentity.Type)
+	require.Equal(t, "docs", version.Validation.PackageIdentity.Name)
 }
 
 func TestHyardRegistryEntryHarnessWritesOutAndRegistryTargets(t *testing.T) {
@@ -285,11 +304,30 @@ func TestHyardRegistryEntryHarnessWritesOutAndRegistryTargets(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Empty(t, stderr)
-	require.Contains(t, stdout, "wrote registry entry candidate")
+	require.Contains(t, stdout, "wrote registry catalog index")
 	registryData, err := os.ReadFile(filepath.Join(registryCheckout, "packages", "acme", "index.yaml"))
 	require.NoError(t, err)
-	require.Contains(t, string(registryData), "package_handle: acme/workspace\n")
-	require.Contains(t, string(registryData), "source_commit_reachable:\n")
+	var catalog registryCatalogIndexYAML
+	require.NoError(t, yaml.Unmarshal(registryData, &catalog))
+	require.Equal(t, 1, catalog.SchemaVersion)
+	require.Equal(t, "acme", catalog.Namespace)
+	workspace := catalog.Packages["workspace"]
+	require.Equal(t, "acme/workspace", workspace.Handle)
+	require.Equal(t, "active", workspace.Status)
+	require.Equal(t, "harness", workspace.Package.Type)
+	require.Equal(t, fixture.PackageIdentity, workspace.Package.Name)
+	require.Equal(t, gitpkg.ComparablePath(fixture.SourceRemote), gitpkg.ComparablePath(workspace.Source.Repository))
+	require.Equal(t, "0.1.0", workspace.DistTags["latest"])
+	version := workspace.Versions["0.1.0"]
+	require.Equal(t, "git", version.Locator.Kind)
+	require.Equal(t, gitpkg.ComparablePath(fixture.SourceRemote), gitpkg.ComparablePath(version.Locator.Repository))
+	require.Equal(t, "harness-template/workspace", version.Locator.Ref)
+	require.Equal(t, fixture.SourceCommit, version.Locator.Commit)
+	require.Equal(t, "refs/heads/harness-template/workspace", version.Validation.RemoteRef)
+	require.Equal(t, ".harness/manifest.yaml", version.Validation.Manifest)
+	require.Equal(t, ".harness/template.yaml", version.Validation.PackageManifest)
+	require.Equal(t, "harness", version.Validation.PackageIdentity.Type)
+	require.Equal(t, fixture.PackageIdentity, version.Validation.PackageIdentity.Name)
 }
 
 func TestHyardRegistryEntryOrbitLocalPreviewCannotWriteCandidate(t *testing.T) {
@@ -542,6 +580,49 @@ type hyardRegistryEntryHarnessFixture struct {
 	PackageIdentity       string
 	BrokenSourceRemote    string
 	BrokenPackageIdentity string
+}
+
+type registryCatalogIndexYAML struct {
+	SchemaVersion int                            `yaml:"schema_version"`
+	Namespace     string                         `yaml:"namespace"`
+	Packages      map[string]registryCatalogYAML `yaml:"packages"`
+}
+
+type registryCatalogYAML struct {
+	Handle   string                                `yaml:"handle"`
+	Status   string                                `yaml:"status"`
+	Package  registryCatalogPackageIdentityYAML    `yaml:"package"`
+	Source   registryCatalogSourceYAML             `yaml:"source"`
+	DistTags map[string]string                     `yaml:"dist_tags"`
+	Versions map[string]registryCatalogVersionYAML `yaml:"versions"`
+}
+
+type registryCatalogPackageIdentityYAML struct {
+	Type string `yaml:"type"`
+	Name string `yaml:"name"`
+}
+
+type registryCatalogSourceYAML struct {
+	Repository string `yaml:"repository"`
+}
+
+type registryCatalogVersionYAML struct {
+	Locator    registryCatalogLocatorYAML    `yaml:"locator"`
+	Validation registryCatalogValidationYAML `yaml:"validation"`
+}
+
+type registryCatalogLocatorYAML struct {
+	Kind       string `yaml:"kind"`
+	Repository string `yaml:"repository"`
+	Ref        string `yaml:"ref"`
+	Commit     string `yaml:"commit"`
+}
+
+type registryCatalogValidationYAML struct {
+	RemoteRef       string                             `yaml:"remote_ref"`
+	Manifest        string                             `yaml:"manifest"`
+	PackageManifest string                             `yaml:"package_manifest"`
+	PackageIdentity registryCatalogPackageIdentityYAML `yaml:"package_identity"`
 }
 
 func seedHyardRegistryEntryOrbitFixture(t *testing.T) hyardRegistryEntryOrbitFixture {

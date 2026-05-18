@@ -233,9 +233,10 @@ hyard registry entry orbit acme/docs@0.1.0 --source origin --ref orbit-template/
 ```
 
 The candidate YAML is catalog-as-code input for the package registry review
-flow. Use stdout for review, `--out <path>` for a chosen file, or
-`--registry <path>` to write under the candidate target path in a local registry
-checkout.
+flow. Use stdout for review or `--out <path>` for a chosen candidate artifact.
+Use `--registry <path>` only when you want Harness Yard to merge the candidate
+into a local registry checkout as the final `packages/<namespace>/index.yaml`
+catalog index shape.
 
 ## Pre-Publish Checklist
 

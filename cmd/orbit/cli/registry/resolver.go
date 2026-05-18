@@ -439,6 +439,7 @@ type packageEntry struct {
 	Handle   string                  `yaml:"handle"`
 	Status   string                  `yaml:"status"`
 	Package  packageDescriptorEntry  `yaml:"package"`
+	Source   packageSourceEntry      `yaml:"source"`
 	DistTags map[string]string       `yaml:"dist_tags"`
 	Versions map[string]versionEntry `yaml:"versions"`
 }
@@ -448,8 +449,13 @@ type packageDescriptorEntry struct {
 	Name string `yaml:"name"`
 }
 
+type packageSourceEntry struct {
+	Repository string `yaml:"repository"`
+}
+
 type versionEntry struct {
-	Locator versionLocatorEntry `yaml:"locator"`
+	Locator    versionLocatorEntry    `yaml:"locator"`
+	Validation versionValidationEntry `yaml:"validation"`
 }
 
 type versionLocatorEntry struct {
@@ -457,6 +463,13 @@ type versionLocatorEntry struct {
 	Repository string `yaml:"repository"`
 	Ref        string `yaml:"ref"`
 	Commit     string `yaml:"commit"`
+}
+
+type versionValidationEntry struct {
+	RemoteRef       string                 `yaml:"remote_ref"`
+	Manifest        string                 `yaml:"manifest"`
+	PackageManifest string                 `yaml:"package_manifest"`
+	PackageIdentity packageDescriptorEntry `yaml:"package_identity"`
 }
 
 func packageEntryForName(packages map[string]packageEntry, name string) (packageEntry, bool) {

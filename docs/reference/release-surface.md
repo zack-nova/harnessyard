@@ -343,10 +343,11 @@ hyard registry entry orbit acme/docs@0.1.0 --source origin --ref orbit-template/
 hyard registry entry harness acme/workspace@0.1.0 --source origin --ref harness-template/workspace --package workspace
 ```
 
-Default output is stdout. `--out <path>` writes a chosen file, and
-`--registry <path>` writes under the candidate target path in a local registry
-checkout. Local-only evidence can preview candidate YAML but cannot create a
-submittable candidate.
+Default output is stdout. `--out <path>` writes a chosen candidate artifact.
+`--registry <path>` updates the final `packages/<namespace>/index.yaml` catalog
+index under a local registry checkout from that candidate. Local-only evidence
+can preview candidate YAML but cannot create a submittable candidate or catalog
+index entry.
 
 Maintainer-level registry source behavior is documented in
 `docs/maintainers/package-registry-source-contract.md`.
