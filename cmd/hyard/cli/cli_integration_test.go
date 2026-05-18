@@ -5106,6 +5106,114 @@ func TestHyardCloneGitLocatorPackageCoordinateRecordsProvenanceJSON(t *testing.T
 	require.Equal(t, payload.Source.Commit, record.Template.TemplateCommit)
 }
 
+func TestHyardClonePackageHandleCoordinateFromGitRegistry(t *testing.T) {
+	sourceRepo := seedHyardCloneHarnessTemplateSourceRepo(t)
+	sourceRemote := testutil.NewBareRemoteFromRepo(t, sourceRepo)
+	sourceCommit := sourceRepo.RevParse(t, "harness-template/workspace")
+
+	registryRepo := testutil.NewRepo(t)
+	registryRepo.Run(t, "branch", "-m", "main")
+	registryRepo.WriteFile(t, "curated/index.yaml", ""+
+		"schema_version: 1\n"+
+		"curated:\n"+
+		"  workspace:\n"+
+		"    target: acme/workspace\n")
+	registryRepo.WriteFile(t, "packages/acme/index.yaml", fmt.Sprintf(""+
+		"schema_version: 1\n"+
+		"namespace: acme\n"+
+		"packages:\n"+
+		"  workspace:\n"+
+		"    handle: acme/workspace\n"+
+		"    status: active\n"+
+		"    package:\n"+
+		"      type: harness\n"+
+		"      name: workspace\n"+
+		"    source:\n"+
+		"      repository: %q\n"+
+		"    dist_tags:\n"+
+		"      latest: \"0.1.0\"\n"+
+		"    versions:\n"+
+		"      \"0.1.0\":\n"+
+		"        locator:\n"+
+		"          kind: git\n"+
+		"          repository: %q\n"+
+		"          ref: harness-template/workspace\n"+
+		"          commit: %s\n", sourceRemote, sourceRemote, sourceCommit))
+	registryRepo.AddAndCommit(t, "seed clone package registry")
+	registryRemote := testutil.NewBareRemoteFromRepo(t, registryRepo)
+	parentDir := t.TempDir()
+
+	lockHyardProcessEnv(t)
+	t.Setenv("HYARD_CACHE_DIR", t.TempDir())
+
+	stdout, stderr, err := executeHyardCLIUnlocked(
+		t,
+		parentDir,
+		"clone",
+		"Workspace",
+		"--registry-source",
+		registryRemote,
+		"--json",
+	)
+	require.NoError(t, err)
+	require.Empty(t, stderr)
+
+	var payload struct {
+		HarnessRoot string `json:"harness_root"`
+		HarnessID   string `json:"harness_id"`
+		Source      struct {
+			Repo               string `json:"repo"`
+			RequestedRef       string `json:"requested_ref"`
+			ResolvedRef        string `json:"resolved_ref"`
+			Commit             string `json:"commit"`
+			PackageName        string `json:"package_name"`
+			PackageCoordinate  string `json:"package_coordinate"`
+			PackageLocatorKind string `json:"package_locator_kind"`
+			PackageLocator     string `json:"package_locator"`
+			RegistryProvenance struct {
+				RequestedCoordinate string `json:"requested_coordinate"`
+				ResolvedCoordinate  string `json:"resolved_coordinate"`
+				ResolvedVersion     string `json:"resolved_version"`
+				RegistryRemote      string `json:"registry_remote"`
+				RegistryRef         string `json:"registry_ref"`
+				PackageType         string `json:"package_type"`
+				PackageIdentity     string `json:"package_identity"`
+				SourceRemote        string `json:"source_remote"`
+				SourceRef           string `json:"source_ref"`
+				SourceCommit        string `json:"source_commit"`
+			} `json:"registry_provenance"`
+		} `json:"source"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	require.Equal(t, gitpkg.ComparablePath(filepath.Join(parentDir, "workspace")), gitpkg.ComparablePath(payload.HarnessRoot))
+	require.NotEmpty(t, payload.HarnessID)
+	require.Equal(t, gitpkg.ComparablePath(sourceRemote), gitpkg.ComparablePath(payload.Source.Repo))
+	require.Equal(t, sourceCommit, payload.Source.RequestedRef)
+	require.Equal(t, sourceCommit, payload.Source.ResolvedRef)
+	require.Equal(t, sourceCommit, payload.Source.Commit)
+	require.Equal(t, "workspace", payload.Source.PackageName)
+	require.Equal(t, "workspace@latest", payload.Source.PackageCoordinate)
+	require.Equal(t, "git", payload.Source.PackageLocatorKind)
+	require.Contains(t, payload.Source.PackageLocator, sourceCommit)
+	require.Equal(t, "workspace@latest", payload.Source.RegistryProvenance.RequestedCoordinate)
+	require.Equal(t, "acme/workspace@0.1.0", payload.Source.RegistryProvenance.ResolvedCoordinate)
+	require.Equal(t, "0.1.0", payload.Source.RegistryProvenance.ResolvedVersion)
+	require.Equal(t, gitpkg.ComparablePath(registryRemote), gitpkg.ComparablePath(payload.Source.RegistryProvenance.RegistryRemote))
+	require.Equal(t, "HEAD", payload.Source.RegistryProvenance.RegistryRef)
+	require.Equal(t, "harness", payload.Source.RegistryProvenance.PackageType)
+	require.Equal(t, "workspace", payload.Source.RegistryProvenance.PackageIdentity)
+	require.Equal(t, gitpkg.ComparablePath(sourceRemote), gitpkg.ComparablePath(payload.Source.RegistryProvenance.SourceRemote))
+	require.Equal(t, "harness-template/workspace", payload.Source.RegistryProvenance.SourceRef)
+	require.Equal(t, sourceCommit, payload.Source.RegistryProvenance.SourceCommit)
+
+	record, err := harnesspkg.LoadBundleRecord(payload.HarnessRoot, payload.HarnessID)
+	require.NoError(t, err)
+	require.NotNil(t, record.Registry)
+	require.Equal(t, "workspace@latest", record.Registry.RequestedCoordinate)
+	require.Equal(t, "acme/workspace@0.1.0", record.Registry.ResolvedCoordinate)
+	require.Equal(t, sourceCommit, record.Registry.SourceCommit)
+}
+
 func TestHyardCloneRejectsInvalidHarnessTemplateSourceWithoutCreatingRepo(t *testing.T) {
 	t.Parallel()
 

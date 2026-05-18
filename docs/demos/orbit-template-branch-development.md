@@ -140,8 +140,12 @@ hyard publish orbit docs --push --remote origin --json
 Expected result:
 
 - `origin/orbit-template/docs` is updated.
-- Users can install the new template with:
+- Users can install the registered template by handle after the registry entry
+  or dist-tag has been updated to the new commit:
 
 ```bash
-hyard install https://github.com/zack-nova/hyard-demo-docs-orbit.git --ref orbit-template/docs
+hyard install docs
 ```
+
+Until that registry update exists, the explicit Git locator remains the advanced
+escape hatch for unpublished package revisions.

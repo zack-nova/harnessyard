@@ -58,6 +58,45 @@ metadata, and validation evidence.
 handle uses `target` to point at a namespaced Package Handle and does not copy
 full version locator metadata.
 
+Namespace package indexes use this shape:
+
+```yaml
+schema_version: 1
+namespace: acme
+packages:
+  docs:
+    handle: acme/docs
+    status: active
+    package:
+      type: orbit
+      name: docs
+    source:
+      repository: https://github.com/acme/docs-orbit
+    dist_tags:
+      latest: "0.1.0"
+    versions:
+      "0.1.0":
+        locator:
+          kind: git
+          repository: https://github.com/acme/docs-orbit
+          ref: orbit-template/docs
+          commit: 0123456789abcdef0123456789abcdef01234567
+        validation:
+          remote_ref: refs/heads/orbit-template/docs
+          manifest: .harness/manifest.yaml
+          package_manifest: .harness/orbits/docs.yaml
+          package_identity:
+            type: orbit
+            name: docs
+```
+
+`package.type` is `orbit` or `harness`. `package.name` is the published package
+identity validated from package-owned truth. `versions.<version>.locator`
+contains the commit-pinned install locator. Registry resolvers should read this
+catalog index schema directly; historical version-local
+`package_type` / `package_identity` / `source.remote` entries are not the current
+catalog schema.
+
 ## Coordinate Rules
 
 Supported Package Handle Coordinate forms:
@@ -187,6 +226,5 @@ not trust local validation evidence as authoritative.
 
 ## Implementation Notes
 
-The exact YAML field names and CLI flag names can be finalized in the first
-implementation slice, but changing the semantic rules in this document requires
-updating the accepted ADR and the parent PRD issue.
+Changing the semantic rules or catalog index field names in this document
+requires updating the accepted ADR and the parent PRD issue.

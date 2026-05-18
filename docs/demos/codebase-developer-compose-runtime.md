@@ -54,14 +54,15 @@ Terminal display:
 ## Step 3: Install Three Orbit Workflows
 
 ```bash
-hyard install https://github.com/zack-nova/hyard-demo-docs-orbit.git --ref orbit-template/docs --json
-hyard install https://github.com/zack-nova/hyard-demo-review-orbit.git --ref orbit-template/review --json
-hyard install https://github.com/zack-nova/hyard-demo-release-orbit.git --ref orbit-template/release --json
+hyard install docs --json
+hyard install review --json
+hyard install release --json
 ```
 
 Expected result:
 
 - `docs`, `review`, and `release` are installed as Orbit Packages.
+- Harness Yard resolves each curated handle through the package registry.
 - `AGENTS.md`, `HUMANS.md`, and `docs/**` runtime content are written.
 - Each install leaves the runtime ready.
 
@@ -77,6 +78,13 @@ Terminal display:
     "HUMANS.md",
     "docs/docs.md"
   ],
+  "source": {
+    "package_coordinate": "docs@latest",
+    "registry_provenance": {
+      "resolved_coordinate": "zack-nova/docs@0.1.0",
+      "source_ref": "orbit-template/docs"
+    }
+  },
   "readiness": {
     "status": "ready"
   }

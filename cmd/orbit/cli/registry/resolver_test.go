@@ -24,13 +24,18 @@ func TestResolveExactPackageHandleCoordinateFromNamespaceIndex(t *testing.T) {
 		"namespace: acme\n"+
 		"packages:\n"+
 		"  docs:\n"+
+		"    handle: acme/docs\n"+
 		"    status: active\n"+
+		"    package:\n"+
+		"      type: orbit\n"+
+		"      name: docs\n"+
+		"    source:\n"+
+		"      repository: https://example.com/acme/packages.git\n"+
 		"    versions:\n"+
 		"      0.1.0:\n"+
-		"        package_type: orbit\n"+
-		"        package_identity: docs\n"+
-		"        source:\n"+
-		"          remote: https://example.com/acme/packages.git\n"+
+		"        locator:\n"+
+		"          kind: git\n"+
+		"          repository: https://example.com/acme/packages.git\n"+
 		"          ref: orbit-template/docs\n"+
 		"          commit: 0123456789abcdef0123456789abcdef01234567\n"))
 	require.NoError(t, err)
@@ -44,6 +49,41 @@ func TestResolveExactPackageHandleCoordinateFromNamespaceIndex(t *testing.T) {
 	require.Empty(t, resolution.Warnings)
 }
 
+func TestResolveExactPackageHandleCoordinateFromCatalogLocatorSchema(t *testing.T) {
+	t.Parallel()
+
+	coordinate, err := registry.ParsePackageHandleCoordinate("zack-nova/product-lab@0.1.0")
+	require.NoError(t, err)
+
+	resolution, err := registry.ResolveExactVersionFromNamespaceIndex(coordinate, []byte(""+
+		"schema_version: 1\n"+
+		"namespace: zack-nova\n"+
+		"packages:\n"+
+		"  product-lab:\n"+
+		"    handle: zack-nova/product-lab\n"+
+		"    status: active\n"+
+		"    package:\n"+
+		"      type: harness\n"+
+		"      name: hyard-demo-product-lab\n"+
+		"    source:\n"+
+		"      repository: https://github.com/zack-nova/hyard-demo-product-lab\n"+
+		"    dist_tags:\n"+
+		"      latest: \"0.1.0\"\n"+
+		"    versions:\n"+
+		"      \"0.1.0\":\n"+
+		"        locator:\n"+
+		"          kind: git\n"+
+		"          repository: https://github.com/zack-nova/hyard-demo-product-lab\n"+
+		"          ref: harness-template/product-lab\n"+
+		"          commit: 7760299002a8ebd249899d5bacbf1340022fd25b\n"))
+	require.NoError(t, err)
+	require.Equal(t, ids.PackageTypeHarness, resolution.PackageType)
+	require.Equal(t, "hyard-demo-product-lab", resolution.PackageIdentity)
+	require.Equal(t, "https://github.com/zack-nova/hyard-demo-product-lab", resolution.SourceRemote)
+	require.Equal(t, "harness-template/product-lab", resolution.SourceRef)
+	require.Equal(t, "7760299002a8ebd249899d5bacbf1340022fd25b", resolution.SourceCommit)
+}
+
 func TestResolveExactPackageHandleCoordinateFailsClosedWhenVersionMissing(t *testing.T) {
 	t.Parallel()
 
@@ -55,13 +95,18 @@ func TestResolveExactPackageHandleCoordinateFailsClosedWhenVersionMissing(t *tes
 		"namespace: acme\n"+
 		"packages:\n"+
 		"  docs:\n"+
+		"    handle: acme/docs\n"+
 		"    status: active\n"+
+		"    package:\n"+
+		"      type: orbit\n"+
+		"      name: docs\n"+
+		"    source:\n"+
+		"      repository: https://example.com/acme/packages.git\n"+
 		"    versions:\n"+
 		"      0.1.0:\n"+
-		"        package_type: orbit\n"+
-		"        package_identity: docs\n"+
-		"        source:\n"+
-		"          remote: https://example.com/acme/packages.git\n"+
+		"        locator:\n"+
+		"          kind: git\n"+
+		"          repository: https://example.com/acme/packages.git\n"+
 		"          ref: orbit-template/docs\n"+
 		"          commit: 0123456789abcdef0123456789abcdef01234567\n"))
 	require.Error(t, err)
@@ -85,22 +130,26 @@ func TestResolvePackageHandleCoordinateResolvesNamespacedLatestDistTag(t *testin
 				"namespace: acme\n" +
 				"packages:\n" +
 				"  docs:\n" +
+				"    handle: acme/docs\n" +
 				"    status: active\n" +
+				"    package:\n" +
+				"      type: orbit\n" +
+				"      name: docs\n" +
+				"    source:\n" +
+				"      repository: https://example.com/acme/packages.git\n" +
 				"    dist_tags:\n" +
 				"      latest: 0.2.0\n" +
 				"    versions:\n" +
 				"      0.1.0:\n" +
-				"        package_type: orbit\n" +
-				"        package_identity: docs\n" +
-				"        source:\n" +
-				"          remote: https://example.com/acme/packages.git\n" +
+				"        locator:\n" +
+				"          kind: git\n" +
+				"          repository: https://example.com/acme/packages.git\n" +
 				"          ref: orbit-template/docs-old\n" +
 				"          commit: 0123456789abcdef0123456789abcdef01234567\n" +
 				"      0.2.0:\n" +
-				"        package_type: orbit\n" +
-				"        package_identity: docs\n" +
-				"        source:\n" +
-				"          remote: https://example.com/acme/packages.git\n" +
+				"        locator:\n" +
+				"          kind: git\n" +
+				"          repository: https://example.com/acme/packages.git\n" +
 				"          ref: orbit-template/docs\n" +
 				"          commit: abcdef0123456789abcdef0123456789abcdef01\n"), nil
 		}),
@@ -136,15 +185,20 @@ func TestResolvePackageHandleCoordinateResolvesCuratedLatestAlias(t *testing.T) 
 					"namespace: acme\n" +
 					"packages:\n" +
 					"  docs:\n" +
+					"    handle: acme/docs\n" +
 					"    status: active\n" +
+					"    package:\n" +
+					"      type: orbit\n" +
+					"      name: docs\n" +
+					"    source:\n" +
+					"      repository: https://example.com/acme/packages.git\n" +
 					"    dist_tags:\n" +
 					"      latest: 0.2.0\n" +
 					"    versions:\n" +
 					"      0.2.0:\n" +
-					"        package_type: orbit\n" +
-					"        package_identity: docs\n" +
-					"        source:\n" +
-					"          remote: https://example.com/acme/packages.git\n" +
+					"        locator:\n" +
+					"          kind: git\n" +
+					"          repository: https://example.com/acme/packages.git\n" +
 					"          ref: orbit-template/docs\n" +
 					"          commit: abcdef0123456789abcdef0123456789abcdef01\n"),
 			},
@@ -196,20 +250,24 @@ func TestResolvePackageHandleCoordinateDoesNotInferLatestFromHighestVersion(t *t
 				"namespace: acme\n" +
 				"packages:\n" +
 				"  docs:\n" +
+				"    handle: acme/docs\n" +
 				"    status: active\n" +
+				"    package:\n" +
+				"      type: orbit\n" +
+				"      name: docs\n" +
+				"    source:\n" +
+				"      repository: https://example.com/acme/packages.git\n" +
 				"    versions:\n" +
 				"      0.1.0:\n" +
-				"        package_type: orbit\n" +
-				"        package_identity: docs\n" +
-				"        source:\n" +
-				"          remote: https://example.com/acme/packages.git\n" +
+				"        locator:\n" +
+				"          kind: git\n" +
+				"          repository: https://example.com/acme/packages.git\n" +
 				"          ref: orbit-template/docs\n" +
 				"          commit: 0123456789abcdef0123456789abcdef01234567\n" +
 				"      9.9.9:\n" +
-				"        package_type: orbit\n" +
-				"        package_identity: docs\n" +
-				"        source:\n" +
-				"          remote: https://example.com/acme/packages.git\n" +
+				"        locator:\n" +
+				"          kind: git\n" +
+				"          repository: https://example.com/acme/packages.git\n" +
 				"          ref: orbit-template/docs-new\n" +
 				"          commit: abcdef0123456789abcdef0123456789abcdef01\n"), nil
 		}),
@@ -236,15 +294,20 @@ func TestResolvePackageHandleCoordinateUsesStaleCacheWhenLatestRegistryUnavailab
 				"namespace: acme\n" +
 				"packages:\n" +
 				"  docs:\n" +
+				"    handle: acme/docs\n" +
 				"    status: active\n" +
+				"    package:\n" +
+				"      type: orbit\n" +
+				"      name: docs\n" +
+				"    source:\n" +
+				"      repository: https://example.com/acme/packages.git\n" +
 				"    dist_tags:\n" +
 				"      latest: 0.1.0\n" +
 				"    versions:\n" +
 				"      0.1.0:\n" +
-				"        package_type: orbit\n" +
-				"        package_identity: docs\n" +
-				"        source:\n" +
-				"          remote: https://example.com/acme/packages.git\n" +
+				"        locator:\n" +
+				"          kind: git\n" +
+				"          repository: https://example.com/acme/packages.git\n" +
 				"          ref: orbit-template/docs\n" +
 				"          commit: 0123456789abcdef0123456789abcdef01234567\n"), nil
 		}),
@@ -333,13 +396,18 @@ func TestResolveExactPackageHandleCoordinateReturnsYankedStatus(t *testing.T) {
 		"namespace: acme\n"+
 		"packages:\n"+
 		"  docs:\n"+
+		"    handle: acme/docs\n"+
 		"    status: yanked\n"+
+		"    package:\n"+
+		"      type: orbit\n"+
+		"      name: docs\n"+
+		"    source:\n"+
+		"      repository: https://example.com/acme/packages.git\n"+
 		"    versions:\n"+
 		"      0.1.0:\n"+
-		"        package_type: orbit\n"+
-		"        package_identity: docs\n"+
-		"        source:\n"+
-		"          remote: https://example.com/acme/packages.git\n"+
+		"        locator:\n"+
+		"          kind: git\n"+
+		"          repository: https://example.com/acme/packages.git\n"+
 		"          ref: orbit-template/docs\n"+
 		"          commit: 0123456789abcdef0123456789abcdef01234567\n"))
 	require.NoError(t, err)
@@ -358,13 +426,18 @@ func TestResolveExactPackageHandleCoordinateWarnsForDeprecatedStatus(t *testing.
 		"namespace: acme\n"+
 		"packages:\n"+
 		"  docs:\n"+
+		"    handle: acme/docs\n"+
 		"    status: deprecated\n"+
+		"    package:\n"+
+		"      type: orbit\n"+
+		"      name: docs\n"+
+		"    source:\n"+
+		"      repository: https://example.com/acme/packages.git\n"+
 		"    versions:\n"+
 		"      0.1.0:\n"+
-		"        package_type: orbit\n"+
-		"        package_identity: docs\n"+
-		"        source:\n"+
-		"          remote: https://example.com/acme/packages.git\n"+
+		"        locator:\n"+
+		"          kind: git\n"+
+		"          repository: https://example.com/acme/packages.git\n"+
 		"          ref: orbit-template/docs\n"+
 		"          commit: 0123456789abcdef0123456789abcdef01234567\n"))
 	require.NoError(t, err)
@@ -419,13 +492,18 @@ func TestResolveExactPackageHandleCoordinateUsesVerifiedCacheWhenRegistryUnavail
 			"namespace: acme\n" +
 			"packages:\n" +
 			"  docs:\n" +
+			"    handle: acme/docs\n" +
 			"    status: active\n" +
+			"    package:\n" +
+			"      type: orbit\n" +
+			"      name: docs\n" +
+			"    source:\n" +
+			"      repository: https://example.com/acme/packages.git\n" +
 			"    versions:\n" +
 			"      0.1.0:\n" +
-			"        package_type: orbit\n" +
-			"        package_identity: docs\n" +
-			"        source:\n" +
-			"          remote: https://example.com/acme/packages.git\n" +
+			"        locator:\n" +
+			"          kind: git\n" +
+			"          repository: https://example.com/acme/packages.git\n" +
 			"          ref: orbit-template/docs\n" +
 			"          commit: 0123456789abcdef0123456789abcdef01234567\n"), nil
 	})
@@ -508,13 +586,18 @@ func TestFreshBlockedStatusTakesPrecedenceOverActiveCache(t *testing.T) {
 				"namespace: acme\n" +
 				"packages:\n" +
 				"  docs:\n" +
+				"    handle: acme/docs\n" +
 				"    status: blocked\n" +
+				"    package:\n" +
+				"      type: orbit\n" +
+				"      name: docs\n" +
+				"    source:\n" +
+				"      repository: https://example.com/acme/packages.git\n" +
 				"    versions:\n" +
 				"      0.1.0:\n" +
-				"        package_type: orbit\n" +
-				"        package_identity: docs\n" +
-				"        source:\n" +
-				"          remote: https://example.com/acme/packages.git\n" +
+				"        locator:\n" +
+				"          kind: git\n" +
+				"          repository: https://example.com/acme/packages.git\n" +
 				"          ref: orbit-template/docs\n" +
 				"          commit: abcdef0123456789abcdef0123456789abcdef01\n"), nil
 		}),
