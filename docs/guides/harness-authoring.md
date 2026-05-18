@@ -91,7 +91,9 @@ hyard registry entry harness acme/workspace@0.1.0 --source origin --ref harness-
 ```
 
 The candidate uses the same YAML schema as Orbit candidates while validating the
-Harness Package identity and install preview path.
+Harness Package identity and install preview path. Use `--registry <path>` only
+when you want to update the final namespace catalog index in a local registry
+checkout.
 
 ## Composition Work
 

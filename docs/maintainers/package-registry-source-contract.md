@@ -196,10 +196,11 @@ Candidate behavior:
 
 - Default output is stdout.
 - `--out <path>` may write the candidate to a chosen file.
-- `--registry <path>` may write the candidate into a local registry checkout at
-  the intended target path.
+- `--registry <path>` writes or updates the final namespace catalog index under
+  a local registry checkout at the intended target path, using the current
+  `packages.<name>.package` and `versions.<version>.locator` schema.
 - Local-only package results may produce preview output, but they cannot produce
-  submittable registry entries.
+  submittable registry entries or catalog index updates.
 
 A submittable registry entry candidate records:
 

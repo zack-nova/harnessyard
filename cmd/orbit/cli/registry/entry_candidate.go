@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -147,6 +148,91 @@ func MarshalEntryCandidate(candidate EntryCandidate) ([]byte, error) {
 	data, err := contractutil.EncodeYAMLDocument(entryCandidateNode(candidate))
 	if err != nil {
 		return nil, fmt.Errorf("marshal registry entry candidate: %w", err)
+	}
+
+	return data, nil
+}
+
+// CatalogIndexDataWithEntryCandidate merges one submittable candidate into the
+// official namespace catalog index schema.
+func CatalogIndexDataWithEntryCandidate(existing []byte, candidate EntryCandidate) ([]byte, error) {
+	coordinate, err := catalogCoordinateFromEntryCandidate(candidate)
+	if err != nil {
+		return nil, err
+	}
+	candidate.PackageType = strings.ToLower(strings.TrimSpace(candidate.PackageType))
+	candidate.PackageIdentity = strings.ToLower(strings.TrimSpace(candidate.PackageIdentity))
+	candidate.Source.Remote = strings.TrimSpace(candidate.Source.Remote)
+	candidate.Source.Ref = strings.TrimSpace(candidate.Source.Ref)
+	candidate.Source.Commit = strings.ToLower(strings.TrimSpace(candidate.Source.Commit))
+	status, err := normalizePackageStatus(candidate.PackageStatus)
+	if err != nil {
+		return nil, fmt.Errorf("registry entry candidate package_status: %w", err)
+	}
+
+	index := namespaceIndexFile{
+		SchemaVersion: namespaceIndexSchemaVersion,
+		Namespace:     coordinate.Namespace,
+		Packages:      map[string]packageEntry{},
+	}
+	if strings.TrimSpace(string(existing)) != "" {
+		if err := yaml.Unmarshal(existing, &index); err != nil {
+			return nil, fmt.Errorf("parse registry namespace index: %w", err)
+		}
+		if index.SchemaVersion != namespaceIndexSchemaVersion {
+			return nil, fmt.Errorf("registry namespace index schema_version must be %d", namespaceIndexSchemaVersion)
+		}
+		if strings.ToLower(strings.TrimSpace(index.Namespace)) != coordinate.Namespace {
+			return nil, fmt.Errorf("registry namespace index namespace must be %q", coordinate.Namespace)
+		}
+		if index.Packages == nil {
+			index.Packages = map[string]packageEntry{}
+		}
+	}
+
+	entry := index.Packages[coordinate.Name]
+	if err := validateCatalogEntryUpsert(coordinate, entry, candidate); err != nil {
+		return nil, err
+	}
+	if entry.DistTags == nil {
+		entry.DistTags = map[string]string{}
+	}
+	if entry.Versions == nil {
+		entry.Versions = map[string]versionEntry{}
+	}
+
+	entry.Handle = coordinate.Handle()
+	entry.Status = string(status)
+	entry.Package = packageDescriptorEntry{
+		Type: candidate.PackageType,
+		Name: candidate.PackageIdentity,
+	}
+	entry.Source = packageSourceEntry{
+		Repository: candidate.Source.Remote,
+	}
+	entry.DistTags["latest"] = coordinate.Version
+	entry.Versions[coordinate.Version] = versionEntry{
+		Locator: versionLocatorEntry{
+			Kind:       "git",
+			Repository: candidate.Source.Remote,
+			Ref:        candidate.Source.Ref,
+			Commit:     strings.ToLower(strings.TrimSpace(candidate.Source.Commit)),
+		},
+		Validation: versionValidationEntry{
+			RemoteRef:       catalogRemoteRef(candidate.Source.Ref),
+			Manifest:        harnesspkg.ManifestRepoPath(),
+			PackageManifest: catalogPackageManifestPath(candidate),
+			PackageIdentity: packageDescriptorEntry{
+				Type: candidate.PackageType,
+				Name: candidate.PackageIdentity,
+			},
+		},
+	}
+	index.Packages[coordinate.Name] = entry
+
+	data, err := contractutil.EncodeYAMLDocument(namespaceIndexNode(index))
+	if err != nil {
+		return nil, fmt.Errorf("marshal registry namespace index: %w", err)
 	}
 
 	return data, nil
@@ -584,6 +670,212 @@ func entryCandidateCheckNode(check EntryCandidateValidationCheck) *yaml.Node {
 	return node
 }
 
+func catalogCoordinateFromEntryCandidate(candidate EntryCandidate) (PackageHandleCoordinate, error) {
+	if !candidate.Submittable {
+		return PackageHandleCoordinate{}, errors.New("registry catalog indexes require a submittable entry candidate")
+	}
+
+	status, err := normalizePackageStatus(candidate.PackageStatus)
+	if err != nil {
+		return PackageHandleCoordinate{}, fmt.Errorf("registry entry candidate package_status: %w", err)
+	}
+	if status == "" {
+		return PackageHandleCoordinate{}, errors.New("registry entry candidate package_status must be present")
+	}
+
+	coordinate, err := ParsePackageHandleCoordinate(strings.TrimSpace(candidate.PackageHandle) + "@" + strings.TrimSpace(candidate.Version))
+	if err != nil {
+		return PackageHandleCoordinate{}, fmt.Errorf("parse registry entry candidate package handle: %w", err)
+	}
+	if coordinate.Namespace == "" {
+		return PackageHandleCoordinate{}, errors.New("registry entry candidate package_handle must be namespaced")
+	}
+	if !coordinate.IsExactVersion() {
+		return PackageHandleCoordinate{}, errors.New("registry entry candidate version must be an exact SemVer version")
+	}
+
+	expectedTargetPath := fmt.Sprintf("packages/%s/index.yaml", coordinate.Namespace)
+	targetPath, err := ids.NormalizeRepoRelativePath(candidate.TargetPath)
+	if err != nil {
+		return PackageHandleCoordinate{}, fmt.Errorf("validate registry entry candidate target_path: %w", err)
+	}
+	if targetPath != expectedTargetPath {
+		return PackageHandleCoordinate{}, fmt.Errorf("registry entry candidate target_path must be %q for catalog index output, got %q", expectedTargetPath, targetPath)
+	}
+
+	packageType := strings.ToLower(strings.TrimSpace(candidate.PackageType))
+	switch packageType {
+	case ids.PackageTypeOrbit, ids.PackageTypeHarness:
+	default:
+		return PackageHandleCoordinate{}, fmt.Errorf("registry entry candidate package_type must be %q or %q", ids.PackageTypeOrbit, ids.PackageTypeHarness)
+	}
+	packageIdentity := strings.ToLower(strings.TrimSpace(candidate.PackageIdentity))
+	if _, err := ids.NewPackageIdentity(packageType, packageIdentity, coordinate.Version); err != nil {
+		return PackageHandleCoordinate{}, fmt.Errorf("registry entry candidate package_identity: %w", err)
+	}
+
+	if strings.TrimSpace(candidate.Source.Remote) == "" {
+		return PackageHandleCoordinate{}, errors.New("registry entry candidate source.remote must be present")
+	}
+	if strings.TrimSpace(candidate.Source.Ref) == "" {
+		return PackageHandleCoordinate{}, errors.New("registry entry candidate source.ref must be present")
+	}
+	if !commitPattern.MatchString(strings.ToLower(strings.TrimSpace(candidate.Source.Commit))) {
+		return PackageHandleCoordinate{}, errors.New("registry entry candidate source.commit must be a full Git commit SHA")
+	}
+
+	return coordinate, nil
+}
+
+func validateCatalogEntryUpsert(coordinate PackageHandleCoordinate, entry packageEntry, candidate EntryCandidate) error {
+	if entry.Handle != "" {
+		if err := validatePackageEntryHandle(coordinate, entry); err != nil {
+			return err
+		}
+	}
+	existingType := strings.ToLower(strings.TrimSpace(entry.Package.Type))
+	if existingType != "" && existingType != candidate.PackageType {
+		return fmt.Errorf("registry package %s package.type is %q, not %q", coordinate.Handle(), existingType, candidate.PackageType)
+	}
+	existingName := strings.ToLower(strings.TrimSpace(entry.Package.Name))
+	if existingName != "" && existingName != candidate.PackageIdentity {
+		return fmt.Errorf("registry package %s package.name is %q, not %q", coordinate.Handle(), existingName, candidate.PackageIdentity)
+	}
+
+	return nil
+}
+
+func catalogPackageManifestPath(candidate EntryCandidate) string {
+	switch candidate.PackageType {
+	case ids.PackageTypeHarness:
+		return harnesspkg.TemplateRepoPath()
+	default:
+		path, err := harnesspkg.OrbitSpecRepoPath(candidate.PackageIdentity)
+		if err != nil {
+			return ".harness/orbits/" + candidate.PackageIdentity + ".yaml"
+		}
+		return path
+	}
+}
+
+func catalogRemoteRef(ref string) string {
+	trimmed := strings.TrimSpace(ref)
+	if strings.HasPrefix(trimmed, "refs/") {
+		return trimmed
+	}
+	return "refs/heads/" + trimmed
+}
+
+func namespaceIndexNode(index namespaceIndexFile) *yaml.Node {
+	root := contractutil.MappingNode()
+	contractutil.AppendMapping(root, "schema_version", contractutil.IntNode(index.SchemaVersion))
+	contractutil.AppendMapping(root, "namespace", contractutil.StringNode(index.Namespace))
+
+	packagesNode := contractutil.MappingNode()
+	for _, packageName := range sortedPackageEntryKeys(index.Packages) {
+		contractutil.AppendMapping(packagesNode, packageName, packageEntryNode(index.Packages[packageName]))
+	}
+	contractutil.AppendMapping(root, "packages", packagesNode)
+
+	return root
+}
+
+func packageEntryNode(entry packageEntry) *yaml.Node {
+	node := contractutil.MappingNode()
+	contractutil.AppendMapping(node, "handle", contractutil.StringNode(entry.Handle))
+	contractutil.AppendMapping(node, "status", contractutil.StringNode(entry.Status))
+
+	packageNode := contractutil.MappingNode()
+	contractutil.AppendMapping(packageNode, "type", contractutil.StringNode(entry.Package.Type))
+	contractutil.AppendMapping(packageNode, "name", contractutil.StringNode(entry.Package.Name))
+	contractutil.AppendMapping(node, "package", packageNode)
+
+	if strings.TrimSpace(entry.Source.Repository) != "" {
+		sourceNode := contractutil.MappingNode()
+		contractutil.AppendMapping(sourceNode, "repository", contractutil.StringNode(entry.Source.Repository))
+		contractutil.AppendMapping(node, "source", sourceNode)
+	}
+	contractutil.AppendMapping(node, "dist_tags", stringMapNode(entry.DistTags))
+
+	versionsNode := contractutil.MappingNode()
+	for _, version := range sortedVersionEntryKeys(entry.Versions) {
+		contractutil.AppendMapping(versionsNode, version, versionEntryNode(entry.Versions[version]))
+	}
+	contractutil.AppendMapping(node, "versions", versionsNode)
+
+	return node
+}
+
+func versionEntryNode(entry versionEntry) *yaml.Node {
+	node := contractutil.MappingNode()
+
+	locatorNode := contractutil.MappingNode()
+	contractutil.AppendMapping(locatorNode, "kind", contractutil.StringNode(entry.Locator.Kind))
+	contractutil.AppendMapping(locatorNode, "repository", contractutil.StringNode(entry.Locator.Repository))
+	contractutil.AppendMapping(locatorNode, "ref", contractutil.StringNode(entry.Locator.Ref))
+	contractutil.AppendMapping(locatorNode, "commit", contractutil.StringNode(entry.Locator.Commit))
+	contractutil.AppendMapping(node, "locator", locatorNode)
+
+	if hasVersionValidation(entry.Validation) {
+		validationNode := contractutil.MappingNode()
+		contractutil.AppendMapping(validationNode, "remote_ref", contractutil.StringNode(entry.Validation.RemoteRef))
+		contractutil.AppendMapping(validationNode, "manifest", contractutil.StringNode(entry.Validation.Manifest))
+		contractutil.AppendMapping(validationNode, "package_manifest", contractutil.StringNode(entry.Validation.PackageManifest))
+
+		identityNode := contractutil.MappingNode()
+		contractutil.AppendMapping(identityNode, "type", contractutil.StringNode(entry.Validation.PackageIdentity.Type))
+		contractutil.AppendMapping(identityNode, "name", contractutil.StringNode(entry.Validation.PackageIdentity.Name))
+		contractutil.AppendMapping(validationNode, "package_identity", identityNode)
+
+		contractutil.AppendMapping(node, "validation", validationNode)
+	}
+
+	return node
+}
+
+func hasVersionValidation(validation versionValidationEntry) bool {
+	return strings.TrimSpace(validation.RemoteRef) != "" ||
+		strings.TrimSpace(validation.Manifest) != "" ||
+		strings.TrimSpace(validation.PackageManifest) != "" ||
+		strings.TrimSpace(validation.PackageIdentity.Type) != "" ||
+		strings.TrimSpace(validation.PackageIdentity.Name) != ""
+}
+
+func stringMapNode(values map[string]string) *yaml.Node {
+	node := contractutil.MappingNode()
+	for _, key := range sortedStringMapKeys(values) {
+		contractutil.AppendMapping(node, key, contractutil.StringNode(values[key]))
+	}
+	return node
+}
+
+func sortedPackageEntryKeys(values map[string]packageEntry) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func sortedVersionEntryKeys(values map[string]versionEntry) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func sortedStringMapKeys(values map[string]string) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
 // WriteEntryCandidate writes a candidate YAML file, creating parents as needed.
 func WriteEntryCandidate(filename string, data []byte) error {
 	cleaned := filepath.Clean(filename)
@@ -592,6 +884,28 @@ func WriteEntryCandidate(filename string, data []byte) error {
 	}
 	if err := contractutil.AtomicWriteFile(cleaned, data); err != nil {
 		return fmt.Errorf("write candidate file atomically: %w", err)
+	}
+
+	return nil
+}
+
+// WriteCatalogIndexEntry merges a candidate into a namespace catalog index file.
+func WriteCatalogIndexEntry(filename string, candidate EntryCandidate) error {
+	cleaned := filepath.Clean(filename)
+	if cleaned == "." || cleaned == string(filepath.Separator) {
+		return errors.New("catalog index output path must name a file")
+	}
+
+	existing, err := os.ReadFile(cleaned)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("read registry namespace index: %w", err)
+	}
+	data, err := CatalogIndexDataWithEntryCandidate(existing, candidate)
+	if err != nil {
+		return err
+	}
+	if err := contractutil.AtomicWriteFile(cleaned, data); err != nil {
+		return fmt.Errorf("write registry namespace index atomically: %w", err)
 	}
 
 	return nil

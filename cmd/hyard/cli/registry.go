@@ -145,7 +145,7 @@ func newRegistryEntryPackageCommand(options registryEntryPackageCommandOptions) 
 	cmd.Flags().StringVar(&targetPath, "target", "", "Registry-relative target path; defaults to packages/<namespace>/index.yaml")
 	cmd.Flags().StringVar(&packageStatus, "status", string(registry.PackageStatusActive), "Registry package status for the candidate")
 	cmd.Flags().StringVar(&outPath, "out", "", "Write the YAML candidate to a chosen file")
-	cmd.Flags().StringVar(&registryRoot, "registry", "", "Write the YAML candidate under a local registry checkout at its target path")
+	cmd.Flags().StringVar(&registryRoot, "registry", "", "Update packages/<namespace>/index.yaml under a local registry checkout")
 
 	return cmd
 }
@@ -183,22 +183,33 @@ func emitRegistryEntryCandidate(
 		return fmt.Errorf("local-only registry entry previews cannot be written with --out or --registry; provide --source for a submittable candidate")
 	}
 
-	filename := strings.TrimSpace(outPath)
-	if filename == "" {
+	if strings.TrimSpace(outPath) != "" {
+		filename := strings.TrimSpace(outPath)
+		if !filepath.IsAbs(filename) {
+			filename = filepath.Join(workingDir, filename)
+		}
+		if err := registry.WriteEntryCandidate(filename, data); err != nil {
+			return fmt.Errorf("write registry entry candidate: %w", err)
+		}
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "wrote registry entry candidate %s\n", filepath.Clean(filename)); err != nil {
+			return fmt.Errorf("write registry entry candidate result: %w", err)
+		}
+		return nil
+	}
+
+	filename := ""
+	if strings.TrimSpace(registryRoot) != "" {
 		root := strings.TrimSpace(registryRoot)
 		if !filepath.IsAbs(root) {
 			root = filepath.Join(workingDir, root)
 		}
 		filename = filepath.Join(root, filepath.FromSlash(candidate.TargetPath))
-	} else if !filepath.IsAbs(filename) {
-		filename = filepath.Join(workingDir, filename)
 	}
-
-	if err := registry.WriteEntryCandidate(filename, data); err != nil {
-		return fmt.Errorf("write registry entry candidate: %w", err)
+	if err := registry.WriteCatalogIndexEntry(filename, candidate); err != nil {
+		return fmt.Errorf("write registry catalog index: %w", err)
 	}
-	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "wrote registry entry candidate %s\n", filepath.Clean(filename)); err != nil {
-		return fmt.Errorf("write registry entry candidate result: %w", err)
+	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "wrote registry catalog index %s\n", filepath.Clean(filename)); err != nil {
+		return fmt.Errorf("write registry catalog index result: %w", err)
 	}
 	return nil
 }
