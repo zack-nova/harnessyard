@@ -1,37 +1,48 @@
 # Demo: Runtime User Fast Start
 
 This demo shows the shortest Runtime User path: clone a published Harness
-Template, inspect it, and hand off to an Agent Framework.
+Package by handle, inspect it, and hand off to an Agent Framework.
 
-The demo uses the public Product Lab fixture:
+The demo uses the curated Product Lab package handle:
 
 ```text
-https://github.com/zack-nova/hyard-demo-product-lab.git
-ref: harness-template/product-lab
+product-lab
 ```
 
-## Step 1: Clone The Harness Template
+## Step 1: Clone Product Lab By Handle
 
 Run this from the directory where you want the demo runtime folder created:
 
 ```bash
-hyard clone https://github.com/zack-nova/hyard-demo-product-lab.git product-lab --ref harness-template/product-lab
+hyard clone product-lab --json
 cd product-lab
 ```
 
 Expected result:
 
+- Harness Yard resolves the curated `product-lab` handle through the package
+  registry.
 - A new Harness Runtime appears in `product-lab`.
 - The runtime contains the `docs`, `review`, and `release` Orbit Workflows.
+- The clone is pinned to the registry-resolved source commit.
 - The next action is Harness Start.
 
 Terminal display:
 
 ```json
 {
-  "harness_id": "product-lab",
+  "harness_id": "hyard-demo-product-lab",
+  "source": {
+    "package_coordinate": "product-lab@latest",
+    "registry_provenance": {
+      "resolved_coordinate": "zack-nova/product-lab@0.1.0",
+      "package_type": "harness",
+      "source_ref": "harness-template/product-lab"
+    }
+  },
   "member_ids": ["docs", "release", "review"],
   "member_count": 3,
+  "bundle_count": 1,
   "readiness": {
     "status": "ready"
   },
@@ -43,6 +54,7 @@ Terminal display:
   ]
 }
 ```
+
 ## Step 2: Check Runtime Readiness
 
 ```bash

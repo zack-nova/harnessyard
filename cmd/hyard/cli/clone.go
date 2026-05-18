@@ -17,6 +17,7 @@ import (
 	gitpkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/git"
 	harnesspkg "github.com/zack-nova/harnessyard/cmd/orbit/cli/harness"
 	"github.com/zack-nova/harnessyard/cmd/orbit/cli/ids"
+	"github.com/zack-nova/harnessyard/cmd/orbit/cli/registry"
 	orbittemplate "github.com/zack-nova/harnessyard/cmd/orbit/cli/template"
 )
 
@@ -27,15 +28,32 @@ const hyardStartLauncherContextKey hyardContextKey = "hyard_start_launcher"
 const hyardViewRunInteractiveContextKey hyardContextKey = "hyard_view_run_interactive"
 
 type cloneSourceJSON struct {
-	Kind               string `json:"kind"`
-	Repo               string `json:"repo"`
-	RequestedRef       string `json:"requested_ref,omitempty"`
-	ResolvedRef        string `json:"resolved_ref"`
-	Commit             string `json:"commit"`
-	PackageName        string `json:"package_name,omitempty"`
-	PackageCoordinate  string `json:"package_coordinate,omitempty"`
-	PackageLocatorKind string `json:"package_locator_kind,omitempty"`
-	PackageLocator     string `json:"package_locator,omitempty"`
+	Kind               string                       `json:"kind"`
+	Repo               string                       `json:"repo"`
+	RequestedRef       string                       `json:"requested_ref,omitempty"`
+	ResolvedRef        string                       `json:"resolved_ref"`
+	Commit             string                       `json:"commit"`
+	PackageName        string                       `json:"package_name,omitempty"`
+	PackageCoordinate  string                       `json:"package_coordinate,omitempty"`
+	PackageLocatorKind string                       `json:"package_locator_kind,omitempty"`
+	PackageLocator     string                       `json:"package_locator,omitempty"`
+	RegistryProvenance *cloneRegistryProvenanceJSON `json:"registry_provenance,omitempty"`
+}
+
+type cloneRegistryProvenanceJSON struct {
+	RequestedCoordinate string `json:"requested_coordinate"`
+	ResolvedCoordinate  string `json:"resolved_coordinate"`
+	ResolvedVersion     string `json:"resolved_version"`
+	RegistryRemote      string `json:"registry_remote"`
+	RegistryRef         string `json:"registry_ref"`
+	PackageType         string `json:"package_type"`
+	PackageIdentity     string `json:"package_identity"`
+	PackageStatus       string `json:"package_status,omitempty"`
+	SourceRemote        string `json:"source_remote"`
+	SourceRef           string `json:"source_ref"`
+	SourceCommit        string `json:"source_commit"`
+	CacheUsed           bool   `json:"cache_used"`
+	CacheStale          bool   `json:"cache_stale"`
 }
 
 type cloneNextActionJSON struct {
@@ -79,12 +97,14 @@ func hyardViewRunInteractiveFromContext(ctx context.Context) bool {
 
 func newCloneCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "clone <harness-template-source> [repo-name]",
-		Short: "Bootstrap a new runtime repo from a harness template source",
-		Long: "Bootstrap a new runtime repo from a harness template source.\n" +
+		Use:   "clone <harness-package-handle|harness-template-source> [repo-name]",
+		Short: "Bootstrap a new runtime repo from a harness package handle or template source",
+		Long: "Bootstrap a new runtime repo from a harness package handle or template source.\n" +
 			"This command is a controlled compose of runtime create plus harness template install,\n" +
 			"reusing the existing runtime bootstrap, install preview, provenance, and readiness helpers.",
 		Example: "" +
+			"  hyard clone product-lab\n" +
+			"  hyard clone zack-nova/product-lab demo-runtime\n" +
 			"  hyard clone ../starter-template --ref harness-template/workspace\n" +
 			"  hyard clone https://example.com/acme/starter.git demo --ref harness-template/workspace\n" +
 			"  hyard clone git@github.com:acme/starter.git --path ../workspaces --ref harness-template/workspace\n",
@@ -100,7 +120,19 @@ func newCloneCommand() *cobra.Command {
 				return fmt.Errorf("read --ref flag: %w", err)
 			}
 			sourceMetadata := packageMetadata{}
-			if shouldParseHyardPackageCoordinateArg(sourceArg) {
+			defaultRepoName := ""
+			var registryProvenance *orbittemplate.InstallRegistryProvenance
+			if registry.LooksPackageHandleCoordinate(sourceArg) {
+				resolution, err := resolvePackageHandleCloneCoordinate(cmd, sourceArg)
+				if err != nil {
+					return err
+				}
+				sourceArg = resolution.SourceRemote
+				requestedRef = resolution.SourceCommit
+				sourceMetadata = packageMetadataFromRegistryResolution(resolution)
+				registryProvenance = installRegistryProvenanceFromRegistryResolution(resolution)
+				defaultRepoName = resolution.Coordinate.Name
+			} else if shouldParseHyardPackageCoordinateArg(sourceArg) {
 				coordinate, err := parseHyardPackageCoordinate(sourceArg)
 				if err != nil {
 					return err
@@ -142,6 +174,9 @@ func newCloneCommand() *cobra.Command {
 				}
 			}
 			if repoName == "" {
+				repoName = defaultRepoName
+			}
+			if repoName == "" {
 				repoName, err = inferCloneRepoName(candidate.RepoURL)
 				if err != nil {
 					return err
@@ -171,6 +206,7 @@ func newCloneCommand() *cobra.Command {
 				InstallSource:           installSource,
 				RequireResolvedBindings: true,
 				Now:                     time.Now().UTC(),
+				Registry:                registryProvenance,
 			})
 			if err != nil {
 				return fmt.Errorf("build harness template install preview: %w", err)
@@ -203,6 +239,7 @@ func newCloneCommand() *cobra.Command {
 					PackageCoordinate:  sourceMetadata.coordinate,
 					PackageLocatorKind: sourceMetadata.locatorKind,
 					PackageLocator:     sourceMetadata.locator,
+					RegistryProvenance: cloneRegistryProvenancePayload(registryProvenance),
 				},
 				MemberIDs:   source.MemberIDs(),
 				MemberCount: len(source.MemberIDs()),
@@ -240,9 +277,104 @@ func newCloneCommand() *cobra.Command {
 
 	cmd.Flags().String("ref", "", "Install one explicit harness template branch from the source repository")
 	cmd.Flags().String("path", "", "Create the new runtime repo under this parent directory")
+	cmd.Flags().String("registry-source", "", "Git remote or local path for Package Handle Coordinate registry source")
+	cmd.Flags().String("registry-ref", registry.DefaultRegistryRef, "Git ref to read from the Package Handle Coordinate registry source")
+	cmd.Flags().Bool("allow-yanked", false, "Allow cloning a yanked Harness Package handle from the registry")
 	cmd.Flags().Bool("json", false, "Output machine-readable JSON")
 
 	return cmd
+}
+
+func resolvePackageHandleCloneCoordinate(cmd *cobra.Command, raw string) (registry.Resolution, error) {
+	coordinate, err := registry.ParsePackageHandleCoordinate(raw)
+	if err != nil {
+		return registry.Resolution{}, fmt.Errorf("parse package handle coordinate: %w", err)
+	}
+	if cmd.Flags().Changed("ref") {
+		return registry.Resolution{}, fmt.Errorf("package handle coordinate %s cannot be combined with --ref; registry versions resolve their source ref from catalog data", coordinate.String())
+	}
+
+	registrySource, err := packageRegistrySourceFromCommand(cmd)
+	if err != nil {
+		return registry.Resolution{}, err
+	}
+	cacheRoot, err := registry.DefaultCacheRoot()
+	if err != nil {
+		return registry.Resolution{}, fmt.Errorf("resolve registry cache root: %w", err)
+	}
+	scratchRoot, err := os.MkdirTemp("", "hyard-clone-registry-*")
+	if err != nil {
+		return registry.Resolution{}, fmt.Errorf("create clone registry scratch repo: %w", err)
+	}
+	defer os.RemoveAll(scratchRoot)
+
+	if _, err := gitpkg.EnsureRepoRoot(cmd.Context(), scratchRoot); err != nil {
+		return registry.Resolution{}, fmt.Errorf("initialize clone registry scratch repo: %w", err)
+	}
+
+	resolution, err := registry.ResolvePackageHandleCoordinate(cmd.Context(), registry.ResolveInput{
+		RepoRoot:       scratchRoot,
+		Coordinate:     coordinate,
+		RegistrySource: registrySource,
+		CacheRoot:      cacheRoot,
+	})
+	if err != nil {
+		return registry.Resolution{}, fmt.Errorf("resolve package handle coordinate: %w", err)
+	}
+	allowYanked, err := cmd.Flags().GetBool("allow-yanked")
+	if err != nil {
+		return registry.Resolution{}, fmt.Errorf("read --allow-yanked flag: %w", err)
+	}
+	if err := registry.RequireInstallableResolution(resolution, registry.InstallGateOptions{AllowYanked: allowYanked}); err != nil {
+		return registry.Resolution{}, fmt.Errorf("check registry package status: %w", err)
+	}
+	if resolution.PackageType != ids.PackageTypeHarness {
+		return registry.Resolution{}, fmt.Errorf("hyard clone package handle %s resolved to %s package %q; use `hyard install %s` inside an existing runtime", resolution.Coordinate.String(), resolution.PackageType, resolution.PackageIdentity, resolution.Coordinate.String())
+	}
+
+	return resolution, nil
+}
+
+func installRegistryProvenanceFromRegistryResolution(resolution registry.Resolution) *orbittemplate.InstallRegistryProvenance {
+	exactCoordinate := resolution.ExactCoordinate()
+	cacheStale := resolution.FromCache && !resolution.Coordinate.IsExactVersion()
+	return &orbittemplate.InstallRegistryProvenance{
+		RequestedCoordinate: resolution.Coordinate.String(),
+		ResolvedCoordinate:  exactCoordinate.String(),
+		ResolvedVersion:     exactCoordinate.Version,
+		RegistryRemote:      resolution.RegistryRemote,
+		RegistryRef:         resolution.RegistryRef,
+		PackageType:         resolution.PackageType,
+		PackageIdentity:     resolution.PackageIdentity,
+		PackageStatus:       string(resolution.EffectivePackageStatus()),
+		SourceRemote:        resolution.SourceRemote,
+		SourceRef:           resolution.SourceRef,
+		SourceCommit:        resolution.SourceCommit,
+		CacheUsed:           resolution.FromCache,
+		CacheStale:          cacheStale,
+	}
+}
+
+func cloneRegistryProvenancePayload(provenance *orbittemplate.InstallRegistryProvenance) *cloneRegistryProvenanceJSON {
+	if provenance == nil {
+		return nil
+	}
+
+	return &cloneRegistryProvenanceJSON{
+		RequestedCoordinate: provenance.RequestedCoordinate,
+		ResolvedCoordinate:  provenance.ResolvedCoordinate,
+		ResolvedVersion:     provenance.ResolvedVersion,
+		RegistryRemote:      provenance.RegistryRemote,
+		RegistryRef:         provenance.RegistryRef,
+		PackageType:         provenance.PackageType,
+		PackageIdentity:     provenance.PackageIdentity,
+		PackageStatus:       provenance.PackageStatus,
+		SourceRemote:        provenance.SourceRemote,
+		SourceRef:           provenance.SourceRef,
+		SourceCommit:        provenance.SourceCommit,
+		CacheUsed:           provenance.CacheUsed,
+		CacheStale:          provenance.CacheStale,
+	}
 }
 
 func cloneHarnessStartNextActions(harnessRoot string) []cloneNextActionJSON {

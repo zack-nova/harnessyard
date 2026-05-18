@@ -90,6 +90,7 @@ maintainer_testing_doc="$repo_root/docs/maintainers/testing-strategy.md"
 install_script="$repo_root/install.sh"
 goreleaser_config="$repo_root/.goreleaser.yaml"
 hyard_install_cmd="$repo_root/cmd/hyard/cli/install.go"
+hyard_clone_cmd="$repo_root/cmd/hyard/cli/clone.go"
 hyard_registry_cmd="$repo_root/cmd/hyard/cli/registry.go"
 hyard_vars_cmd="$repo_root/cmd/hyard/cli/vars.go"
 harness_install_cmd="$repo_root/cmd/harness/cli/commands/install.go"
@@ -109,6 +110,7 @@ for doc in \
   "$install_script" \
   "$goreleaser_config" \
   "$hyard_install_cmd" \
+  "$hyard_clone_cmd" \
   "$hyard_registry_cmd" \
   "$hyard_vars_cmd" \
   "$harness_install_cmd"
@@ -125,6 +127,7 @@ assert_contains "$quickstart_doc" "brew install hyard"
 assert_contains "$quickstart_doc" "raw.githubusercontent.com/zack-nova/harnessyard/main/install.sh"
 assert_contains "$quickstart_doc" "hyard --version"
 assert_contains "$quickstart_doc" "## Runtime User Path"
+assert_contains "$quickstart_doc" "hyard clone acme/frontend-lab demo-runtime"
 assert_contains "$quickstart_doc" "hyard clone https://github.com/acme/harness-templates.git demo-runtime --ref harness-template/frontend-lab"
 assert_contains "$quickstart_doc" "hyard start --with codex"
 assert_contains "$quickstart_doc" "Run View is the default runtime-user presentation"
@@ -139,7 +142,9 @@ assert_contains "$quickstart_doc" '`not_hyard_revision` exit non-zero'
 assert_contains "$quickstart_doc" "Audit is scoped to the current Git worktree"
 assert_contains "$quickstart_doc" "### Existing Repository Assembly"
 assert_contains "$quickstart_doc" "hyard init runtime"
-assert_contains "$quickstart_doc" "Package Handle Coordinates are the ordinary install path"
+assert_contains "$quickstart_doc" "Package Handle Coordinates are the ordinary clone/install path"
+assert_contains "$quickstart_doc" "hyard clone <namespace>/<harness-name> [repo-name]"
+assert_contains "$quickstart_doc" "hyard clone <curated-harness-name> [repo-name]"
 assert_contains "$quickstart_doc" "hyard install acme/frontend-lab"
 assert_contains "$quickstart_doc" "hyard install acme/docs"
 assert_contains "$quickstart_doc" "hyard install acme/docs@0.1.0"
@@ -151,7 +156,8 @@ assert_contains "$quickstart_doc" "{{ vars.project_name }}"
 assert_contains "$quickstart_doc" "Runtime Bindings"
 assert_contains "$quickstart_doc" "Package Variables"
 assert_contains "$quickstart_doc" 'Package Handle Coordinates are case-insensitive'
-assert_contains "$quickstart_doc" 'Use `namespace/name[@version-or-tag]`, not npm-style `@namespace/name`.'
+assert_contains "$quickstart_doc" 'Use `namespace/name[@version-or-tag]`'
+assert_contains "$quickstart_doc" 'npm-style `@namespace/name`.'
 assert_contains "$quickstart_doc" 'Bare handles such as `docs` are curated aliases'
 assert_contains "$quickstart_doc" '`latest` is an explicit registry dist-tag'
 assert_contains "$quickstart_doc" 'If fresh registry data cannot be fetched'
@@ -290,9 +296,12 @@ assert_contains "$release_surface_doc" 'Public product documentation should teac
 assert_contains "$release_surface_doc" "brew tap zack-nova/tap"
 assert_contains "$release_surface_doc" "raw.githubusercontent.com/zack-nova/harnessyard/main/install.sh"
 assert_contains "$release_surface_doc" "hyard install <template-source>"
+assert_contains "$release_surface_doc" "hyard clone <namespace>/<harness-name> [repo-name]"
+assert_contains "$release_surface_doc" "hyard clone <curated-harness-name> [repo-name]"
 assert_contains "$release_surface_doc" "hyard install <namespace>/<name>"
 assert_contains "$release_surface_doc" "hyard install <namespace>/<name>@<semver>"
 assert_contains "$release_surface_doc" "hyard install <curated-name>"
+assert_contains "$release_surface_doc" 'hyard clone <handle>` is the public shortcut'
 assert_contains "$release_surface_doc" "hyard install acme/docs"
 assert_contains "$release_surface_doc" "hyard install acme/docs@0.1.0"
 assert_contains "$release_surface_doc" "hyard install docs"
@@ -316,6 +325,7 @@ assert_contains "$release_surface_doc" "hyard audit --json"
 assert_contains "$release_surface_doc" "Audit is scoped to the current Git worktree"
 assert_contains "$release_surface_doc" 'Orbit Package publish readiness on `hyard orbit prepare <package> --check --json`'
 assert_contains "$release_surface_doc" "## Harness Start Demo Paths"
+assert_contains "$release_surface_doc" "hyard clone acme/frontend-lab demo-runtime"
 assert_contains "$release_surface_doc" "hyard clone https://github.com/acme/harness-templates.git demo-runtime --ref harness-template/frontend-lab"
 assert_contains "$release_surface_doc" "hyard start --with codex"
 assert_contains "$release_surface_doc" "hyard init runtime"
@@ -403,6 +413,12 @@ assert_contains "$hyard_install_cmd" "hyard install acme/docs@latest"
 assert_contains "$hyard_install_cmd" "hyard install acme/docs@0.1.0"
 assert_contains "$hyard_install_cmd" "registry-source"
 assert_contains "$hyard_install_cmd" "allow-yanked"
+
+assert_contains "$hyard_clone_cmd" "clone <harness-package-handle|harness-template-source> [repo-name]"
+assert_contains "$hyard_clone_cmd" "hyard clone product-lab"
+assert_contains "$hyard_clone_cmd" "hyard clone zack-nova/product-lab demo-runtime"
+assert_contains "$hyard_clone_cmd" "registry-source"
+assert_contains "$hyard_clone_cmd" "allow-yanked"
 
 assert_contains "$harness_install_cmd" "Runtime Bindings YAML file"
 assert_contains "$harness_install_cmd" "hideInstallBindingCompatibilityFlags(cmd)"

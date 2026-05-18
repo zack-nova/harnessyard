@@ -57,6 +57,8 @@ hyard install <namespace>/<name>@<semver>
 hyard install <namespace>/<name>@latest
 hyard install <curated-name>
 hyard install <curated-name>[@latest]
+hyard clone <namespace>/<harness-name> [repo-name]
+hyard clone <curated-harness-name> [repo-name]
 hyard uninstall orbit <orbit-package>
 hyard uninstall harness <harness-package>
 ```
@@ -75,6 +77,10 @@ hyard install docs
 Curated bare handles such as `docs` are reviewed aliases. `latest` is an
 explicit registry dist-tag, so `acme/docs` is equivalent to `acme/docs@latest`;
 documentation must not describe it as an inferred newest version or Git branch.
+`hyard clone <handle>` is the public shortcut for creating a new Harness Runtime
+from a registry-backed Harness Package. If the handle resolves to an Orbit
+Package, users should create or enter a runtime and use `hyard install <handle>`
+instead.
 If fresh registry data is unavailable, stale cached bare or `latest`
 resolutions may install with a warning. Mention `HYARD_CACHE_DIR` only in
 troubleshooting context for the user-level registry cache.
@@ -249,12 +255,11 @@ Public demo examples should use Package Handle Coordinates once registry entries
 exist. Explicit Git locators are the advanced escape hatch when no registry
 entry is available.
 
-Create a runtime, install a Harness Package by handle, and hand off to Codex:
+Clone a Harness Package by handle and hand off to Codex:
 
 ```bash
-hyard create runtime demo-runtime
+hyard clone acme/frontend-lab demo-runtime
 cd demo-runtime
-hyard install acme/frontend-lab
 hyard start --with codex
 ```
 

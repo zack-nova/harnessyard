@@ -367,12 +367,15 @@ func resolvePackageEntryVersion(coordinate PackageHandleCoordinate, resolvedCoor
 	if err != nil {
 		return Resolution{}, fmt.Errorf("package handle %q: %w", coordinate.Handle(), err)
 	}
+	if err := validatePackageEntryHandle(resolvedCoordinate, entry); err != nil {
+		return Resolution{}, fmt.Errorf("package handle %q: %w", coordinate.Handle(), err)
+	}
 	version, ok := versionEntryForExactVersion(entry.Versions, resolvedCoordinate.Version)
 	if !ok {
 		return Resolution{}, fmt.Errorf("package handle %q is not registered", resolvedCoordinate.String())
 	}
 
-	resolution, err := resolutionFromVersionEntry(resolvedCoordinate, version)
+	resolution, err := resolutionFromVersionEntry(resolvedCoordinate, entry, version)
 	if err != nil {
 		return Resolution{}, err
 	}
@@ -384,6 +387,25 @@ func resolvePackageEntryVersion(coordinate PackageHandleCoordinate, resolvedCoor
 	}
 
 	return resolution, nil
+}
+
+func validatePackageEntryHandle(coordinate PackageHandleCoordinate, entry packageEntry) error {
+	rawHandle := strings.ToLower(strings.TrimSpace(entry.Handle))
+	if rawHandle == "" {
+		return nil
+	}
+	handleCoordinate, err := ParsePackageHandleCoordinate(rawHandle)
+	if err != nil {
+		return fmt.Errorf("registry package handle field: %w", err)
+	}
+	if handleCoordinate.Namespace == "" {
+		return fmt.Errorf("registry package handle field must be namespaced")
+	}
+	if handleCoordinate.Handle() != coordinate.Handle() {
+		return fmt.Errorf("registry package handle field must be %q, got %q", coordinate.Handle(), handleCoordinate.Handle())
+	}
+
+	return nil
 }
 
 func normalizePackageStatus(raw string) (PackageStatus, error) {
@@ -414,28 +436,27 @@ type curatedEntry struct {
 }
 
 type packageEntry struct {
+	Handle   string                  `yaml:"handle"`
 	Status   string                  `yaml:"status"`
+	Package  packageDescriptorEntry  `yaml:"package"`
 	DistTags map[string]string       `yaml:"dist_tags"`
 	Versions map[string]versionEntry `yaml:"versions"`
 }
 
+type packageDescriptorEntry struct {
+	Type string `yaml:"type"`
+	Name string `yaml:"name"`
+}
+
 type versionEntry struct {
-	PackageType     string             `yaml:"package_type"`
-	PackageIdentity string             `yaml:"package_identity"`
-	Source          versionSourceEntry `yaml:"source"`
+	Locator versionLocatorEntry `yaml:"locator"`
 }
 
-type versionSourceEntry struct {
-	Remote string                 `yaml:"remote"`
-	Ref    string                 `yaml:"ref"`
-	Commit string                 `yaml:"commit"`
-	Git    *versionSourceGitEntry `yaml:"git"`
-}
-
-type versionSourceGitEntry struct {
-	Remote string `yaml:"remote"`
-	Ref    string `yaml:"ref"`
-	Commit string `yaml:"commit"`
+type versionLocatorEntry struct {
+	Kind       string `yaml:"kind"`
+	Repository string `yaml:"repository"`
+	Ref        string `yaml:"ref"`
+	Commit     string `yaml:"commit"`
 }
 
 func packageEntryForName(packages map[string]packageEntry, name string) (packageEntry, bool) {
@@ -484,31 +505,34 @@ func distTagVersion(distTags map[string]string, tag string) (string, bool) {
 	return "", false
 }
 
-func resolutionFromVersionEntry(coordinate PackageHandleCoordinate, version versionEntry) (Resolution, error) {
-	packageType := strings.ToLower(strings.TrimSpace(version.PackageType))
+func resolutionFromVersionEntry(coordinate PackageHandleCoordinate, entry packageEntry, version versionEntry) (Resolution, error) {
+	packageType := strings.ToLower(strings.TrimSpace(entry.Package.Type))
 	switch packageType {
 	case ids.PackageTypeOrbit, ids.PackageTypeHarness:
 	default:
-		return Resolution{}, fmt.Errorf("registry version %s package_type must be %q or %q", coordinate.String(), ids.PackageTypeOrbit, ids.PackageTypeHarness)
+		return Resolution{}, fmt.Errorf("registry package %s package.type must be %q or %q", coordinate.Handle(), ids.PackageTypeOrbit, ids.PackageTypeHarness)
 	}
 
-	packageIdentity := strings.ToLower(strings.TrimSpace(version.PackageIdentity))
+	packageIdentity := strings.ToLower(strings.TrimSpace(entry.Package.Name))
 	if _, err := ids.NewPackageIdentity(packageType, packageIdentity, coordinate.Version); err != nil {
-		return Resolution{}, fmt.Errorf("registry version %s package_identity: %w", coordinate.String(), err)
+		return Resolution{}, fmt.Errorf("registry package %s package.name: %w", coordinate.Handle(), err)
 	}
 
-	sourceRemote, sourceRef, sourceCommit := version.Source.values()
+	sourceRemote, sourceRef, sourceCommit, err := version.Locator.values(coordinate)
+	if err != nil {
+		return Resolution{}, err
+	}
 	if sourceRemote == "" {
-		return Resolution{}, fmt.Errorf("registry version %s source.remote must be present", coordinate.String())
+		return Resolution{}, fmt.Errorf("registry version %s locator.repository must be present", coordinate.String())
 	}
 	if sourceRef == "" {
-		return Resolution{}, fmt.Errorf("registry version %s source.ref must be present", coordinate.String())
+		return Resolution{}, fmt.Errorf("registry version %s locator.ref must be present", coordinate.String())
 	}
 	if sourceCommit == "" {
-		return Resolution{}, fmt.Errorf("registry version %s source.commit must be present", coordinate.String())
+		return Resolution{}, fmt.Errorf("registry version %s locator.commit must be present", coordinate.String())
 	}
 	if !commitPattern.MatchString(sourceCommit) {
-		return Resolution{}, fmt.Errorf("registry version %s source.commit must be a full Git commit SHA", coordinate.String())
+		return Resolution{}, fmt.Errorf("registry version %s locator.commit must be a full Git commit SHA", coordinate.String())
 	}
 
 	return Resolution{
@@ -522,23 +546,16 @@ func resolutionFromVersionEntry(coordinate PackageHandleCoordinate, version vers
 	}, nil
 }
 
-func (source versionSourceEntry) values() (remote string, ref string, commit string) {
-	remote = strings.TrimSpace(source.Remote)
-	ref = strings.TrimSpace(source.Ref)
-	commit = strings.ToLower(strings.TrimSpace(source.Commit))
-	if source.Git != nil {
-		if strings.TrimSpace(source.Git.Remote) != "" {
-			remote = strings.TrimSpace(source.Git.Remote)
-		}
-		if strings.TrimSpace(source.Git.Ref) != "" {
-			ref = strings.TrimSpace(source.Git.Ref)
-		}
-		if strings.TrimSpace(source.Git.Commit) != "" {
-			commit = strings.ToLower(strings.TrimSpace(source.Git.Commit))
-		}
+func (locator versionLocatorEntry) values(coordinate PackageHandleCoordinate) (remote string, ref string, commit string, err error) {
+	kind := strings.ToLower(strings.TrimSpace(locator.Kind))
+	if kind != "" && kind != "git" {
+		return "", "", "", fmt.Errorf("registry version %s locator.kind must be %q", coordinate.String(), "git")
 	}
+	remote = strings.TrimSpace(locator.Repository)
+	ref = strings.TrimSpace(locator.Ref)
+	commit = strings.ToLower(strings.TrimSpace(locator.Commit))
 
-	return remote, ref, commit
+	return remote, ref, commit, nil
 }
 
 var commitPattern = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)

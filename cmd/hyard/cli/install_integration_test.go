@@ -72,15 +72,20 @@ func TestHyardInstallExactPackageHandleCoordinateFromGitRegistry(t *testing.T) {
 		"namespace: acme\n"+
 		"packages:\n"+
 		"  docs:\n"+
+		"    handle: acme/docs\n"+
 		"    status: active\n"+
+		"    package:\n"+
+		"      type: orbit\n"+
+		"      name: docs\n"+
+		"    source:\n"+
+		"      repository: %q\n"+
 		"    versions:\n"+
 		"      0.1.0:\n"+
-		"        package_type: orbit\n"+
-		"        package_identity: docs\n"+
-		"        source:\n"+
-		"          remote: %q\n"+
+		"        locator:\n"+
+		"          kind: git\n"+
+		"          repository: %q\n"+
 		"          ref: orbit-template/docs\n"+
-		"          commit: %s\n", sourceRemote, sourceCommit))
+		"          commit: %s\n", sourceRemote, sourceRemote, sourceCommit))
 	registryRepo.AddAndCommit(t, "seed package registry")
 	registryRemote := testutil.NewBareRemoteFromRepo(t, registryRepo)
 
@@ -572,23 +577,29 @@ func seedPackageHandleInstallFixture(t *testing.T, packageStatus string) package
 		"schema_version: 1\n"+
 		"curated:\n"+
 		"  docs:\n"+
-		"    target: acme/docs\n")
+		"    target: acme/docs\n"+
+		"    status: active\n")
 	registryRepo.WriteFile(t, "packages/acme/index.yaml", fmt.Sprintf(""+
 		"schema_version: 1\n"+
 		"namespace: acme\n"+
 		"packages:\n"+
 		"  docs:\n"+
+		"    handle: acme/docs\n"+
 		"    status: %s\n"+
+		"    package:\n"+
+		"      type: orbit\n"+
+		"      name: docs\n"+
+		"    source:\n"+
+		"      repository: %q\n"+
 		"    dist_tags:\n"+
 		"      latest: 0.1.0\n"+
 		"    versions:\n"+
 		"      0.1.0:\n"+
-		"        package_type: orbit\n"+
-		"        package_identity: docs\n"+
-		"        source:\n"+
-		"          remote: %q\n"+
+		"        locator:\n"+
+		"          kind: git\n"+
+		"          repository: %q\n"+
 		"          ref: orbit-template/docs\n"+
-		"          commit: %s\n", packageStatus, sourceRemote, sourceCommit))
+		"          commit: %s\n", packageStatus, sourceRemote, sourceRemote, sourceCommit))
 	registryRepo.AddAndCommit(t, "seed package registry")
 	registryRemote := testutil.NewBareRemoteFromRepo(t, registryRepo)
 

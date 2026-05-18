@@ -33,17 +33,16 @@ Run View is the default runtime-user presentation: it keeps authored scaffolding
 of the ordinary working tree and makes current runtime publication the recommended
 sharing path.
 
-Package Handle Coordinates are the ordinary install path for published Harness
-Packages and Orbit Packages. Use `namespace/name[@version-or-tag]`, not npm-style `@namespace/name`.
+Package Handle Coordinates are the ordinary clone/install path for published
+Harness Packages and Orbit Packages. Use `namespace/name[@version-or-tag]`, not
+npm-style `@namespace/name`.
 Package Handle Coordinates are case-insensitive and normalize before resolution.
 
-Create a runtime, install a published Harness Package by handle, and start the
-agent handoff:
+Clone a published Harness Package by handle and start the agent handoff:
 
 ```bash
-hyard create runtime demo-runtime
+hyard clone acme/frontend-lab demo-runtime
 cd demo-runtime
-hyard install acme/frontend-lab
 hyard start --with codex
 ```
 
@@ -163,6 +162,8 @@ readiness-relevant.
 Install a reusable template or package:
 
 ```bash
+hyard clone <namespace>/<harness-name> [repo-name]
+hyard clone <curated-harness-name> [repo-name]
 hyard install <namespace>/<name>
 hyard install <namespace>/<name>@<semver>
 hyard install <curated-name>
