@@ -70,7 +70,7 @@ jobs:
           echo "version=v${version}" >> "$GITHUB_OUTPUT"
 
       - name: Install golangci-lint
-        uses: golangci/golangci-lint-action@v9.2.0
+        uses: golangci/golangci-lint-action@v9.2.1
         with:
           version: ${{ steps.golangci_lint_version.outputs.version }}
           install-only: true
